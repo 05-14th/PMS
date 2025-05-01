@@ -1,13 +1,26 @@
-import { useState } from 'react'
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import { useState, useEffect } from 'react'
 import Developing from './Developing'
 import MainBody from '../components/MainBody'
+import axios from 'axios'
+import Table from '../components/Table'
+
 
 function UserPage() {
+  const [data, setData] = useState<any[]>([]);
+  const serverHost = import.meta.env.VITE_APP_SERVERHOST;
+
+  useEffect(() => {
+    axios
+      .get(`${serverHost}/getUsers`)
+      .then((res) => setData(res.data))
+      .catch((err) => console.error(err));
+  }, []);
+
   return (
     <div className="min-h-screen bg-black">
         <MainBody>
             <div>
+                <Table data={data} actionable={true}/>
                 <h1 className="bg-white">User page is under development</h1>
                 <Developing />
             </div>
