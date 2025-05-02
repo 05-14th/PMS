@@ -1,6 +1,6 @@
 // SignUpPage.tsx
 import React from "react";
-import Developing from "./Developing";
+import Developing from '../components/Developing'
 
 const SignUpPage: React.FC = () => {
   return (

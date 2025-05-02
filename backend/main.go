@@ -19,6 +19,15 @@ type User struct {
 	Status   string `json:"usr_status"`
 }
 
+type Items struct {
+	Name     string `json:"item_name"`
+	Desc     string `json:"item_desc"`
+	Quantity string `json:"item_quantity"`
+	Unit     string `json:"item_unit"`
+	Class    string `json:"item_class"`
+	Date     string `json:"purchase_date"`
+}
+
 var db *sql.DB
 
 func initDB() {
@@ -58,7 +67,7 @@ func withCORS(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func getUsers(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query("SELECT usr_fullname, usr_username, usr_role, usr_status FROM cm_users")
+	rows, err := db.Query(os.Getenv("GET_USERS"))
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -80,9 +89,33 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(users)
 }
 
+func getItems(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(os.Getenv("GET_ITEMS"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var items []Items
+
+	for rows.Next() {
+		var item Items
+		if err := rows.Scan(&item.Name, &item.Desc, &item.Quantity, &item.Unit, &item.Class, &item.Date); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		items = append(items, item)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
+	http.HandleFunc("/getItems", withCORS(getItems))
 	fmt.Println("Server running at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

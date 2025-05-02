@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
-import ControlBody from '../components/ControlBody'
 import Developing from '../components/Developing'
+import ControlBody from '../components/ControlBody'
 
-function Control() {
+function Poultry() {
   return (
     <div className="min-h-screen bg-black">
         <ControlBody>
             <div>
-                <h1 className="bg-white">Control page is under development</h1>
+                <h1 className="bg-white">Poultry page is under development</h1>
                 <Developing />
             </div>
         </ControlBody>
@@ -16,4 +16,4 @@ function Control() {
   )
 }
 
-export default Control;
+export default Poultry;

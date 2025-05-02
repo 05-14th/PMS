@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import Developing from './Developing'
+import Developing from '../components/Developing'
 import MainBody from '../components/MainBody'
 
 function HomePage() {
