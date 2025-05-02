@@ -24,4 +24,4 @@ dist-ssr
 *.sw?
 
 backend/*.env
-/.env
+.env
