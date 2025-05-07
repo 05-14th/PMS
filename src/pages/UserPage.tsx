@@ -3,6 +3,7 @@ import Developing from '../components/Developing'
 import MainBody from '../components/MainBody'
 import axios from 'axios'
 import Table from '../components/Table'
+import Section from '../components/Section'
 
 
 function UserPage() {
@@ -17,15 +18,12 @@ function UserPage() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-black">
-        <MainBody>
-            <div>
-                <Table data={userData} actionable={true}/>
-                <h1 className="bg-white">User page is under development</h1>
-                <Developing />
-            </div>
-        </MainBody>
-    </div>
+    <MainBody>
+      <Table data={userData} actionable={true}/>
+      <Section>
+        <Developing/>
+      </Section>
+    </MainBody>
   )
 }
 
