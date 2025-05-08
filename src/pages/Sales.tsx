@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
-import Developing from './Developing'
+import Developing from '../components/Developing'
 import MainBody from '../components/MainBody'
 
 function Sales() {

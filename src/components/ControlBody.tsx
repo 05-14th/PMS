@@ -1,17 +1,17 @@
 import { ReactNode } from 'react'
 import Navbar from './Navbar';
 
-interface MainBodyProps {
+interface ControlBodyProps {
     children: ReactNode;
 }
 
-function MainBody({ children }: MainBodyProps) {
+function ControlBody({ children }: ControlBodyProps) {
   return (
     <div className="min-h-screen min-w-screen bg-black">
-        <Navbar isControl={false}/>
+        <Navbar isControl={true}/>
         {children}
     </div>
   )
 }
 
-export default MainBody;
+export default ControlBody;
