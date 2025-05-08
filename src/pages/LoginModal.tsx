@@ -36,66 +36,73 @@ const LoginModal: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen w-screen">
-      {/* Left Side - Background Image with Form */}
-      <div
-        className="w-3/5 flex items-center justify-center"
-        style={{
-          backgroundImage: "url('/Extras/chicken.png')",
-          backgroundSize: "cover",
-          backgroundPosition: "center",
-        }}
-      >
-        <div className="bg-white rounded-[40px] p-10 w-full max-w-md shadow-lg">
-          <h2 className="text-3xl font-bold text-center mb-8">Login</h2>
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label className="text-sm font-semibold">Email</label>
-              <input
-                type="text"
-                placeholder="Enter your email"
-                className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="text-sm font-semibold">Password</label>
-              <input
-                type="password"
-                placeholder="Enter your password"
-                className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-              />
-            </div>
-            {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-            <button
-              type="submit"
-              disabled={loading}
-              className="mx-auto block bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-full text-sm shadow-md"
-            >
-              {loading ? "Signing in..." : "Login"}
-            </button>
-            <div className="text-center mt-4 text-sm">
-              <span className="text-gray-600">Dont have account yet? </span>
-              <button
-                type="button"
-                onClick={handleSignUpRedirect}
-                className="text-orange-500 font-semibold hover:underline"
-              >
-                Sign Up
-              </button>
-            </div>
-          </form>
+<div className="flex flex-col md:flex-row h-screen w-screen">
+  {/* Left Side - Background Image with Form */}
+  <div
+    className="flex-1 flex items-center justify-center"
+    style={{
+      backgroundImage: "url('/Extras/chicken.png')",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+    }}
+  >
+    <div className="bg-white rounded-[40px] p-6 md:p-10 w-11/12 max-w-md shadow-lg">
+      <h2 className="text-3xl font-bold text-center mb-8">Login</h2>
+      <form className="space-y-6" onSubmit={handleSubmit}>
+        <div>
+          <label className="text-sm font-semibold">Email</label>
+          <input
+            type="text"
+            placeholder="Enter your email"
+            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
         </div>
-      </div>
-
-      {/* Right Side - Logo or Illustration */}
-      <div className="w-2/5 flex items-center justify-center bg-[#576070]">
-        <img src="\Extras\logo2.png" alt="Chickmate Logo" className="w-60" />
-      </div>
+        <div>
+          <label className="text-sm font-semibold">Password</label>
+          <input
+            type="password"
+            placeholder="Enter your password"
+            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
+        </div>
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="mx-auto block bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-full text-sm shadow-md"
+        >
+          {loading ? "Signing in..." : "Login"}
+        </button>
+        <div className="text-center mt-4 text-sm">
+          <span className="text-gray-600">Don't have an account yet? </span>
+          <button
+            type="button"
+            onClick={handleSignUpRedirect}
+            className="text-orange-500 font-semibold hover:underline"
+          >
+            Sign Up
+          </button>
+        </div>
+      </form>
     </div>
+  </div>
+
+ {/* Right Side - Logo or Illustration */}
+<div className="flex items-center justify-center bg-[#576070] w-full md:w-2/5 h-24 sm:h-40 md:h-auto">
+  <img
+    src="/Extras/logo2.png"
+    alt="Chickmate Logo"
+    className="w-12 sm:w-32 md:w-70"
+  />
+</div>
+
+</div>
+
+
   );
 };
 
