@@ -45,41 +45,43 @@ const Table: React.FC<TableProps> = ({ data, actionable }) => {
       {pageData.length === 0 ? (
         <p>No matching data</p>
       ) : (
-        <table className="min-w-full table-auto border-collapse">
-          <thead>
-            <tr>
-              {columns.map((col) => (
-                <th key={col} className="px-4 py-2 border-b text-left font-semibold text-gray-700">
-                  {col.toUpperCase()}
-                </th>
-              ))}
-              {actionable == true ? (
-                <th className="px-4 py-2 border-b text-left font-semibold text-gray-700">ACTION</th>
-              ) : ("")}
-            </tr>
-          </thead>
-          <tbody>
-            {pageData.map((row, idx) => (
-              <tr key={idx} className="border-b">
+        <div className="w-full overflow-x-auto">
+          <table className="min-w-full table-auto border-collapse">
+            <thead>
+              <tr>
                 {columns.map((col) => (
-                  <td key={col} className="px-4 py-2 text-gray-600">
-                    {typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col]}
-                  </td>
+                  <th key={col} className="px-4 py-2 border-b text-left font-semibold text-gray-700">
+                    {col.toUpperCase()}
+                  </th>
                 ))}
-                {actionable == true ? (
-                  <td className="px-4 py-2">
-                    <button
-                      className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
-                      onClick={() => console.log('Action clicked for:', row)}
-                    >
-                      View
-                    </button>
-                  </td>
-                  ) : ("")}
-                  </tr>
-                ))}
-          </tbody>
-        </table>
+                {actionable && (
+                  <th className="px-4 py-2 border-b text-left font-semibold text-gray-700">ACTION</th>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {pageData.map((row, idx) => (
+                <tr key={idx} className="border-b">
+                  {columns.map((col) => (
+                    <td key={col} className="px-4 py-2 text-gray-600">
+                      {typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col]}
+                    </td>
+                  ))}
+                  {actionable && (
+                    <td className="px-4 py-2">
+                      <button
+                        className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
+                        onClick={() => console.log('Action clicked for:', row)}
+                      >
+                        View
+                      </button>
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       {totalPages > 1 && (
