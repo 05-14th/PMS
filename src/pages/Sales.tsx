@@ -3,6 +3,7 @@ import axios from 'axios';
 import Developing from '../components/Developing'
 import MainBody from '../components/MainBody'
 import Table from '../components/Table';
+import Section from '../components/Section';
 
 // Utility to detect YYYY-MM-DD strings
 const isIsoDateString = (value: any): boolean =>
@@ -47,8 +48,9 @@ function Sales() {
           <Table data={itemData} actionable={true} />
         </div>
       </section>
-      <h1 className="bg-white">Inventory page is under development</h1>
-      <Developing />
+      <Section>
+        <Developing />
+      </Section>
     </MainBody>
   )
 }

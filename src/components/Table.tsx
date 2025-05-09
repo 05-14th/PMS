@@ -1,5 +1,6 @@
 // src/components/DataTable.tsx
 import React, { useState, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 type TableProps = {
   data: any[];
@@ -11,15 +12,39 @@ const PAGE_SIZE = 10;
 const Table: React.FC<TableProps> = ({ data, actionable }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+
+  const navigate = useNavigate();
+
+  const openModal = () => {
+    navigate('/target', { state: { openModal: true } });
+  };
+
+  const sortedData = useMemo(() => {
+    let sortable = [...data];
+
+    if (sortConfig !== null) {
+      sortable.sort((a, b) => {
+        const aValue = a[sortConfig.key];
+        const bValue = b[sortConfig.key];
+
+        if (aValue < bValue) return sortConfig.direction === 'asc' ? -1 : 1;
+        if (aValue > bValue) return sortConfig.direction === 'asc' ? 1 : -1;
+        return 0;
+      });
+    }
+
+    return sortable;
+  }, [data, sortConfig]);
 
   const filteredData = useMemo(() => {
-    if (!searchTerm) return data;
-    return data.filter((row) =>
+    if (!searchTerm) return sortedData;
+    return sortedData.filter((row) =>
       Object.values(row).some((value) =>
         JSON.stringify(value).toLowerCase().includes(searchTerm.toLowerCase())
       )
     );
-  }, [data, searchTerm]);
+  }, [sortedData, searchTerm]);
 
   const totalPages = Math.ceil(filteredData.length / PAGE_SIZE);
   const pageData = filteredData.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -28,6 +53,19 @@ const Table: React.FC<TableProps> = ({ data, actionable }) => {
 
   const handlePrev = () => setPage((p) => Math.max(1, p - 1));
   const handleNext = () => setPage((p) => Math.min(totalPages, p + 1));
+
+  const handleSort = (key: string) => {
+    setPage(1); // reset pagination on sort
+    setSortConfig((prev) => {
+      if (prev && prev.key === key) {
+        return {
+          key,
+          direction: prev.direction === 'asc' ? 'desc' : 'asc',
+        };
+      }
+      return { key, direction: 'asc' };
+    });
+  };
 
   return (
     <div className="bg-white p-4 rounded-lg shadow-lg">
@@ -50,8 +88,17 @@ const Table: React.FC<TableProps> = ({ data, actionable }) => {
             <thead>
               <tr>
                 {columns.map((col) => (
-                  <th key={col} className="px-4 py-2 border-b text-left font-semibold text-gray-700">
+                  <th
+                    key={col}
+                    onClick={() => handleSort(col)}
+                    className="px-4 py-2 border-b text-left font-semibold text-gray-700 cursor-pointer select-none"
+                  >
                     {col.toUpperCase()}
+                    {sortConfig?.key === col && (
+                      <span className="ml-1">
+                        {sortConfig.direction === 'asc' ? '▲' : '▼'}
+                      </span>
+                    )}
                   </th>
                 ))}
                 {actionable && (
@@ -68,12 +115,18 @@ const Table: React.FC<TableProps> = ({ data, actionable }) => {
                     </td>
                   ))}
                   {actionable && (
-                    <td className="px-4 py-2">
+                    <td className="px-4 py-2 space-x-2">
                       <button
-                        className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
-                        onClick={() => console.log('Action clicked for:', row)}
+                        className="text-white bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded"
+                        onClick={openModal}
                       >
-                        View
+                        Modify
+                      </button>
+                      <button
+                        className="text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded"
+                        onClick={openModal}
+                      >
+                        Delete
                       </button>
                     </td>
                   )}
