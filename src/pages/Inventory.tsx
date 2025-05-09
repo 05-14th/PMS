@@ -3,6 +3,7 @@ import Developing from '../components/Developing';
 import MainBody from '../components/MainBody';
 import axios from 'axios';
 import Table from '../components/Table';
+import Section from '../components/Section';
 
 // Utility to detect YYYY-MM-DD strings
 const isIsoDateString = (value: any): boolean =>
@@ -18,7 +19,7 @@ const formatDate = (isoDate: string): string => {
 };
 
 function Inventory() {
-  const [itemData, setItemData] = useState<any[]>([]);
+  const [inventoryData, setItemData] = useState<any[]>([]);
   const serverHost = import.meta.env.VITE_APP_SERVERHOST;
 
   useEffect(() => {
@@ -41,11 +42,14 @@ function Inventory() {
 
   return (
     <MainBody>
-      <div>
-        <Table data={itemData} actionable={true} />
-        <h1 className="bg-white">Inventory page is under development</h1>
-        <Developing />
-      </div>
+      <section className="w-full">
+        <div className="overflow-x-auto">
+          <Table data={inventoryData} actionable={true} />
+        </div>
+      </section>
+      <Section>
+        <Developing/>
+      </Section>
     </MainBody>
   );
 }

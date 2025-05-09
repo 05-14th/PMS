@@ -3,7 +3,7 @@ import Developing from '../components/Developing'
 import MainBody from '../components/MainBody'
 import axios from 'axios'
 import Table from '../components/Table'
-
+import Section from '../components/Section'
 
 function UserPage() {
   const [userData, setUserData] = useState<any[]>([]);
@@ -19,11 +19,14 @@ function UserPage() {
   return (
     <div className="min-h-screen bg-black">
         <MainBody>
-            <div>
-                <Table data={userData} actionable={true}/>
-                <h1 className="bg-white">User page is under development</h1>
-                <Developing />
+          <section className="w-full">
+            <div className="overflow-x-auto">
+              <Table data={userData} actionable={true} />
             </div>
+          </section>
+          <Section>
+            <Developing/>
+          </Section>
         </MainBody>
     </div>
   )
