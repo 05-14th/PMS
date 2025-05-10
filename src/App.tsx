@@ -13,6 +13,8 @@ import FeedingWatering from './controlPage/FeedingWatering'
 import Poultry from './controlPage/Poultry'
 import Notification from './controlPage/Notification'
 
+
+
 function App() {
   return (
     <div className="min-h-screen bg-black">
@@ -30,6 +32,7 @@ function App() {
             <Route path="/feedWater" element={<FeedingWatering />} />
             <Route path="/poultry" element={<Poultry />} />
             <Route path="/notification" element={<Notification />} />
+         
           </Routes>
         </Router>
       </div>
