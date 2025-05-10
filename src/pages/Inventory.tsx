@@ -25,7 +25,16 @@ function Inventory() {
     axios
       .get(`${serverHost}/getItems`)
       .then((res) => {
-        const formatted = res.data.map((item: Record<string, any>) => {
+        console.log("API response:", res.data);
+
+        // Attempt to extract an array safely
+        const dataArray = Array.isArray(res.data)
+          ? res.data
+          : Array.isArray(res.data.items)
+          ? res.data.items
+          : [];
+
+        const formatted = dataArray.map((item: Record<string, any>) => {
           const newItem: Record<string, any> = {};
           for (const key in item) {
             const value = item[key];
@@ -36,7 +45,7 @@ function Inventory() {
 
         setItemData(formatted);
       })
-      .catch((err) => console.error(err));
+      .catch((err) => console.error("Error fetching items:", err));
   }, []);
 
   return (
