@@ -168,6 +168,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
             </button>
           </div>
 
+
           {/* Connect Modal */}
           <ConnectModal
             isOpen={isConnectModalOpen}
