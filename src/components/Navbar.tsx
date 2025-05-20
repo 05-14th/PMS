@@ -153,22 +153,20 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
 
         {/* Right: Profile and Logout */}
         <div className="flex items-center justify-end space-x-2 w-full sm:w-auto">
-        <div className="flex sm:hidden items-center space-x-4">
-  {/* Notification with label */}
-  <Link to="/notification" className="flex items-center text-white hover:text-orange-500 space-x-1">
-    <Bell size={24} />
-    <span className="text-sm">Notification</span>
-  </Link>
-
-  {/* Connect Button */}
-  <button
-    onClick={() => setIsConnectModalOpen(true)}
-    className="flex items-center bg-green-600 text-white px-3 py-1 rounded-full hover:bg-green-500 transition"
-  >
-    <Plug size={20} className="mr-1" />
-    <span>Connect</span>
-  </button>
-</div>
+          {/* Mobile Notification Bell comes before Connect Button */}
+          <div className="flex sm:hidden space-x-2">
+            <Link to="/notification" className="text-white">
+              <Bell size={28} className="hover:text-orange-500" />
+            </Link>
+            {/* Connect Button */}
+            <button
+              onClick={() => setIsConnectModalOpen(true)}
+              className="flex items-center bg-green-600 text-white px-3 py-1 rounded-full hover:bg-green-500 transition"
+            >
+              <Plug size={20} className="mr-1" />
+              <span>Connect</span>
+            </button>
+          </div>
 
 
           {/* Connect Modal */}
