@@ -18,12 +18,15 @@ function UserPage() {
   }, []);
 
   return (
-    <MainBody>
-      <Table data={userData} actionable={true}/>
-      <Section>
-        <Developing/>
-      </Section>
-    </MainBody>
+    <div className="min-h-screen bg-black">
+        <MainBody>
+            <div>
+                <Table data={userData} actionable={true}/>
+                <h1 className="bg-white">User page is under development</h1>
+                <Developing />
+            </div>
+        </MainBody>
+    </div>
   )
 }
 

@@ -1,85 +1,109 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useState } from 'react'
 
 const mockLogin = async (username: string, password: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        // Replace with real validation logic or API call
-        resolve(username === "admin" && password === "password");
-      }, 1000);
-    });
-  };
-  
+  return new Promise((resolve) => {
+    setTimeout(() => {
+      resolve(username === "admin" && password === "password");
+    }, 1000);
+  });
+};
 
 const LoginModal: React.FC = () => {
-    const navigate = useNavigate();
+  const navigate = useNavigate();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
 
-    const [username, setUsername] = useState("");
-    const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setLoading(true);
 
+    const success = await mockLogin(username, password);
+    setLoading(false);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError("");
-        setLoading(true);
+    if (success) {
+      navigate("/homepage");
+    } else {
+      setError("Invalid username or password");
+    }
+  };
 
-        const success = await mockLogin(username, password);
+  const handleSignUpRedirect = () => {
+    navigate("/signup");
+  };
 
-        setLoading(false);
-        if (success) {
-        navigate("/homepage"); // Redirect on success
-        } else {
-        setError("Invalid username or password");
-        }
-    };
-
-    const handleSignUpRedirect = () => {
-        navigate("/signup");
-    };
-
-    return (
-        <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50">
-        <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-sm">
-            <h2 className="text-2xl font-semibold mb-4 text-center">Login</h2>
-            <form className="space-y-4" onSubmit={handleSubmit}>
-            <input
-                type="text"
-                placeholder="Username"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-            />
-            <input
-                type="password"
-                placeholder="Password"
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-            />
-            {error && <p className="text-red-500 text-sm">{error}</p>}
-            <button
-                type="submit"
-                disabled={loading}
-                className="w-full bg-blue-500 text-white py-2 rounded-lg hover:bg-blue-600 transition-colors"
-            >
-                {loading ? "Signing in..." : "Login"}
-            </button>
-            <div className="mt-4 text-center">
-            <span className="text-sm text-gray-600">Don't have an account? </span>
-            <button
-                onClick={handleSignUpRedirect}
-                className="text-blue-500 hover:underline text-sm font-medium"
-            >
-                Sign Up
-            </button>
-            </div>
-            </form>
+  return (
+<div className="flex flex-col md:flex-row h-screen w-screen">
+  {/* Left Side - Background Image with Form */}
+  <div
+    className="flex-1 flex items-center justify-center"
+    style={{
+      backgroundImage: "url('/Extras/chicken.png')",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+    }}
+  >
+    <div className="bg-white rounded-[40px] p-6 md:p-10 w-11/12 max-w-md shadow-lg">
+      <h2 className="text-3xl font-bold text-center mb-8">Login</h2>
+      <form className="space-y-6" onSubmit={handleSubmit}>
+        <div>
+          <label className="text-sm font-semibold">Email</label>
+          <input
+            type="text"
+            placeholder="Enter your email"
+            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+          />
         </div>
+        <div>
+          <label className="text-sm font-semibold">Password</label>
+          <input
+            type="password"
+            placeholder="Enter your password"
+            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
         </div>
-    );
+        {error && <p className="text-red-500 text-sm text-center">{error}</p>}
+        <button
+          type="submit"
+          disabled={loading}
+          className="mx-auto block bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-full text-sm shadow-md"
+        >
+          {loading ? "Signing in..." : "Login"}
+        </button>
+        <div className="text-center mt-4 text-sm">
+          <span className="text-gray-600">Don't have an account yet? </span>
+          <button
+            type="button"
+            onClick={handleSignUpRedirect}
+            className="text-orange-500 font-semibold hover:underline"
+          >
+            Sign Up
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+ {/* Right Side - Logo or Illustration */}
+<div className="flex items-center justify-center bg-[#576070] w-full md:w-2/5 h-24 sm:h-40 md:h-auto">
+  <img
+    src="/Extras/logo2.png"
+    alt="Chickmate Logo"
+    className="w-12 sm:w-32 md:w-70"
+  />
+</div>
+
+</div>
+
+
+  );
 };
 
 export default LoginModal;

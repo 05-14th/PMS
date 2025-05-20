@@ -1,5 +1,22 @@
-import React from "react";
-import { Link } from "react-router-dom";
+import React, { useState } from "react";
+import ConnectModal from "./ConnectModal";
+import { Link, useNavigate } from "react-router-dom";
+import {
+ Home,
+  Package,
+  ShoppingCart,
+  Users,
+  Settings,
+  LayoutDashboard,
+  Thermometer,
+  Droplets,
+  Feather,
+  Bell,
+  ServerCog,
+  LogOut,
+  UserCircle,
+  Plug,
+} from "lucide-react";
 
 interface NavbarProps {
   isControl: boolean;

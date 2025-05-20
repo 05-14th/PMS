@@ -20,12 +20,27 @@ type User struct {
 }
 
 type Items struct {
-	Name     string `json:"item_name"`
-	Desc     string `json:"item_desc"`
-	Quantity string `json:"item_quantity"`
-	Unit     string `json:"item_unit"`
-	Class    string `json:"item_class"`
+	Name     string `json:"material_name"`
+	Desc     string `json:"material_desc"`
+	Quantity string `json:"material_quantity"`
+	Unit     string `json:"material_unit"`
+	Class    string `json:"material_class"`
 	Date     string `json:"purchase_date"`
+}
+
+type Sales struct {
+	ID                int     `json:"sales_id"`
+	Amount            float64 `json:"sales_amount"`
+	Status            string  `json:"sales_status"`
+	Date              string  `json:"sales_date"`
+	Remarks           string  `json:"sales_remarks"`
+	PurchaseNumber    string  `json:"purchase_number"`
+	ProductPrice      float64 `json:"product_price"`
+	ProductWeight     float64 `json:"product_weight"`
+	ProductWeightUnit string  `json:"product_weight_unit"`
+	ProductClass      string  `json:"product_class"`
+	ProductBatch      string  `json:"product_batch"`
+	ProductDays       int     `json:"product_days"`
 }
 
 var db *sql.DB
@@ -101,7 +116,8 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var item Items
-		if err := rows.Scan(&item.Name, &item.Desc, &item.Quantity, &item.Unit, &item.Class, &item.Date); err != nil {
+		if err := rows.Scan(&item.Name, &item.Desc, &item.Quantity,
+			&item.Unit, &item.Class, &item.Date); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -112,10 +128,39 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(items)
 }
 
+func getSales(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(os.Getenv("GET_SALES"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var sales []Sales
+
+	for rows.Next() {
+		var sale Sales
+		if err := rows.Scan(
+			&sale.ID, &sale.Amount, &sale.Status, &sale.Date, &sale.Remarks,
+			&sale.PurchaseNumber, &sale.ProductPrice, &sale.ProductWeight,
+			&sale.ProductWeightUnit, &sale.ProductClass, &sale.ProductBatch,
+			&sale.ProductDays,
+		); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sales = append(sales, sale)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sales)
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
 	http.HandleFunc("/getItems", withCORS(getItems))
+	http.HandleFunc("/getSales", withCORS(getSales))
 	fmt.Println("Server running at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
