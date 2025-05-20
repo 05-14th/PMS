@@ -17,7 +17,7 @@ function HomePage() {
       </div>
 
       {/* Bottom Overlay */}
-      <div className="fixed bottom-9 left-0 w-full bg-gray-300 py-6 px-4 flex flex-col items-center justify-center shadow-inner">
+      <div className="bottom-9 left-0 w-full bg-gray-300 py-6 px-4 flex flex-col items-center justify-center shadow-inner">
         <h2 className="text-white text-center text-lg md:text-xl mb-3">
           Connect your device via WiFi and click ‘Connect’ to get started!
         </h2>

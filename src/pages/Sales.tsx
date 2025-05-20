@@ -25,7 +25,7 @@ function Sales() {
 
   useEffect(() => {
     axios
-      .get(`${serverHost}/getSales`)
+      .get(`${serverHost}/getSimpleSales`)
       .then((res) => {
         const formatted = res.data.map((item: Record<string, any>) => {
           const newItem: Record<string, any> = {};

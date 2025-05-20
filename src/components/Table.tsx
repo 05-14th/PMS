@@ -80,6 +80,13 @@ const Table: React.FC<TableProps> = ({ data, actionable }) => {
         }}
       />
 
+      <button
+        className="text-white bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded"
+        onClick={openModal}
+      >
+        Add
+      </button>
+
       {pageData.length === 0 ? (
         <p>No matching data</p>
       ) : (
@@ -116,6 +123,12 @@ const Table: React.FC<TableProps> = ({ data, actionable }) => {
                   ))}
                   {actionable && (
                     <td className="px-4 py-2 space-x-2">
+                       <button
+                        className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
+                        onClick={openModal}
+                      >
+                        View
+                      </button>
                       <button
                         className="text-white bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded"
                         onClick={openModal}

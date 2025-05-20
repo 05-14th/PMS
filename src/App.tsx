@@ -33,7 +33,7 @@ function App() {
             <Route path="/feedWater" element={<FeedingWatering />} />
             <Route path="/poultry" element={<Poultry />} />
             <Route path="/notification" element={<Notification />} />
-         
+            <Route path="/target" element={<TargetModal />} />
           </Routes>
         </Router>
       </div>

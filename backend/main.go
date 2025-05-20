@@ -43,6 +43,14 @@ type Sales struct {
 	ProductDays       int     `json:"product_days"`
 }
 
+type SimpleSales struct {
+	ID      int     `json:"sales_id"`
+	Amount  float64 `json:"sales_amount"`
+	Status  string  `json:"sales_status"`
+	Date    string  `json:"sales_date"`
+	Remarks string  `json:"sales_remarks"`
+}
+
 var db *sql.DB
 
 func initDB() {
@@ -156,11 +164,38 @@ func getSales(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(sales)
 }
 
+func getSimpleSales(w http.ResponseWriter, r *http.Request) {
+	query := "SELECT sales_id, sales_amount, sales_status, sales_date, sales_remarks FROM cm_sales"
+	rows, err := db.Query(query)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var sales []SimpleSales
+
+	for rows.Next() {
+		var sale SimpleSales
+		if err := rows.Scan(
+			&sale.ID, &sale.Amount, &sale.Status, &sale.Date, &sale.Remarks,
+		); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sales = append(sales, sale)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sales)
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
 	http.HandleFunc("/getItems", withCORS(getItems))
 	http.HandleFunc("/getSales", withCORS(getSales))
+	http.HandleFunc("/getSimpleSales", withCORS(getSimpleSales))
 	fmt.Println("Server running at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
