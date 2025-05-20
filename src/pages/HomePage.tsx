@@ -60,7 +60,7 @@ function HomePage() {
       </div>
 
       {/* Sticky Connect Button */}
-      <div className="sticky bottom-0 w-full bg-gray-300 py-15 px-4 flex flex-col items-center justify-center shadow-inner">
+      <div className="sticky bottom-7 w-full bg-gray-300 py-7 px-4 flex flex-col items-center justify-center shadow-inner">
         <h2 className="text-white text-center text-lg md:text-xl mb-3">
           Connect your device via WiFi and click ‘Connect’ to get started!
         </h2>
