@@ -1,2 +1,0 @@
-Chickmate - Poultry Management System
-
