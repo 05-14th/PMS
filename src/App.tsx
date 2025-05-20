@@ -14,6 +14,8 @@ import Poultry from './controlPage/Poultry'
 import Notification from './controlPage/Notification'
 import TargetModal from './components/TargetModal'
 
+
+
 function App() {
   return (
     <div className="min-h-screen bg-black">
@@ -31,7 +33,7 @@ function App() {
             <Route path="/feedWater" element={<FeedingWatering />} />
             <Route path="/poultry" element={<Poultry />} />
             <Route path="/notification" element={<Notification />} />
-            <Route path="/target" element={<TargetModal />} />
+         
           </Routes>
         </Router>
       </div>
