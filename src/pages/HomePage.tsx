@@ -16,21 +16,24 @@ function HomePage() {
 
         {/* Graph-like Placeholders */}
         <div className="w-full max-w-5xl mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 px-4">
-          {/* Bar Graph Placeholder */}
+          {/* Pie Chart Placeholder */}
           <div className="bg-white border border-gray-300 rounded-lg p-4 shadow">
-            <h2 className="text-gray-700 font-semibold mb-4">Bar Graph</h2>
-            <div className="flex items-end gap-2 h-48">
-              {[40, 60, 80, 50, 30, 70].map((height, i) => (
-                <div
-                  key={i}
-                  className="w-8 bg-blue-500 rounded-t"
-                  style={{ height: `${height}%` }}
-                />
-              ))}
-            </div>
-            <div className="mt-2 flex justify-between text-sm text-gray-500">
-          
-            </div>
+            <h2 className="text-gray-700 font-semibold mb-4">Pie Chart</h2>
+            <svg viewBox="0 0 32 32" className="w-full h-48">
+              <circle r="16" cx="16" cy="16" fill="#ef4444" />
+              <path
+                d="M16 16 L32 16 A16 16 0 0 1 16 32 Z"
+                fill="#3b82f6"
+              />
+              <path
+                d="M16 16 L16 32 A16 16 0 0 1 0 16 Z"
+                fill="#f59e0b"
+              />
+              <path
+                d="M16 16 L0 16 A16 16 0 0 1 16 0 Z"
+                fill="#10b981"
+              />
+            </svg>
           </div>
 
           {/* Line Graph Placeholder */}
@@ -44,23 +47,23 @@ function HomePage() {
                   strokeWidth="2"
                   points="0,80 20,60 40,65 60,45 80,50 100,30"
                 />
-                <circle cx="0" cy="80" r="2" fill="#10b981" />
-                <circle cx="20" cy="60" r="2" fill="#10b981" />
-                <circle cx="40" cy="65" r="2" fill="#10b981" />
-                <circle cx="60" cy="45" r="2" fill="#10b981" />
-                <circle cx="80" cy="50" r="2" fill="#10b981" />
-                <circle cx="100" cy="30" r="2" fill="#10b981" />
+                {[0, 20, 40, 60, 80, 100].map((x, i) => (
+                  <circle
+                    key={i}
+                    cx={x}
+                    cy={[80, 60, 65, 45, 50, 30][i]}
+                    r="2"
+                    fill="#10b981"
+                  />
+                ))}
               </svg>
-              <div className="absolute bottom-0 w-full flex justify-between text-sm text-gray-500 px-2">
-           
-              </div>
             </div>
           </div>
         </div>
       </div>
 
       {/* Sticky Connect Button */}
-      <div className="sticky bottom-7 w-full bg-gray-300 py-7 px-4 flex flex-col items-center justify-center shadow-inner">
+      <div className="bg-gray-300 py-7 px-4 flex flex-col items-center justify-center shadow-inner">
         <h2 className="text-white text-center text-lg md:text-xl mb-3">
           Connect your device via WiFi and click ‘Connect’ to get started!
         </h2>
@@ -87,6 +90,26 @@ function HomePage() {
         </button>
       </div>
 
+      {/* Web Info / About Section */}
+<div className="w-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-200 py-10 px-6 md:px-20 border-t border-gray-700 shadow-inner">
+  <h2 className="text-2xl md:text-3xl font-bold mb-4 text-center text-gray-400 tracking-wide">
+    About This Platform
+  </h2>
+  <p className="text-base md:text-lg leading-relaxed text-center max-w-4xl mx-auto mb-6">
+    Empowering users with seamless device connectivity, insightful data visualization, and intuitive controls.
+    This system is designed to adapt to your needs in real-time, bringing innovation to your fingertips.
+  </p>
+  <div className="flex flex-col md:flex-row justify-center gap-8 mt-8 text-sm text-gray-400">
+    <div className="flex-1 text-center md:text-left">
+      <h3 className="text-gray-300 font-semibold mb-2">Mission</h3>
+      <p>To provide intelligent, real-time device interaction that improves productivity and user experience.</p>
+    </div>
+    <div className="flex-1 text-center md:text-left">
+      <h3 className="text-gray-300 font-semibold mb-2">Vision</h3>
+      <p>To become the go-to platform for integrated device monitoring and smart connectivity solutions.</p>
+    </div>
+  </div>
+</div>
       {/* Connect Modal */}
       {isConnectModalOpen && (
         <ConnectModal
