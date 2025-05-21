@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import ConnectModal from "./ConnectModal";
 import { Link, useNavigate } from "react-router-dom";
 import {
- Home,
+  Home,
   Package,
   ShoppingCart,
   Users,
@@ -16,6 +16,7 @@ import {
   LogOut,
   UserCircle,
   Plug,
+  ChevronDown,
 } from "lucide-react";
 
 interface NavbarProps {
@@ -24,8 +25,9 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   const navigate = useNavigate();
-
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
+  const [isMobileInventoryOpen, setIsMobileInventoryOpen] = useState(false);
 
   const handleLogout = () => {
     navigate("/");
@@ -38,8 +40,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
         <Link to="/homepage" className="flex items-center">
           <img src="/Extras/logo.png" alt="Logo" className="h-10 w-auto" />
         </Link>
-
-    
 
         {/* Center: Navigation links */}
         <ul className="hidden sm:flex-grow sm:flex sm:justify-center sm:space-x-12 sm:items-center">
@@ -54,15 +54,38 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                   <span>Home</span>
                 </Link>
               </li>
-              <li>
-                <Link
-                  to="/inventory"
+              
+              {/* Inventory Dropdown */}
+              <li className="relative">
+                <button
+                  onClick={() => setIsInventoryOpen(!isInventoryOpen)}
                   className="flex items-center text-white hover:text-orange-500 space-x-1"
                 >
                   <Package size={20} />
                   <span>Inventory</span>
-                </Link>
+                  <ChevronDown size={16} className={`transition-transform ${isInventoryOpen ? 'rotate-180' : ''}`} />
+                </button>
+                
+                {isInventoryOpen && (
+                  <div className="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 border border-gray-200">
+                    <Link
+                      to="/products"
+                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 border-b border-gray-100"
+                      onClick={() => setIsInventoryOpen(false)}
+                    >
+                      Products
+                    </Link>
+                    <Link
+                      to="/inventory"
+                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
+                      onClick={() => setIsInventoryOpen(false)}
+                    >
+                      Materials
+                    </Link>
+                  </div>
+                )}
               </li>
+
               <li>
                 <Link
                   to="/sales"
@@ -168,7 +191,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
             </button>
           </div>
 
-
           {/* Connect Modal */}
           <ConnectModal
             isOpen={isConnectModalOpen}
@@ -202,15 +224,37 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                   <span className="text-[11px] leading-tight whitespace-normal">Home</span>
                 </Link>
               </li>
-              <li className="w-1/5 text-center">
-                <Link
-                  to="/inventory"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+              
+              {/* Mobile Inventory Dropdown */}
+              <li className="w-1/5 text-center relative">
+                <button
+                  onClick={() => setIsMobileInventoryOpen(!isMobileInventoryOpen)}
+                  className="flex flex-col items-center text-white hover:text-orange-500 w-full"
                 >
                   <Package size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Inventory</span>
-                </Link>
+                </button>
+                
+                {isMobileInventoryOpen && (
+                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-white rounded-md shadow-lg z-50 border border-gray-200">
+                    <Link
+                      to="/inventory/products"
+                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 border-b border-gray-100 text-sm"
+                      onClick={() => setIsMobileInventoryOpen(false)}
+                    >
+                      Products
+                    </Link>
+                    <Link
+                      to="/inventory/materials"
+                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm"
+                      onClick={() => setIsMobileInventoryOpen(false)}
+                    >
+                      Materials
+                    </Link>
+                  </div>
+                )}
               </li>
+
               <li className="w-1/5 text-center">
                 <Link
                   to="/sales"

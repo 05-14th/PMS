@@ -43,6 +43,19 @@ type Sales struct {
 	ProductDays       int     `json:"product_days"`
 }
 
+type Product struct {
+	ID                int     `json:"product_id"`
+	ProductPrice      float64 `json:"product_price"`
+	ProductWeight     float64 `json:"product_weight"`
+	ProductWeightUnit string  `json:"product_weight_unit"`
+}
+
+type MoreProductInfo struct {
+	ProductClass string `json:"product_class"`
+	ProductBatch string `json:"product_batch"`
+	ProductDays  int    `json:"product_days"`
+}
+
 type SimpleSales struct {
 	ID      int     `json:"sales_id"`
 	Amount  float64 `json:"sales_amount"`
@@ -190,12 +203,36 @@ func getSimpleSales(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(sales)
 }
 
+func getProducts(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(os.Getenv("GET_PRODUCTS"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var products []Product
+
+	for rows.Next() {
+		var product Product
+		if err := rows.Scan(&product.ID, &product.ProductPrice, &product.ProductWeight, &product.ProductWeightUnit); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		products = append(products, product)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(products)
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
 	http.HandleFunc("/getItems", withCORS(getItems))
 	http.HandleFunc("/getSales", withCORS(getSales))
 	http.HandleFunc("/getSimpleSales", withCORS(getSimpleSales))
+	http.HandleFunc("/getProducts", withCORS(getProducts))
 	fmt.Println("Server running at http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }

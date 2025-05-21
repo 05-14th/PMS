@@ -13,6 +13,7 @@ import FeedingWatering from './controlPage/FeedingWatering'
 import Poultry from './controlPage/Poultry'
 import Notification from './controlPage/Notification'
 import TargetModal from './components/TargetModal'
+import Products from './pages/Product'
 
 
 
@@ -26,6 +27,7 @@ function App() {
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/homepage" element={<HomePage />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/products" element={<Products />}/>
             <Route path="/sales" element={<Sales />} />
             <Route path="/users" element={<UserPage />} />
             <Route path="/control" element={<Control />} />
