@@ -53,7 +53,7 @@ function Inventory() {
     <MainBody>
       <section className="w-full">
         <div className="overflow-x-auto">
-          <Table data={inventoryData} actionable={true} />
+          <Table data={inventoryData} actionable={true} name="getItems" paramName="material_id" viewable={false}/>
         </div>
       </section>
       <Section>

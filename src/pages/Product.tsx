@@ -22,38 +22,40 @@ function Products() {
   const [inventoryData, setItemData] = useState<any[]>([]);
   const serverHost = import.meta.env.VITE_APP_SERVERHOST;
 
+  const fetchAndFormatProducts = async (setItemData: (data: any[]) => void, serverHost: string) => {
+    try {
+      const res = await axios.get(`${serverHost}/getProducts`);
+
+      const dataArray = Array.isArray(res.data)
+        ? res.data
+        : Array.isArray(res.data.items)
+        ? res.data.items
+        : [];
+
+      const formatted = dataArray.map((item: Record<string, any>) => {
+        const newItem: Record<string, any> = {};
+        for (const key in item) {
+          const value = item[key];
+          newItem[key] = isIsoDateString(value) ? formatDate(value) : value;
+        }
+        return newItem;
+      });
+
+      setItemData(formatted);
+    } catch (err) {
+      console.error("Error fetching items:", err);
+    }
+  };
+
   useEffect(() => {
-    axios
-      .get(`${serverHost}/getProducts`)
-      .then((res) => {
-        console.log("API response:", res.data);
-
-        // Attempt to extract an array safely
-        const dataArray = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data.items)
-          ? res.data.items
-          : [];
-
-        const formatted = dataArray.map((item: Record<string, any>) => {
-          const newItem: Record<string, any> = {};
-          for (const key in item) {
-            const value = item[key];
-            newItem[key] = isIsoDateString(value) ? formatDate(value) : value;
-          }
-          return newItem;
-        });
-
-        setItemData(formatted);
-      })
-      .catch((err) => console.error("Error fetching items:", err));
+    fetchAndFormatProducts(setItemData, serverHost)
   }, []);
 
   return (
     <MainBody>
       <section className="w-full">
         <div className="overflow-x-auto">
-          <Table data={inventoryData} actionable={true} />
+          <Table data={inventoryData} actionable={true} name="getProductInfo" paramName="product_id" viewable={true}/>
         </div>
       </section>
       <Section>

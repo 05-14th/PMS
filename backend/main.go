@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
@@ -20,6 +21,7 @@ type User struct {
 }
 
 type Items struct {
+	ID       string `json:"material_id"`
 	Name     string `json:"material_name"`
 	Desc     string `json:"material_desc"`
 	Quantity string `json:"material_quantity"`
@@ -51,9 +53,13 @@ type Product struct {
 }
 
 type MoreProductInfo struct {
-	ProductClass string `json:"product_class"`
-	ProductBatch string `json:"product_batch"`
-	ProductDays  int    `json:"product_days"`
+	ID                int     `json:"product_id"`
+	ProductPrice      float64 `json:"product_price"`
+	ProductWeight     float64 `json:"product_weight"`
+	ProductWeightUnit string  `json:"product_weight_unit"`
+	ProductClass      string  `json:"product_class"`
+	ProductBatch      string  `json:"product_batch"`
+	ProductDays       int     `json:"product_days"`
 }
 
 type SimpleSales struct {
@@ -62,6 +68,14 @@ type SimpleSales struct {
 	Status  string  `json:"sales_status"`
 	Date    string  `json:"sales_date"`
 	Remarks string  `json:"sales_remarks"`
+}
+
+type DhtData struct {
+	ID          int     `json:"temp_id"`
+	Temperature float64 `json:"temp_temperature"`
+	Humidity    float64 `json:"temp_humidity"`
+	CageNum     int     `json:"temp_cage_num"`
+	CreatedAt   string  `json:"created_at"`
 }
 
 var db *sql.DB
@@ -137,7 +151,7 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var item Items
-		if err := rows.Scan(&item.Name, &item.Desc, &item.Quantity,
+		if err := rows.Scan(&item.ID, &item.Name, &item.Desc, &item.Quantity,
 			&item.Unit, &item.Class, &item.Date); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -147,34 +161,6 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(items)
-}
-
-func getSales(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query(os.Getenv("GET_SALES"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var sales []Sales
-
-	for rows.Next() {
-		var sale Sales
-		if err := rows.Scan(
-			&sale.ID, &sale.Amount, &sale.Status, &sale.Date, &sale.Remarks,
-			&sale.PurchaseNumber, &sale.ProductPrice, &sale.ProductWeight,
-			&sale.ProductWeightUnit, &sale.ProductClass, &sale.ProductBatch,
-			&sale.ProductDays,
-		); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		sales = append(sales, sale)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(sales)
 }
 
 func getSimpleSales(w http.ResponseWriter, r *http.Request) {
@@ -226,6 +212,142 @@ func getProducts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(products)
 }
 
+func getSales(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		SalesID *int `json:"sales_id"` // pointer allows null
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	var rows *sql.Rows
+	var err error
+
+	if payload.SalesID != nil {
+		rows, err = db.Query(os.Getenv("GET_SALES_BY_ID"), *payload.SalesID)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var sales []Sales
+
+	for rows.Next() {
+		var sale Sales
+		if err := rows.Scan(
+			&sale.ID, &sale.Amount, &sale.Status, &sale.Date, &sale.Remarks,
+			&sale.PurchaseNumber, &sale.ProductPrice, &sale.ProductWeight,
+			&sale.ProductWeightUnit, &sale.ProductClass, &sale.ProductBatch,
+			&sale.ProductDays,
+		); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		sales = append(sales, sale)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(sales)
+}
+
+func getProductById(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var payload struct {
+		ProductID *int `json:"product_id"` // pointer allows null
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	var rows *sql.Rows
+	var err error
+
+	if payload.ProductID != nil {
+		rows, err = db.Query(os.Getenv("GET_PRODUCT_BY_ID"), *payload.ProductID)
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var products []MoreProductInfo
+
+	for rows.Next() {
+		var product MoreProductInfo
+		if err := rows.Scan(
+			&product.ID, &product.ProductPrice, &product.ProductWeight, &product.ProductWeightUnit,
+			&product.ProductClass, &product.ProductBatch, &product.ProductDays,
+		); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		products = append(products, product)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(products)
+}
+
+func handleDhtData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var data struct {
+		Temperature float64 `json:"temperature"`
+		Humidity    float64 `json:"humidity"`
+		CageNum     int     `json:"cage_num"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Insert data into database
+	stmt, err := db.Prepare("INSERT INTO cm_temperature (temp_temperature, temp_humidity, temp_cage_num) VALUES (?, ?, ?)")
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(data.Temperature, data.Humidity, data.CageNum)
+	if err != nil {
+		http.Error(w, "Failed to insert data", http.StatusInternalServerError)
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	response := map[string]interface{}{
+		"success": true,
+		"id":      id,
+		"message": "Data received successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
@@ -233,6 +355,16 @@ func main() {
 	http.HandleFunc("/getSales", withCORS(getSales))
 	http.HandleFunc("/getSimpleSales", withCORS(getSimpleSales))
 	http.HandleFunc("/getProducts", withCORS(getProducts))
-	fmt.Println("Server running at http://localhost:8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	http.HandleFunc("/getProductInfo", withCORS(getProductById))
+
+	http.HandleFunc("/api/dht22-data", withCORS(handleDhtData))
+
+	server := &http.Server{
+		Addr:         "0.0.0.0:8080",
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+	}
+
+	fmt.Println("Server running at http://0.0.0.0:8080")
+	log.Fatal(server.ListenAndServe())
 }

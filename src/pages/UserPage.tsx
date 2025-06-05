@@ -21,7 +21,7 @@ function UserPage() {
         <MainBody>
           <section className="w-full">
             <div className="overflow-x-auto">
-              <Table data={userData} actionable={true} />
+              <Table data={userData} actionable={true} name="getUsers" paramName="material_id" viewable={false}/>
             </div>
           </section>
           <Section>

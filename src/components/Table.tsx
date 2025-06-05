@@ -5,19 +5,30 @@ import { useNavigate } from 'react-router-dom';
 type TableProps = {
   data: any[];
   actionable: boolean;
+  name: string;
+  paramName: string;
+  viewable: boolean;
 };
 
 const PAGE_SIZE = 10;
 
-const Table: React.FC<TableProps> = ({ data, actionable }) => {
+const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewable}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
+  const [id, setId] = useState(0);
   const [sortConfig, setSortConfig] = useState<{ key: string; direction: 'asc' | 'desc' } | null>(null);
+  const serverHost = import.meta.env.VITE_APP_SERVERHOST;
 
   const navigate = useNavigate();
 
-  const openModal = () => {
-    navigate('/target', { state: { openModal: true } });
+  const openModal = (index, mode, param_Name) => {
+    navigate('/target', { state: { 
+      openModal: true,
+      apiEndpoint: `${serverHost}/${name}`,
+      id: index,
+      mode: mode,
+      param: param_Name
+    } });
   };
 
   const sortedData = useMemo(() => {
@@ -123,25 +134,27 @@ const Table: React.FC<TableProps> = ({ data, actionable }) => {
                   ))}
                   {actionable && (
                     <td className="px-4 py-2 space-x-2">
-                       <button
-                        className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
-                        onClick={openModal}
-                      >
-                        View
-                      </button>
-                      <button
-                        className="text-white bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded"
-                        onClick={openModal}
-                      >
-                        Modify
-                      </button>
-                      <button
-                        className="text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded"
-                        onClick={openModal}
-                      >
-                        Delete
-                      </button>
-                    </td>
+  {viewable && (
+    <button
+      className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
+      onClick={() => openModal(row[columns[0]], "view", paramName)}
+    >
+      View
+    </button>
+  )}
+  <button
+    className="text-white bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded"
+    onClick={() => openModal(row[columns[0]], "modify", paramName)}
+  >
+    Modify
+  </button>
+  <button
+    className="text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded"
+    onClick={() => openModal(row[columns[0]], "delete", paramName)}
+  >
+    Delete
+  </button>
+</td>
                   )}
                 </tr>
               ))}

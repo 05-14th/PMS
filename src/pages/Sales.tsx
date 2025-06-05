@@ -23,29 +23,37 @@ function Sales() {
   const [itemData, setItemData] = useState<any[]>([]);
   const serverHost = import.meta.env.VITE_APP_SERVERHOST;
 
-  useEffect(() => {
-    axios
-      .get(`${serverHost}/getSimpleSales`)
-      .then((res) => {
-        const formatted = res.data.map((item: Record<string, any>) => {
-          const newItem: Record<string, any> = {};
-          for (const key in item) {
-            const value = item[key];
-            newItem[key] = isIsoDateString(value) ? formatDate(value) : value;
-          }
-          return newItem;
-        });
+  const fetchSimpleSales = async (
+    serverHost: string,
+    setItemData: (data: any[]) => void,
+    isIsoDateString: (value: any) => boolean,
+    formatDate: (value: string) => string
+  ): Promise<void> => {
+    try {
+      const res = await axios.get(`${serverHost}/getSimpleSales`);
+      const formatted = res.data.map((item: Record<string, any>) => {
+        const newItem: Record<string, any> = {};
+        for (const key in item) {
+          const value = item[key];
+          newItem[key] = isIsoDateString(value) ? formatDate(value) : value;
+        }
+        return newItem;
+      });
+      setItemData(formatted);
+    } catch (err) {
+      console.error('Error fetching simple sales:', err);
+    }
+  };
 
-        setItemData(formatted);
-      })
-      .catch((err) => console.error(err));
+  useEffect(() => {
+    fetchSimpleSales(serverHost, setItemData, isIsoDateString, formatDate);
   }, []);
 
   return (
     <MainBody>
       <section className="w-full">
         <div className="overflow-x-auto">
-          <Table data={itemData} actionable={true} />
+          <Table data={itemData} actionable={true} name="getSales" paramName="sales_id" viewable={true}/>
         </div>
       </section>
       <Section>
