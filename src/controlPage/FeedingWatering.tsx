@@ -144,6 +144,16 @@ function FeedingWatering() {
             padding: 10px 0 0 0 !important;
             border-radius: 18px !important;
             box-shadow: 0 0 16px 2px #00fff733, 0 1px 8px #000a !important;
+            position: relative !important;
+          }
+          .fw-tank svg {
+            width: 100% !important;
+            height: 100% !important;
+            min-height: unset !important;
+            max-height: unset !important;
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
           }
           .fw-label {
             font-size: 18px !important;
@@ -167,10 +177,6 @@ function FeedingWatering() {
             margin: 0 auto 8px auto !important;
             border-radius: 12px !important;
             display: block !important;
-          }
-          .fw-tank svg {
-            height: 100% !important;
-            min-height: 100px !important;
           }
           .fw-bin > div[style*='height: 32px'] {
             height: 24px !important;
@@ -240,6 +246,7 @@ function FeedingWatering() {
                       width="100%"
                       height="100%"
                       viewBox="0 0 160 300"
+                      preserveAspectRatio="none"
                       style={{ position: 'absolute', left: 0, top: 0, zIndex: 1 }}
                     >
                       <g
