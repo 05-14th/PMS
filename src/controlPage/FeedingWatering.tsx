@@ -40,22 +40,6 @@ function FeedingWatering() {
     return () => { if (waveRef.current) cancelAnimationFrame(waveRef.current); };
   }, []);
 
-  // Neon-glow button style
-  const neonButton = (color: string) => ({
-    background: 'rgba(20,20,30,0.7)',
-    color,
-    border: `2px solid ${color}`,
-    borderRadius: 30,
-    padding: '12px 36px',
-    fontSize: 22,
-    fontWeight: 700,
-    cursor: 'pointer',
-    boxShadow: `0 0 16px 2px ${color}99, 0 0 4px 1px #000`,
-    transition: 'background 0.2s, color 0.2s, box-shadow 0.2s',
-    textShadow: `0 0 8px ${color}99`,
-    letterSpacing: 2,
-  });
-
   // Futuristic glassy box style
   const glassBox: CSSProperties = {
     border: '2px solid #00fff7',
@@ -122,15 +106,117 @@ function FeedingWatering() {
 
   return (
     <ControlBody>
+      {/* Responsive styles for mobile */}
+      <style>{`
+        @media (max-width: 700px) {
+          body, #root, .fw-main-bg {
+            width: 100vw !important;
+            min-height: 100vh !important;
+            overflow-x: hidden !important;
+            background: #0a0a12 !important;
+          }
+          .fw-main-row {
+            flex-direction: column !important;
+            gap: 32px !important;
+            padding-top: 8px !important;
+          }
+          .fw-section {
+            width: 100% !important;
+            align-items: stretch !important;
+            margin-bottom: 24px !important;
+            padding: 12px 0 18px 0 !important;
+            background: rgba(20,30,40,0.7) !important;
+            border-radius: 18px !important;
+            box-shadow: 0 2px 16px #00fff733, 0 1px 8px #000a !important;
+          }
+          .fw-tank-row, .fw-bin-row {
+            flex-direction: column !important;
+            gap: 18px !important;
+            align-items: center !important;
+            width: 100% !important;
+          }
+          .fw-tank, .fw-bin {
+            width: 95vw !important;
+            max-width: 340px !important;
+            height: 140px !important;
+            min-width: 120px !important;
+            margin-bottom: 8px !important;
+            padding: 10px 0 0 0 !important;
+            border-radius: 18px !important;
+            box-shadow: 0 0 16px 2px #00fff733, 0 1px 8px #000a !important;
+          }
+          .fw-label {
+            font-size: 18px !important;
+            margin-top: 6px !important;
+            font-weight: 800 !important;
+            letter-spacing: 1px !important;
+          }
+          .fw-title {
+            font-size: 22px !important;
+            margin-bottom: 8px !important;
+            letter-spacing: 2px !important;
+            text-align: center !important;
+            width: 100% !important;
+            display: block !important;
+          }
+          .fw-btn {
+            font-size: 16px !important;
+            padding: 10px 0 !important;
+            width: 90vw !important;
+            max-width: 320px !important;
+            margin: 0 auto 8px auto !important;
+            border-radius: 12px !important;
+            display: block !important;
+          }
+          .fw-tank svg {
+            height: 100% !important;
+            min-height: 100px !important;
+          }
+          .fw-bin > div[style*='height: 32px'] {
+            height: 24px !important;
+          }
+          .fw-btn.fw-side-btn {
+            width: auto !important;
+            min-width: 80px !important;
+            max-width: 120px !important;
+            font-size: 16px !important;
+            padding: 8px 0 !important;
+            right: 6px !important;
+            top: 50% !important;
+            transform: translateY(-50%) !important;
+            margin: 0 !important;
+            border-radius: 12px !important;
+            display: block !important;
+          }
+          .fw-btn.fw-side-btn.fw-mobile-only {
+            display: block !important;
+          }
+          .fw-btn.fw-below-btn.fw-desktop-only {
+            display: none !important;
+          }
+        }
+        @media (min-width: 701px) {
+          .fw-btn.fw-side-btn.fw-mobile-only {
+            display: none !important;
+          }
+          .fw-btn.fw-below-btn.fw-desktop-only {
+            display: block !important;
+          }
+        }
+      `}</style>
       <div
+        className="fw-main-bg"
         style={{
           minHeight: '100vh',
           background: '#000',
           padding: 0,
           fontFamily: 'Orbitron, Roboto, Arial, sans-serif',
+          width: '100vw',
+          overflowX: 'hidden',
         }}
       >
         <div
+          className="fw-main-row"
           style={{
             display: 'flex',
             justifyContent: 'center',
@@ -141,69 +227,106 @@ function FeedingWatering() {
           }}
         >
           {/* Water Section */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="fw-section" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
-              <span style={{ fontSize: 28, letterSpacing: 3, color: '#00fff7', fontWeight: 800, textShadow: '0 0 12px #00fff7' }}>WATER LEVEL</span>
+              <span className="fw-title" style={{ fontSize: 28, letterSpacing: 3, color: '#00fff7', fontWeight: 800, textShadow: '0 0 12px #00fff7' }}>WATER LEVEL</span>
             </div>
-            <div style={{ display: 'flex', gap: 32 }}>
+            <div className="fw-tank-row" style={{ display: 'flex', gap: 32 }}>
               {WATER_TANKS.map((tank, idx) => (
-                <div key={tank.label} style={{ ...glassBox, width: 180, height: 320, border: `2px solid ${tank.border}`, boxShadow: `0 0 32px 4px ${tank.color}99, 0 2px 24px 0 #000a`, marginBottom: 32, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  {/* Animated SVG Water */}
-                  <svg
-                    width="100%"
-                    height="100%"
-                    viewBox="0 0 160 300"
-                    style={{ position: 'absolute', left: 0, top: 0, zIndex: 1 }}
-                  >
-                    <g
+                <div key={tank.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div className="fw-tank" style={{ ...glassBox, width: 180, height: 320, border: `2px solid ${tank.border}`, boxShadow: `0 0 32px 4px ${tank.color}99, 0 2px 24px 0 #000a`, marginBottom: 0, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    {/* Animated SVG Water */}
+                    <svg
+                      width="100%"
+                      height="100%"
+                      viewBox="0 0 160 300"
+                      style={{ position: 'absolute', left: 0, top: 0, zIndex: 1 }}
+                    >
+                      <g
+                        style={{
+                          transition: 'transform 0.9s cubic-bezier(.4,2,.6,1)',
+                          transform: `translateY(${300 - (waterLevels[idx] / 100) * 300}px)`,
+                          filter: `drop-shadow(0 0 24px ${tank.color}cc)`,
+                        }}
+                      >
+                        <path
+                          d={(() => {
+                            // scale getWavePath to 160x300
+                            const amplitude = 12;
+                            const frequency = 2;
+                            let path = 'M0,60 ';
+                            for (let x = 0; x <= 160; x += 16) {
+                              const y = 60 + Math.sin((x / 160) * frequency * Math.PI + wavePhase) * amplitude;
+                              path += `L${x},${y} `;
+                            }
+                            path += 'V300 H0 Z';
+                            return path;
+                          })()}
+                          fill={tank.color}
+                          fillOpacity={0.5}
+                        />
+                        <path
+                          d={(() => {
+                            const amplitude = 12;
+                            const frequency = 2;
+                            let path = 'M0,60 ';
+                            for (let x = 0; x <= 160; x += 16) {
+                              const y = 60 + Math.sin((x / 160) * frequency * Math.PI + wavePhase + Math.PI / 2) * amplitude;
+                              path += `L${x},${y} `;
+                            }
+                            path += 'V300 H0 Z';
+                            return path;
+                          })()}
+                          fill={tank.color}
+                          fillOpacity={0.7}
+                        />
+                      </g>
+                    </svg>
+                    {/* Action Button on the right (mobile only) */}
+                    <button
+                      className="fw-btn fw-side-btn fw-mobile-only"
+                      onClick={() => handleWater(idx, tank.label as keyof typeof WATER_LEVELS)}
                       style={{
-                        transition: 'transform 0.9s cubic-bezier(.4,2,.6,1)',
-                        transform: `translateY(${300 - (waterLevels[idx] / 100) * 300}px)`,
-                        filter: `drop-shadow(0 0 24px ${tank.color}cc)`,
+                        position: 'absolute',
+                        right: 8,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'rgba(20,20,30,0.7)',
+                        color: tank.color,
+                        border: `2px solid ${tank.color}`,
+                        borderRadius: 18,
+                        padding: '8px 18px',
+                        fontSize: 18,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        zIndex: 4,
+                        textShadow: `0 0 8px ${tank.color}99`,
+                        letterSpacing: 2,
+                        boxShadow: `0 0 8px 1px ${tank.color}55`,
                       }}
                     >
-                      <path
-                        d={(() => {
-                          // scale getWavePath to 160x300
-                          const amplitude = 12;
-                          const frequency = 2;
-                          let path = 'M0,60 ';
-                          for (let x = 0; x <= 160; x += 16) {
-                            const y = 60 + Math.sin((x / 160) * frequency * Math.PI + wavePhase) * amplitude;
-                            path += `L${x},${y} `;
-                          }
-                          path += 'V300 H0 Z';
-                          return path;
-                        })()}
-                        fill={tank.color}
-                        fillOpacity={0.5}
-                      />
-                      <path
-                        d={(() => {
-                          const amplitude = 12;
-                          const frequency = 2;
-                          let path = 'M0,60 ';
-                          for (let x = 0; x <= 160; x += 16) {
-                            const y = 60 + Math.sin((x / 160) * frequency * Math.PI + wavePhase + Math.PI / 2) * amplitude;
-                            path += `L${x},${y} `;
-                          }
-                          path += 'V300 H0 Z';
-                          return path;
-                        })()}
-                        fill={tank.color}
-                        fillOpacity={0.7}
-                      />
-                    </g>
-                  </svg>
-                  {/* Neon-glow Refill Button for Water */}
+                      {tank.label}
+                    </button>
+                    {/* Level Label */}
+                    <div className="fw-label" style={{
+                      position: 'relative',
+                      marginTop: 8,
+                      fontWeight: 700,
+                      fontSize: 18,
+                      color: '#fff',
+                      textShadow: '0 0 8px #fff',
+                      zIndex: 4,
+                    }}>
+                      {getLevelLabel(waterLevels[idx])}
+                    </div>
+                  </div>
+                  {/* Neon-glow Refill Button for Water (now below the tank) */}
                   <button
+                    className="fw-btn"
                     onClick={() => handleRefillWater(idx)}
                     disabled={isRefillingWater[idx]}
                     style={{
-                      position: 'absolute',
-                      left: '50%',
-                      bottom: 18,
-                      transform: 'translateX(-50%)',
+                      marginTop: 10,
                       background: '#555',
                       color: '#fff',
                       border: '2px solid #fff',
@@ -217,86 +340,126 @@ function FeedingWatering() {
                       letterSpacing: 2,
                       opacity: isRefillingWater[idx] ? 0.5 : 1,
                       boxShadow: 'none',
+                      width: 140,
+                      alignSelf: 'center',
                     }}
                   >
                     Refill
                   </button>
-                  {/* Level Label */}
-                  <div style={{
-                    position: 'relative',
-                    marginTop: 8,
-                    fontWeight: 700,
-                    fontSize: 18,
-                    color: tank.color,
-                    textShadow: `0 0 8px ${tank.color}99`,
-                    zIndex: 4,
-                  }}>
-                    {getLevelLabel(waterLevels[idx])}
-                  </div>
+                  {/* Action Button below refill (desktop only) */}
+                  <button
+                    className="fw-btn fw-below-btn fw-desktop-only"
+                    onClick={() => handleWater(idx, tank.label as keyof typeof WATER_LEVELS)}
+                    style={{
+                      marginTop: 10,
+                      background: 'rgba(20,20,30,0.7)',
+                      color: tank.color,
+                      border: `2px solid ${tank.color}`,
+                      borderRadius: 18,
+                      padding: '8px 18px',
+                      fontSize: 18,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      zIndex: 4,
+                      textShadow: `0 0 8px ${tank.color}99`,
+                      letterSpacing: 2,
+                      boxShadow: `0 0 8px 1px ${tank.color}55`,
+                      width: 140,
+                      alignSelf: 'center',
+                    }}
+                  >
+                    {tank.label}
+                  </button>
                 </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 30, marginTop: 10 }}>
-              {WATER_TANKS.map((tank, idx) => (
-                <button
-                  key={tank.label}
-                  onClick={() => handleWater(idx, tank.label as keyof typeof WATER_LEVELS)}
-                  style={neonButton(tank.color)}
-                >
-                  {tank.label}
-                </button>
               ))}
             </div>
           </div>
 
           {/* Food Section */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+          <div className="fw-section" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
-              <span style={{ fontSize: 28, letterSpacing: 3, color: '#ff3c00', fontWeight: 800, textShadow: '0 0 12px #ff3c00' }}>FOOD LEVEL</span>
+              <span className="fw-title" style={{ fontSize: 28, letterSpacing: 3, color: '#ff3c00', fontWeight: 800, textShadow: '0 0 12px #ff3c00' }}>FOOD LEVEL</span>
             </div>
-            <div style={{ display: 'flex', gap: 16 }}>
+            <div className="fw-bin-row" style={{ display: 'flex', gap: 16 }}>
               {FOOD_BINS.map((bin, idx) => (
-                <div key={bin.label} style={{ ...glassBox, width: 120, height: 320, border: '2px solid #ff3c00', boxShadow: '0 0 32px 4px #ff3c0999, 0 2px 24px 0 #000a', marginBottom: 32, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-                  {/* Animated Food Rectangle (glowing bar) */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      bottom: 0,
-                      width: '100%',
-                      height: `${foodLevels[idx]}%`,
-                      background: 'linear-gradient(180deg, #ffb380 0%, #ff3c00 100%)',
-                      borderRadius: '0 0 18px 18px',
-                      transition: 'height 0.7s cubic-bezier(.4,2,.6,1)',
-                      zIndex: 1,
-                      boxShadow: '0 0 32px 8px #ff3c00cc',
-                      filter: 'blur(0.5px)',
-                    }}
-                  />
-                  {/* Top bar */}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      left: 0,
-                      top: 0,
-                      width: '100%',
-                      height: 32,
-                      background: 'rgba(255,255,255,0.08)',
-                      borderTopLeftRadius: 0,
-                      borderTopRightRadius: 0,
-                      zIndex: 2,
-                      boxShadow: '0 0 16px #ff3c00',
-                    }}
-                  />
-                  {/* Neon-glow Refill Button for Food */}
+                <div key={bin.label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                  <div className="fw-bin" style={{ ...glassBox, width: 120, height: 320, border: '2px solid #ff3c00', boxShadow: '0 0 32px 4px #ff3c0999, 0 2px 24px 0 #000a', marginBottom: 0, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                    {/* Animated Food Rectangle (glowing bar) */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        bottom: 0,
+                        width: '100%',
+                        height: `${foodLevels[idx]}%`,
+                        background: 'linear-gradient(180deg, #ffb380 0%, #ff3c00 100%)',
+                        borderRadius: '0 0 18px 18px',
+                        transition: 'height 0.7s cubic-bezier(.4,2,.6,1)',
+                        zIndex: 1,
+                        boxShadow: '0 0 32px 8px #ff3c00cc',
+                        filter: 'blur(0.5px)',
+                      }}
+                    />
+                    {/* Top bar */}
+                    <div
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        top: 0,
+                        width: '100%',
+                        height: 32,
+                        background: 'rgba(255,255,255,0.08)',
+                        borderTopLeftRadius: 0,
+                        borderTopRightRadius: 0,
+                        zIndex: 2,
+                        boxShadow: '0 0 16px #ff3c00',
+                      }}
+                    />
+                    {/* Action Button on the right (mobile only) */}
+                    <button
+                      className="fw-btn fw-side-btn fw-mobile-only"
+                      onClick={() => handleFood(idx, bin.label as keyof typeof FOOD_LEVELS)}
+                      style={{
+                        position: 'absolute',
+                        right: 8,
+                        top: '50%',
+                        transform: 'translateY(-50%)',
+                        background: 'rgba(20,20,30,0.7)',
+                        color: bin.color,
+                        border: `2px solid ${bin.color}`,
+                        borderRadius: 18,
+                        padding: '8px 18px',
+                        fontSize: 18,
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        zIndex: 4,
+                        textShadow: `0 0 8px ${bin.color}99`,
+                        letterSpacing: 2,
+                        boxShadow: `0 0 8px 1px ${bin.color}55`,
+                      }}
+                    >
+                      {bin.label}
+                    </button>
+                    {/* Level Label */}
+                    <div className="fw-label" style={{
+                      position: 'relative',
+                      marginTop: 8,
+                      fontWeight: 700,
+                      fontSize: 18,
+                      color: '#fff',
+                      textShadow: '0 0 8px #fff',
+                      zIndex: 4,
+                    }}>
+                      {getLevelLabel(foodLevels[idx])}
+                    </div>
+                  </div>
+                  {/* Neon-glow Refill Button for Food (now below the bin) */}
                   <button
+                    className="fw-btn"
                     onClick={() => handleRefillFood(idx)}
                     disabled={isRefillingFood[idx]}
                     style={{
-                      position: 'absolute',
-                      left: '50%',
-                      bottom: 18,
-                      transform: 'translateX(-50%)',
+                      marginTop: 10,
                       background: '#555',
                       color: '#fff',
                       border: '2px solid #fff',
@@ -310,34 +473,37 @@ function FeedingWatering() {
                       letterSpacing: 2,
                       opacity: isRefillingFood[idx] ? 0.5 : 1,
                       boxShadow: 'none',
+                      width: 100,
+                      alignSelf: 'center',
                     }}
                   >
                     Refill
                   </button>
-                  {/* Level Label */}
-                  <div style={{
-                    position: 'relative',
-                    marginTop: 8,
-                    fontWeight: 700,
-                    fontSize: 18,
-                    color: bin.color,
-                    textShadow: `0 0 8px ${bin.color}99`,
-                    zIndex: 4,
-                  }}>
-                    {getLevelLabel(foodLevels[idx])}
-                  </div>
+                  {/* Action Button below refill (desktop only) */}
+                  <button
+                    className="fw-btn fw-below-btn fw-desktop-only"
+                    onClick={() => handleFood(idx, bin.label as keyof typeof FOOD_LEVELS)}
+                    style={{
+                      marginTop: 10,
+                      background: 'rgba(20,20,30,0.7)',
+                      color: bin.color,
+                      border: `2px solid ${bin.color}`,
+                      borderRadius: 18,
+                      padding: '8px 18px',
+                      fontSize: 18,
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                      zIndex: 4,
+                      textShadow: `0 0 8px ${bin.color}99`,
+                      letterSpacing: 2,
+                      boxShadow: `0 0 8px 1px ${bin.color}55`,
+                      width: 100,
+                      alignSelf: 'center',
+                    }}
+                  >
+                    {bin.label}
+                  </button>
                 </div>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 30, marginTop: 10 }}>
-              {FOOD_BINS.map((bin, idx) => (
-                <button
-                  key={bin.label}
-                  onClick={() => handleFood(idx, bin.label as keyof typeof FOOD_LEVELS)}
-                  style={neonButton(bin.color)}
-                >
-                  {bin.label}
-                </button>
               ))}
             </div>
           </div>
