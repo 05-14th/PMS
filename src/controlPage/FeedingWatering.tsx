@@ -499,7 +499,7 @@ const FeedingWatering = () => {
         </div>
       </div>
     </ControlBody>
-  </>(/* Added parenthesis here */);
+  );
 };
 
 export default FeedingWatering;
