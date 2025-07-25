@@ -1,4 +1,16 @@
 import React, { useState, useRef, useEffect, CSSProperties } from 'react';
+// Responsive hook
+function useMediaQuery(query: string) {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    if (media.matches !== matches) setMatches(media.matches);
+    const listener = () => setMatches(media.matches);
+    media.addEventListener('change', listener);
+    return () => media.removeEventListener('change', listener);
+  }, [matches, query]);
+  return matches;
+}
 import { FaPills, FaTint } from 'react-icons/fa';
 import { GiGrain } from 'react-icons/gi';
 import ControlBody from '../components/ControlBody';
@@ -72,6 +84,8 @@ const FeedingWatering = () => {
     height?: number;
     borderRadius?: number;
   }) => {
+    // If level is 0, render nothing (no wave)
+    if (level === 0) return null;
     // Wave parameters
     const waveHeight = 18;
     const waveLength = width * 1.2;
@@ -146,6 +160,363 @@ const FeedingWatering = () => {
   // Manual/Auto mode toggle
   const [manualMode, setManualMode] = useState(true);
 
+  // Responsive
+  const isMobile = useMediaQuery('(max-width: 700px)');
+
+  if (isMobile) {
+    // Mobile: render a completely separate JSX tree for mobile layout
+    return (
+      <ControlBody>
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          padding: '32px 4vw 64px 4vw', // Increased bottom padding for scroll space
+          minHeight: '100vh',
+          background: '#fff',
+          color: '#000',
+          fontFamily: digitalFont,
+          gap: 32,
+        }}>
+          {/* ...existing tank and bin controls... */}
+          {/* Toggle Switch - Bottom Center */}
+          <div style={{
+            marginTop: 24,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            background: '#f8f9faee',
+            borderRadius: 24,
+            padding: '6px 18px',
+            border: '1.5px solid #c2c2c2',
+            width: '90vw',
+            maxWidth: 400,
+          }}>
+            <span style={{ color: '#000', fontWeight: 'bold', marginRight: 14, fontFamily: digitalFont }}>Manual</span>
+            <button
+              onClick={() => setManualMode(m => !m)}
+              style={{
+                width: 64,
+                height: 32,
+                borderRadius: 20,
+                border: manualMode ? '2px solid #888' : '2px solid #ff8c00',
+                background: manualMode ? '#e6e6e6' : '#fff',
+                boxShadow: 'none',
+                cursor: 'pointer',
+                position: 'relative',
+                outline: 'none',
+                transition: 'all 0.18s',
+                margin: '0 10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: manualMode ? 'flex-start' : 'flex-end',
+                padding: 0
+              }}
+            >
+              <span
+                style={{
+                  display: 'block',
+                  width: 28,
+                  height: 28,
+                  borderRadius: '50%',
+                  background: '#fff',
+                  boxShadow: 'none',
+                  border: manualMode ? '1px solid #bbb' : '1.5px solid #ff8c00',
+                  transition: 'all 0.18s',
+                  marginLeft: manualMode ? 2 : 32,
+                  marginRight: manualMode ? 32 : 2,
+                }}
+              />
+            </button>
+            <span style={{ color: '#000', fontWeight: 'bold', marginLeft: 14, fontFamily: digitalFont }}>Auto</span>
+          </div>
+          {/* Water Tank (mobile) with buttons below */}
+          <div style={{
+            background: 'rgba(30,40,60,0.7)',
+            boxShadow: '0 8px 32px #00fff733',
+            border: '1.5px solid #00fff744',
+            padding: 16,
+            borderRadius: 20,
+            width: '100%',
+            maxWidth: 340,
+            margin: '0 auto',
+            marginBottom: 18,
+            backdropFilter: 'blur(8px) saturate(140%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}>
+            <h3 style={{ textAlign: 'center', color: '#fff', marginBottom: 14, textShadow: '0 0 12px #222', fontFamily: digitalFont, letterSpacing: 1.2, fontSize: 20 }}>Water Tank</h3>
+            <div style={{
+              width: 180,
+              height: 120,
+              background: 'rgba(20,30,40,0.75)',
+              borderRadius: 24,
+              boxShadow: '0 0 40px #00fff799, 0 8px 32px #00fff755',
+              border: '1.5px solid #00fff799',
+              position: 'relative',
+              overflow: 'hidden',
+              backdropFilter: 'blur(8px) saturate(140%)',
+              margin: '0 auto',
+            }}>
+              <WaveSVG
+                level={waterLevel}
+                color="#007aff" // permanent blue color
+                phase={wavePhase}
+                highlightColor="#fff"
+                width={180}
+                height={120}
+                borderRadius={24}
+              />
+              <div style={{
+                position: 'absolute',
+                top: 16,
+                width: '100%',
+                textAlign: 'center',
+                fontWeight: 'bold',
+                fontSize: 16,
+                color: '#fff',
+                textShadow: '0 0 8px #00fff7cc',
+                fontFamily: digitalFont,
+                letterSpacing: 1.2,
+                zIndex: 10,
+              }}>
+                {getLevelLabel(waterLevel)}
+              </div>
+            </div>
+            {/* Water Control Buttons (mobile) */}
+            <div style={{ width: '100%', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center' }}>
+              {WATER_RELEASES.map((amt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleWaterRelease(amt)}
+                  style={{
+                    ...commonButtonStyle,
+                    background: 'linear-gradient(120deg, #4d8de2 0%, #007aff 60%, #e0f0ff 100%)',
+                    color: '#fff',
+                    border: '2px solid #4d8de2',
+                    borderRadius: 18,
+                    boxShadow: '0 4px 24px #4d8de255, 0 1.5px 8px #007aff55',
+                    fontWeight: 700,
+                    letterSpacing: 1.2,
+                    fontFamily: digitalFont,
+                    fontSize: 16,
+                    backdropFilter: 'blur(4px) saturate(120%)',
+                    transition: 'all 0.18s cubic-bezier(.4,2,.6,1)',
+                    cursor: 'pointer',
+                    width: '100%',
+                    height: 44,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.08)'; e.currentTarget.style.boxShadow = '0 0 32px #4d8de2cc, 0 4px 24px #4d8de255'; }}
+                  onMouseLeave={e => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.boxShadow = '0 4px 24px #4d8de255, 0 1.5px 8px #007aff55'; e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <FaTint size={18} /> Level {idx + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Medicine Tank (mobile) with buttons below */}
+          <div style={{
+            background: 'rgba(30,40,60,0.7)',
+            boxShadow: '0 8px 32px #00fff733',
+            border: '1.5px solid #00fff744',
+            padding: 16,
+            borderRadius: 20,
+            width: '100%',
+            maxWidth: 340,
+            margin: '0 auto',
+            marginBottom: 18,
+            backdropFilter: 'blur(8px) saturate(140%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+          }}>
+            <h3 style={{ textAlign: 'center', color: '#fff', marginBottom: 14, textShadow: '0 0 12px #222', fontFamily: digitalFont, letterSpacing: 1.2, fontSize: 20 }}>Medicine Tank</h3>
+            <div style={{
+              width: 180,
+              height: 120,
+              background: 'rgba(20,30,40,0.75)',
+              borderRadius: 24,
+              boxShadow: '0 0 40px #00fff799, 0 8px 32px #00fff755',
+              border: '1.5px solid #00fff799',
+              position: 'relative',
+              overflow: 'hidden',
+              backdropFilter: 'blur(8px) saturate(140%)',
+              margin: '0 auto',
+            }}>
+              <WaveSVG
+                level={medicineLevel}
+                color="#007aff" // permanent blue color
+                phase={wavePhase + 1}
+                highlightColor="#fff"
+                width={180}
+                height={120}
+                borderRadius={24}
+              />
+              <div style={{
+                position: 'absolute',
+                top: 16,
+                width: '100%',
+                textAlign: 'center',
+                fontWeight: 'bold',
+                fontSize: 16,
+                color: '#fff',
+                textShadow: '0 0 8px #00fff7cc',
+                fontFamily: digitalFont,
+                letterSpacing: 1.2,
+                zIndex: 10,
+              }}>
+                {getLevelLabel(medicineLevel)}
+              </div>
+            </div>
+            {/* Medicine Control Buttons (mobile) */}
+            <div style={{ width: '100%', marginTop: 10, display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center', justifyContent: 'center' }}>
+              {MEDICINE_RELEASES.map((amt, idx) => (
+                <button
+                  key={idx}
+                  onClick={() => handleMedicineRelease(amt)}
+                  style={{
+                    ...commonButtonStyle,
+                    background: 'linear-gradient(120deg, #43e9c6 0%, #38cfd9 60%, #e0fcff 100%)',
+                    color: '#222',
+                    border: '2px solid #4de2c3',
+                    borderRadius: 18,
+                    boxShadow: '0 4px 24px #4de2c355, 0 1.5px 8px #00fff755',
+                    fontWeight: 700,
+                    letterSpacing: 1.2,
+                    fontFamily: digitalFont,
+                    fontSize: 16,
+                    backdropFilter: 'blur(4px) saturate(120%)',
+                    transition: 'all 0.18s cubic-bezier(.4,2,.6,1)',
+                    cursor: 'pointer',
+                    width: '100%',
+                    height: 44,
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.08)'; e.currentTarget.style.boxShadow = '0 0 32px #4de2c3cc, 0 4px 24px #4de2c355'; }}
+                  onMouseLeave={e => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.boxShadow = '0 4px 24px #4de2c355, 0 1.5px 8px #00fff755'; e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <FaPills size={18} /> Level {idx + 1}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* Tanks/Bins (mobile) */}
+        {/* Removed duplicated tanks/bins block in mobile view */}
+          {/* Food Bins and Controls (mobile) - each bin above its button */}
+          <div style={{
+            background: 'rgba(30,40,60,0.7)',
+            boxShadow: '0 8px 32px #ff3c0033',
+            border: '1.5px solid #ff3c00bb',
+            padding: 16,
+            borderRadius: 20,
+            width: '100%',
+            maxWidth: 340,
+            margin: '0 auto',
+            marginBottom: 18,
+            backdropFilter: 'blur(8px) saturate(140%)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 18,
+          }}>
+            <h3 style={{ marginBottom: 12, letterSpacing: 1.2, color: '#fff', textShadow: '0 0 8px #ff3c00bb', fontSize: 20 }}>Food Control <GiGrain size={24} /></h3>
+            {foodLevels.map((level, idx) => (
+              <div key={idx} style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', marginBottom: 8 }}>
+                {/* Food bin container - stretched for mobile */}
+                <div style={{
+                  width: 160,
+                  height: 120,
+                  background: 'rgba(30,10,0,0.8)',
+                  borderRadius: 24,
+                  boxShadow: '0 0 32px #ff3c00aa',
+                  border: '1.5px solid #ff3c00bb',
+                  position: 'relative',
+                  overflow: 'hidden',
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'center',
+                  backdropFilter: 'blur(6px) saturate(120%)',
+                  margin: '0 auto',
+                }}>
+                  <div style={{
+                    position: 'absolute',
+                    bottom: 0,
+                    height: `${level}%`,
+                    background: 'linear-gradient(135deg, #ff8c00 60%, #fff0 100%)',
+                    width: '100%',
+                    transition: 'height 0.6s cubic-bezier(.42,2,.58,1)',
+                    boxShadow: '0 0 12px #ff8c00cc',
+                    borderBottomLeftRadius: 24,
+                    borderBottomRightRadius: 24,
+                  }} />
+                  <div style={{
+                    position: 'absolute',
+                    top: 8,
+                    width: '100%',
+                    textAlign: 'center',
+                    fontWeight: 'bold',
+                    fontSize: 12,
+                    color: '#fff',
+                    textShadow: '0 0 8px #ff3c00cc',
+                    fontFamily: digitalFont,
+                    letterSpacing: 1.1,
+                    zIndex: 10,
+                  }}>
+                    {getLevelLabel(level)}
+                  </div>
+                </div>
+                <span style={{
+                  color: '#fff',
+                  fontWeight: 'bold',
+                  fontSize: 14,
+                  marginTop: 6,
+                  fontFamily: digitalFont,
+                  letterSpacing: 1.1,
+                  textShadow: '0 0 8px #222',
+                  textAlign: 'center',
+                }}>{['Starter', 'Grower', 'Finisher'][idx]}</span>
+                {/* Feeder button below each bin */}
+                <button
+                  onClick={() => handleFoodRelease(idx)}
+                  style={{
+                    ...commonButtonStyle,
+                    height: 44,
+                    fontSize: 16,
+                    background: 'linear-gradient(120deg, #ff8c00 0%, #ff3c00 60%, #fff5e0 100%)',
+                    color: '#fff',
+                    marginTop: 8,
+                    marginBottom: 4,
+                    border: '2px solid #ff8c00',
+                    borderRadius: 18,
+                    boxShadow: '0 4px 24px #ff8c0055, 0 1.5px 8px #ff3c0055',
+                    fontWeight: 700,
+                    letterSpacing: 1.2,
+                    fontFamily: digitalFont,
+                    backdropFilter: 'blur(4px) saturate(120%)',
+                    transition: 'all 0.18s cubic-bezier(.4,2,.6,1)',
+                    cursor: 'pointer',
+                    width: '100%',
+                  }}
+                  onMouseEnter={e => { e.currentTarget.style.filter = 'brightness(1.08)'; e.currentTarget.style.boxShadow = '0 0 32px #ff8c00cc, 0 4px 24px #ff8c0055'; }}
+                  onMouseLeave={e => { e.currentTarget.style.filter = 'none'; e.currentTarget.style.boxShadow = '0 4px 24px #ff8c0055, 0 1.5px 8px #ff3c0055'; e.currentTarget.style.transform = 'scale(1)'; }}
+                  onMouseDown={e => { e.currentTarget.style.transform = 'scale(0.96)'; }}
+                  onMouseUp={e => { e.currentTarget.style.transform = 'scale(1)'; }}
+                >
+                  <GiGrain size={18} /> {['Starter', 'Grower', 'Finisher'][idx]}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      </ControlBody>
+    );
+  }
+  // Desktop: restore original layout (left controls, center tanks/bins, right controls)
   return (
     <ControlBody>
       {/* Toggle Switch - Top Right */}
@@ -208,7 +579,7 @@ const FeedingWatering = () => {
         color: '#000',
         fontFamily: digitalFont,
       }}>
-        {/* Left Control Panel */}
+        {/* Left Control Panel (Medicine/Water) */}
         <div style={{
           background: 'rgba(30,40,60,0.7)',
           boxShadow: '0 8px 32px #00fff733',
@@ -284,7 +655,7 @@ const FeedingWatering = () => {
             ))}
           </div>
         </div>
-        {/* Center Display */}
+        {/* Center Display (Tanks/Bins) */}
         <div style={{ display: 'flex', flex: 1, justifyContent: 'center', gap: 56, alignItems: 'center' }}>
           {/* Water Container */}
           <div style={{
@@ -310,7 +681,7 @@ const FeedingWatering = () => {
             }}>
               <WaveSVG
                 level={waterLevel}
-                color="#007aff"
+                color="#007aff" // permanent blue color
                 phase={wavePhase}
                 highlightColor="#fff"
                 width={containerWidth}
@@ -358,7 +729,7 @@ const FeedingWatering = () => {
             }}>
               <WaveSVG
                 level={medicineLevel}
-                color="#4de2c3"
+                color="#007aff" // permanent blue color
                 phase={wavePhase + 1}
                 highlightColor="#fff"
                 width={containerWidth}

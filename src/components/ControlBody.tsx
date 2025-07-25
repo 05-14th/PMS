@@ -7,7 +7,7 @@ interface ControlBodyProps {
 
 function ControlBody({ children }: ControlBodyProps) {
   return (
-    <div className="min-h-screen min-w-screen bg-black">
+    <div className="min-h-screen min-w-screen bg-white">
         <Navbar isControl={true}/>
         {children}
     </div>

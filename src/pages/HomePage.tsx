@@ -90,26 +90,7 @@ function HomePage() {
         </button>
       </div>
 
-      {/* Web Info / About Section */}
-<div className="w-full bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-gray-200 py-10 px-6 md:px-20 border-t border-gray-700 shadow-inner">
-  <h2 className="text-2xl md:text-3xl font-bold mb-4 text-center text-gray-400 tracking-wide">
-    About This Platform
-  </h2>
-  <p className="text-base md:text-lg leading-relaxed text-center max-w-4xl mx-auto mb-6">
-    Empowering users with seamless device connectivity, insightful data visualization, and intuitive controls.
-    This system is designed to adapt to your needs in real-time, bringing innovation to your fingertips.
-  </p>
-  <div className="flex flex-col md:flex-row justify-center gap-8 mt-8 text-sm text-gray-400">
-    <div className="flex-1 text-center md:text-left">
-      <h3 className="text-gray-300 font-semibold mb-2">Mission</h3>
-      <p>To provide intelligent, real-time device interaction that improves productivity and user experience.</p>
-    </div>
-    <div className="flex-1 text-center md:text-left">
-      <h3 className="text-gray-300 font-semibold mb-2">Vision</h3>
-      <p>To become the go-to platform for integrated device monitoring and smart connectivity solutions.</p>
-    </div>
-  </div>
-</div>
+    
       {/* Connect Modal */}
       {isConnectModalOpen && (
         <ConnectModal

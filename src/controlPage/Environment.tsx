@@ -3,45 +3,43 @@ import ControlBody from '../components/ControlBody';
 
 const tabs = ['Temperature', 'Humidity', 'Light', 'Air Quality'];
 
-const glassCard: CSSProperties = {
-  border: '2px solid #00fff7',
-  borderRadius: 24,
-  background: 'rgba(30,40,60,0.7)',
-  boxShadow: '0 0 32px 4px #00fff799, 0 2px 24px 0 #000a',
-  padding: 32,
-  margin: 8,
-  minWidth: 260,
-  minHeight: 180,
-  color: '#fff',
-  backdropFilter: 'blur(8px)',
-  WebkitBackdropFilter: 'blur(8px)',
+const card: CSSProperties = {
+  border: '1px solid #e0e6ed',
+  borderRadius: 16,
+  background: '#fff',
+  boxShadow: '0 2px 12px 0 #e0e6ed',
+  padding: 24,
+  margin: 12,
+  minWidth: 240,
+  minHeight: 140,
+  color: '#222',
+  fontFamily: 'Segoe UI, Arial, sans-serif',
   position: 'relative',
   transition: 'box-shadow 0.3s',
 };
 
-const neonTab = (active: boolean) => ({
-  background: active ? 'rgba(0,255,255,0.12)' : 'rgba(30,40,60,0.7)',
-  color: active ? '#00fff7' : '#fff',
-  border: `2px solid ${active ? '#00fff7' : '#444'}`,
-  borderRadius: 16,
-  padding: '10px 32px',
-  fontSize: 18,
-  fontWeight: 700,
-  marginRight: 16,
+const tabStyle = (active: boolean): CSSProperties => ({
+  background: active ? '#e6f0fa' : 'transparent',
+  color: active ? '#1976d2' : '#222',
+  border: 'none',
+  borderBottom: active ? '3px solid #1976d2' : '3px solid transparent',
+  borderRadius: 0,
+  padding: '10px 24px',
+  fontSize: 17,
+  fontWeight: 600,
+  marginRight: 8,
   cursor: 'pointer',
-  boxShadow: active ? '0 0 16px 2px #00fff799' : 'none',
-  letterSpacing: 2,
+  fontFamily: 'inherit',
   outline: 'none',
   transition: 'all 0.2s',
 });
 
-const neonBar = (color: string, percent: number) => ({
+const progressBar = (color: string, percent: number): CSSProperties => ({
   width: percent + '%',
-  height: 12,
-  borderRadius: 8,
-  background: `linear-gradient(90deg, ${color} 0%, #222 100%)`,
-  boxShadow: `0 0 16px 2px ${color}99`,
-  transition: 'width 0.7s cubic-bezier(.4,2,.6,1)',
+  height: 8,
+  borderRadius: 4,
+  background: color,
+  transition: 'width 0.5s',
 });
 
 function Environment() {
@@ -51,35 +49,35 @@ function Environment() {
     switch (activeTab) {
       case 'Temperature':
         return (
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <div style={{ ...glassCard, border: '2px solid #00fff7' }}>
-              <div style={{ fontSize: 48, fontWeight: 800, color: '#00fff7', textShadow: '0 0 16px #00fff7' }}>26.1°C</div>
-              <div style={{ margin: '18px 0 8px', fontSize: 18, color: '#fff' }}>Target Temperature</div>
-              <div style={{ width: '100%', marginTop: 18 }}>
-                <div style={{ fontSize: 14, color: '#00fff7', marginBottom: 4 }}>Set Point</div>
-                <div style={{ background: '#222', borderRadius: 8, height: 12, width: '100%' }}>
-                  <div style={neonBar('#00fff7', 50)} />
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div style={card}>
+              <div style={{ fontSize: 36, fontWeight: 700, color: '#1976d2', marginBottom: 8 }}>26.1°C</div>
+              <div style={{ fontSize: 16, color: '#555', marginBottom: 12 }}>Target Temperature</div>
+              <div style={{ width: '100%', marginTop: 10 }}>
+                <div style={{ fontSize: 13, color: '#1976d2', marginBottom: 4 }}>Set Point</div>
+                <div style={{ background: '#f0f4fa', borderRadius: 4, height: 8, width: '100%' }}>
+                  <div style={progressBar('#1976d2', 50)} />
                 </div>
               </div>
             </div>
-            <div style={{ ...glassCard, border: '2px solid #ff3c00' }}>
-              <div style={{ fontSize: 32, fontWeight: 700, color: '#ff3c00', textShadow: '0 0 12px #ff3c00', marginBottom: 12 }}>Automation</div>
-              <div style={{ background: '#222', borderRadius: 8, height: 12, width: '100%', marginBottom: 12 }}>
-                <div style={neonBar('#ff3c00', 67)} />
+            <div style={card}>
+              <div style={{ fontSize: 20, fontWeight: 600, color: '#1976d2', marginBottom: 8 }}>Automation</div>
+              <div style={{ background: '#f0f4fa', borderRadius: 4, height: 8, width: '100%', marginBottom: 10 }}>
+                <div style={progressBar('#1976d2', 67)} />
               </div>
-              <div style={{ fontSize: 16, color: '#ffb380', margin: '10px 0' }}>5AM – 8PM</div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 10 }}>
-                <span style={{ color: '#fff' }}>Status</span>
-                <span style={{ color: '#ff3c00', fontWeight: 700 }}>ON</span>
+              <div style={{ fontSize: 14, color: '#888', margin: '8px 0' }}>5AM – 8PM</div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 8 }}>
+                <span style={{ color: '#222' }}>Status</span>
+                <span style={{ color: '#1976d2', fontWeight: 700 }}>ON</span>
               </div>
             </div>
-            <div style={{ ...glassCard, border: '2px solid #00fff7', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-              <div style={{ fontSize: 40, fontWeight: 800, color: '#00fff7', textShadow: '0 0 16px #00fff7' }}>18</div>
-              <div style={{ color: '#00fff7', fontWeight: 700, fontSize: 20, marginBottom: 10 }}>GOOD</div>
-              <div style={{ width: '100%', marginTop: 18 }}>
-                <div style={{ fontSize: 14, color: '#00fff7', marginBottom: 4 }}>Automation</div>
-                <div style={{ background: '#222', borderRadius: 8, height: 12, width: '100%' }}>
-                  <div style={neonBar('#00fff7', 80)} />
+            <div style={card}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#1976d2', marginBottom: 6 }}>18</div>
+              <div style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, marginBottom: 8 }}>GOOD</div>
+              <div style={{ width: '100%', marginTop: 10 }}>
+                <div style={{ fontSize: 13, color: '#1976d2', marginBottom: 4 }}>Automation</div>
+                <div style={{ background: '#f0f4fa', borderRadius: 4, height: 8, width: '100%' }}>
+                  <div style={progressBar('#1976d2', 80)} />
                 </div>
               </div>
             </div>
@@ -87,47 +85,47 @@ function Environment() {
         );
       case 'Humidity':
         return (
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <div style={{ ...glassCard, border: '2px solid #00fff7' }}>
-              <div style={{ fontSize: 40, fontWeight: 800, color: '#00fff7', textShadow: '0 0 16px #00fff7' }}>55%</div>
-              <div style={{ color: '#fff', fontSize: 18, marginTop: 10 }}>Current Humidity</div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div style={card}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#1976d2', marginBottom: 8 }}>55%</div>
+              <div style={{ color: '#555', fontSize: 16, marginTop: 6 }}>Current Humidity</div>
             </div>
-            <div style={{ ...glassCard, border: '2px solid #ff3c00' }}>
-              <div style={{ fontSize: 24, color: '#ff3c00', fontWeight: 700, marginBottom: 10 }}>Automation</div>
-              <div style={{ background: '#222', borderRadius: 8, height: 12, width: '100%', marginBottom: 12 }}>
-                <div style={neonBar('#ff3c00', 60)} />
+            <div style={card}>
+              <div style={{ fontSize: 16, color: '#1976d2', fontWeight: 600, marginBottom: 8 }}>Automation</div>
+              <div style={{ background: '#f0f4fa', borderRadius: 4, height: 8, width: '100%', marginBottom: 10 }}>
+                <div style={progressBar('#1976d2', 60)} />
               </div>
             </div>
           </div>
         );
       case 'Light':
         return (
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <div style={{ ...glassCard, border: '2px solid #00fff7' }}>
-              <div style={{ fontSize: 24, color: '#00fff7', fontWeight: 700, marginBottom: 10 }}>Lighting Graph</div>
-              <div style={{ background: '#222', borderRadius: 8, height: 12, width: '100%' }}>
-                <div style={neonBar('#00fff7', 80)} />
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div style={card}>
+              <div style={{ fontSize: 16, color: '#1976d2', fontWeight: 600, marginBottom: 8 }}>Lighting Graph</div>
+              <div style={{ background: '#f0f4fa', borderRadius: 4, height: 8, width: '100%' }}>
+                <div style={progressBar('#1976d2', 80)} />
               </div>
             </div>
-            <div style={{ ...glassCard, border: '2px solid #ff3c00' }}>
-              <div style={{ fontSize: 24, color: '#ff3c00', fontWeight: 700, marginBottom: 10 }}>Automation</div>
-              <div style={{ background: '#222', borderRadius: 8, height: 12, width: '100%' }}>
-                <div style={neonBar('#ff3c00', 40)} />
+            <div style={card}>
+              <div style={{ fontSize: 16, color: '#1976d2', fontWeight: 600, marginBottom: 8 }}>Automation</div>
+              <div style={{ background: '#f0f4fa', borderRadius: 4, height: 8, width: '100%' }}>
+                <div style={progressBar('#1976d2', 40)} />
               </div>
             </div>
           </div>
         );
       case 'Air Quality':
         return (
-          <div style={{ display: 'flex', gap: 32, flexWrap: 'wrap', justifyContent: 'center' }}>
-            <div style={{ ...glassCard, border: '2px solid #00fff7' }}>
-              <div style={{ fontSize: 40, fontWeight: 800, color: '#00fff7', textShadow: '0 0 16px #00fff7' }}>18</div>
-              <div style={{ color: '#00fff7', fontWeight: 700, fontSize: 20, marginBottom: 10 }}>Good</div>
+          <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
+            <div style={card}>
+              <div style={{ fontSize: 28, fontWeight: 700, color: '#1976d2', marginBottom: 8 }}>18</div>
+              <div style={{ color: '#1976d2', fontWeight: 600, fontSize: 16, marginBottom: 8 }}>Good</div>
             </div>
-            <div style={{ ...glassCard, border: '2px solid #ff3c00' }}>
-              <div style={{ fontSize: 24, color: '#ff3c00', fontWeight: 700, marginBottom: 10 }}>Automation</div>
-              <div style={{ background: '#222', borderRadius: 8, height: 12, width: '100%' }}>
-                <div style={neonBar('#ff3c00', 60)} />
+            <div style={card}>
+              <div style={{ fontSize: 16, color: '#1976d2', fontWeight: 600, marginBottom: 8 }}>Automation</div>
+              <div style={{ background: '#f0f4fa', borderRadius: 4, height: 8, width: '100%' }}>
+                <div style={progressBar('#1976d2', 60)} />
               </div>
             </div>
           </div>
@@ -140,17 +138,17 @@ function Environment() {
   return (
     <div style={{ minHeight: '100vh', background: '#fff' }}>
       <ControlBody>
-        <div style={{ padding: 36 }}>
-          <h1 style={{ fontSize: 32, fontWeight: 800, color: '#00fff7', marginBottom: 32, letterSpacing: 2, textShadow: '0 0 16px #00fff7' }}>
+        <div style={{ padding: 32, maxWidth: 1100, margin: '0 auto', paddingBottom: 80 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 700, color: '#1976d2', marginBottom: 28, letterSpacing: 1, fontFamily: 'Segoe UI, Arial, sans-serif' }}>
             Environmental Control
           </h1>
           {/* Tabs */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 36 }}>
+          <div style={{ display: 'flex', gap: 2, marginBottom: 28, borderBottom: '1px solid #e0e6ed' }}>
             {tabs.map((tab) => (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                style={neonTab(activeTab === tab)}
+                style={tabStyle(activeTab === tab)}
               >
                 {tab}
               </button>
