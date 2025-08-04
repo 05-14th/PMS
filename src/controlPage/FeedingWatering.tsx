@@ -45,8 +45,7 @@ const FeedingWatering = () => {
   }, []);
 
   const getLevelLabel = (value: number) => {
-    if (value > 70) return 'High';
-    if (value > 35) return 'Medium';
+    if (value > 70) return 'Full';
     if (value > 0) return 'Low';
     return 'Empty';
   };
