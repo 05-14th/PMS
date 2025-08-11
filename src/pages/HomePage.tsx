@@ -2,9 +2,15 @@ import { useState } from 'react';
 import Developing from '../components/Developing';
 import MainBody from '../components/MainBody';
 import ConnectModal from '../components/ConnectModal';  // Import the ConnectModal
+import LineChart from '../charts/LineChart';
+import PieChart from '../charts/PieChart';
 
 function HomePage() {
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const labels = ['January', 'February', 'March', 'April'];
+  const dataPoints = [65, 59, 80, 81];
+  const plabels = ['Red', 'Blue', 'Yellow', 'Green'];
+  const pDataPoints = [30, 25, 20, 25];
 
   return (
     <MainBody>
@@ -15,51 +21,19 @@ function HomePage() {
         </h1>
 
         {/* Graph-like Placeholders */}
-       <div className="w-full max-w-5xl mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 px-4">
-  {/* Line Graph Placeholder - now appears first */}
-  <div className="bg-white border border-gray-300 rounded-lg p-4 shadow">
-    <h2 className="text-gray-700 font-semibold mb-4">Line Graph</h2>
-    <div className="relative h-48 w-full">
-      <svg viewBox="0 0 100 100" className="absolute inset-0 w-full h-full">
-        <polyline
-          fill="none"
-          stroke="#10b981"
-          strokeWidth="2"
-          points="0,80 20,60 40,65 60,45 80,50 100,30"
-        />
-        {[0, 20, 40, 60, 80, 100].map((x, i) => (
-          <circle
-            key={i}
-            cx={x}
-            cy={[80, 60, 65, 45, 50, 30][i]}
-            r="2"
-            fill="#10b981"
-          />
-        ))}
-      </svg>
-    </div>
-  </div>
+        <div className="w-full max-w-5xl mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 px-4">
+          {/* Line Graph Placeholder - now appears first */}
+          <div className="bg-white border border-gray-300 rounded-lg p-4 shadow">
+            <h2 className="text-gray-700 font-semibold mb-4">Line Graph</h2>
+            <LineChart labels={labels} dataPoints={dataPoints} />
+          </div>
 
-  {/* Pie Chart Placeholder - now appears second */}
-  <div className="bg-white border border-gray-300 rounded-lg p-4 shadow">
-    <h2 className="text-gray-700 font-semibold mb-4">Pie Chart</h2>
-    <svg viewBox="0 0 32 32" className="w-full h-48">
-      <circle r="16" cx="16" cy="16" fill="#ef4444" />
-      <path
-        d="M16 16 L32 16 A16 16 0 0 1 16 32 Z"
-        fill="#3b82f6"
-      />
-      <path
-        d="M16 16 L16 32 A16 16 0 0 1 0 16 Z"
-        fill="#f59e0b"
-      />
-      <path
-        d="M16 16 L0 16 A16 16 0 0 1 16 0 Z"
-        fill="#10b981"
-      />
-    </svg>
-  </div>
-</div>
+          {/* Pie Chart Placeholder - now appears second */}
+          <div className="bg-white border border-gray-300 rounded-lg p-4 shadow">
+            <h2 className="text-gray-700 font-semibold mb-4">Pie Chart</h2>
+            <PieChart labels={plabels} dataPoints={pDataPoints} />
+          </div>
+        </div>
       </div>
 
       {/* Sticky Connect Button */}
