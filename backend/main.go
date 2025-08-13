@@ -27,6 +27,7 @@ type Items struct {
 	Unit     string `json:"Unit"`
 	Quantity string `json:"Quantity"`
 	UnitCost string `json:"UnitCost"`
+	SupId    int    `json:"SupplierID"`
 }
 
 type Sales struct {
@@ -151,7 +152,7 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item Items
 		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Unit,
-			&item.Unit, &item.Quantity, &item.UnitCost); err != nil {
+			&item.Quantity, &item.UnitCost, &item.SupId); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

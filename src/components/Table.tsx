@@ -78,6 +78,10 @@ const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewab
     });
   };
 
+  function formatColumn(col) {
+    return col.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
+  }
+
   return (
     <div className="bg-white p-4 rounded-lg shadow-lg">
       <input
@@ -105,13 +109,13 @@ const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewab
           <table className="min-w-full table-auto border-collapse">
             <thead>
               <tr>
-                {columns.map((col) => (
+                {columns.slice(1, -1).map((col) => (
                   <th
                     key={col}
                     onClick={() => handleSort(col)}
                     className="px-4 py-2 border-b text-left font-semibold text-gray-700 cursor-pointer select-none"
                   >
-                    {col.toUpperCase()}
+                    {formatColumn(col)}
                     {sortConfig?.key === col && (
                       <span className="ml-1">
                         {sortConfig.direction === 'asc' ? '▲' : '▼'}
@@ -127,7 +131,7 @@ const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewab
             <tbody>
               {pageData.map((row, idx) => (
                 <tr key={idx} className="border-b">
-                  {columns.map((col) => (
+                  {columns.slice(1, -1).map((col) => (
                     <td key={col} className="px-4 py-2 text-gray-600">
                       {typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col]}
                     </td>

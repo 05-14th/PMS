@@ -26,7 +26,7 @@ function Inventory() {
     axios
       .get(`${serverHost}/getItems`)
       .then((res) => {
-        console.log("API response:", res.data);
+        //console.log("API response:", res.data);
 
         // Attempt to extract an array safely
         const dataArray = Array.isArray(res.data)

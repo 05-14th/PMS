@@ -80,7 +80,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                       className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
                       onClick={() => setIsInventoryOpen(false)}
                     >
-                      Materials
+                      Supplies
                     </Link>
                   </div>
                 )}
@@ -249,7 +249,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                       className="block px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm"
                       onClick={() => setIsMobileInventoryOpen(false)}
                     >
-                      Materials
+                      Supplies
                     </Link>
                   </div>
                 )}
