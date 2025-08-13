@@ -21,13 +21,12 @@ type User struct {
 }
 
 type Items struct {
-	ID       string `json:"material_id"`
-	Name     string `json:"material_name"`
-	Desc     string `json:"material_desc"`
-	Quantity string `json:"material_quantity"`
-	Unit     string `json:"material_unit"`
-	Class    string `json:"material_class"`
-	Date     string `json:"purchase_date"`
+	ID       string `json:"ItemID"`
+	Name     string `json:"ItemName"`
+	Category string `json:"Category"`
+	Unit     string `json:"Unit"`
+	Quantity string `json:"Quantity"`
+	UnitCost string `json:"UnitCost"`
 }
 
 type Sales struct {
@@ -151,8 +150,8 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var item Items
-		if err := rows.Scan(&item.ID, &item.Name, &item.Desc, &item.Quantity,
-			&item.Unit, &item.Class, &item.Date); err != nil {
+		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Unit,
+			&item.Unit, &item.Quantity, &item.UnitCost); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
