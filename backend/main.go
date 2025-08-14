@@ -21,13 +21,49 @@ type User struct {
 }
 
 type Items struct {
-	ID       string `json:"ItemID"`
-	Name     string `json:"ItemName"`
-	Category string `json:"Category"`
-	Unit     string `json:"Unit"`
-	Quantity string `json:"Quantity"`
-	UnitCost string `json:"UnitCost"`
-	SupId    int    `json:"SupplierID"`
+	ID           string `json:"ItemID"`
+	Name         string `json:"ItemName"`
+	Category     string `json:"Category"`
+	Unit         string `json:"Unit"`
+	Quantity     string `json:"Quantity"`
+	UnitCost     string `json:"UnitCost"`
+	SupplierName string `json:"SupplierName"`
+}
+
+type Batches struct {
+	ID                  string  `json:"BatchNumber"`
+	TotalChicken        int     `json:"TotalChicken"`
+	CurrentChicken      int     `json:"CurrentChicken"`
+	StartDate           string  `json:"StartDate"`
+	ExpectedHarvestDate string  `json:"ExpectedHarvestDate"`
+	Status              string  `json:"Status"`
+	Notes               string  `json:"Notes"`
+	CostType            string  `json:"CostType"`
+	Amount              float64 `json:"Amount"`
+	Description         string  `json:"Description"`
+	BirdsLost           int     `json:"BirdsLost"`
+}
+
+type Harvests struct {
+	HarvestID     int     `json:"HarvestID"`
+	BatchID       int     `json:"BatchNumber"`
+	HarvestDate   string  `json:"HarvestDate"`
+	Notes         string  `json:"Notes"`
+	SaleType      string  `json:"SaleType"`
+	BirdQuantity  int     `json:"BirdQuantity"`
+	TotalWeightKg float64 `json:"TotalWeightKg"`
+	PricePerKg    float64 `json:"PricePerKg"`
+	SalesAmount   float64 `json:"SalesAmount"`
+}
+
+type Supplier struct {
+	SupplierID    int    `json:"SupplierID"`
+	SupplierName  string `json:"SupplierName"`
+	ContactPerson string `json:"ContactPerson"`
+	PhoneNumber   string `json:"PhoneNumber"`
+	Email         string `json:"Email"`
+	Address       string `json:"Address"`
+	Notes         string `json:"Notes"`
 }
 
 type Sales struct {
@@ -152,7 +188,7 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 	for rows.Next() {
 		var item Items
 		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Unit,
-			&item.Quantity, &item.UnitCost, &item.SupId); err != nil {
+			&item.Quantity, &item.UnitCost, &item.SupplierName); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -161,6 +197,84 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(items)
+}
+
+func getBatches(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(os.Getenv("GET_BATCHES"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var batches []Batches
+
+	for rows.Next() {
+		var batch Batches
+		if err := rows.Scan(&batch.ID, &batch.TotalChicken, &batch.CurrentChicken, &batch.StartDate,
+			&batch.ExpectedHarvestDate, &batch.Status, &batch.Notes, &batch.CostType, &batch.Amount,
+			&batch.Description, &batch.BirdsLost); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		batches = append(batches, batch)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(batches)
+}
+
+func getHarvests(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(os.Getenv("GET_HARVEST"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var harvests []Harvests
+
+	for rows.Next() {
+		var harvest Harvests
+		if err := rows.Scan(
+			&harvest.HarvestID, &harvest.BatchID, &harvest.HarvestDate,
+			&harvest.Notes, &harvest.SaleType, &harvest.BirdQuantity,
+			&harvest.TotalWeightKg, &harvest.PricePerKg, &harvest.SalesAmount,
+		); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		harvests = append(harvests, harvest)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(harvests)
+}
+
+func getSupplier(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(os.Getenv("GET_SUPPLIER"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var suppliers []Supplier
+
+	for rows.Next() {
+		var supplier Supplier
+		if err := rows.Scan(
+			&supplier.SupplierID, &supplier.SupplierName, &supplier.ContactPerson,
+			&supplier.PhoneNumber, &supplier.Email, &supplier.Address, &supplier.Notes,
+		); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		suppliers = append(suppliers, supplier)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(suppliers)
 }
 
 func getSimpleSales(w http.ResponseWriter, r *http.Request) {
@@ -352,11 +466,13 @@ func main() {
 	initDB()
 	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
 	http.HandleFunc("/getItems", withCORS(getItems))
+	http.HandleFunc("/getBatches", withCORS(getBatches))
+	http.HandleFunc("/getHarvests", withCORS(getHarvests))
+	http.HandleFunc("/getSupplier", withCORS(getSupplier))
 	http.HandleFunc("/getSales", withCORS(getSales))
 	http.HandleFunc("/getSimpleSales", withCORS(getSimpleSales))
 	http.HandleFunc("/getProducts", withCORS(getProducts))
 	http.HandleFunc("/getProductInfo", withCORS(getProductById))
-
 	http.HandleFunc("/api/dht22-data", withCORS(handleDhtData))
 
 	server := &http.Server{
