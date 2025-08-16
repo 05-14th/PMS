@@ -1,5 +1,38 @@
+
 /* Notification blur effect */
 .notification-blur {
   backdrop-filter: blur(2px);
 }
+
+/* Global box-sizing for consistent sizing */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+/* Responsive images and charts */
+img, svg, canvas, video, iframe, embed, object {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* Prevent horizontal overflow */
+html, body, #root {
+  width: 100vw;
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Responsive utility for tables and code blocks */
+.responsive-table {
+  width: 100%;
+  overflow-x: auto;
+  display: block;
+}
+
+/* Ensure all main containers are scrollable if needed */
+.main-content, .min-h-screen, .min-w-screen {
+  overflow-x: auto;
+}
+
 @import "tailwindcss";
