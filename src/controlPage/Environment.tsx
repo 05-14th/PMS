@@ -4,10 +4,28 @@ import { Fan, Lightbulb } from 'lucide-react';
 
 const cages = ['Cage 1', 'Cage 2', 'Cage 3'];
 
+
 function Environment() {
   const [activeCage, setActiveCage] = useState(0);
-  const [fanOn, setFanOn] = useState(false);
-  const [lightOn, setLightOn] = useState(false);
+  // Each cage has its own fan and light state
+  const [fanStates, setFanStates] = useState([false, false, false]);
+  const [lightStates, setLightStates] = useState([false, false, false]);
+
+  // Handlers for per-cage control
+  const handleFan = (on: boolean) => {
+    setFanStates((prev) => {
+      const updated = [...prev];
+      updated[activeCage] = on;
+      return updated;
+    });
+  };
+  const handleLight = (on: boolean) => {
+    setLightStates((prev) => {
+      const updated = [...prev];
+      updated[activeCage] = on;
+      return updated;
+    });
+  };
 
   return (
     <ControlBody>
@@ -51,14 +69,14 @@ function Environment() {
             </div>
             <div className="flex space-x-8 sm:space-x-16 mt-4">
               <button
-                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${!fanOn ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
-                onClick={() => setFanOn(false)}
+                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${!fanStates[activeCage] ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
+                onClick={() => handleFan(false)}
               >
                 Off
               </button>
               <button
-                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${fanOn ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
-                onClick={() => setFanOn(true)}
+                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${fanStates[activeCage] ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
+                onClick={() => handleFan(true)}
               >
                 On
               </button>
@@ -72,14 +90,14 @@ function Environment() {
             </div>
             <div className="flex space-x-8 sm:space-x-16 mt-4">
               <button
-                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${!lightOn ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
-                onClick={() => setLightOn(false)}
+                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${!lightStates[activeCage] ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
+                onClick={() => handleLight(false)}
               >
                 Off
               </button>
               <button
-                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${lightOn ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
-                onClick={() => setLightOn(true)}
+                className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full text-2xl sm:text-3xl font-extrabold ${lightStates[activeCage] ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-500'} transition`}
+                onClick={() => handleLight(true)}
               >
                 On
               </button>
