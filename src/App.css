@@ -1,1 +1,5 @@
+/* Notification blur effect */
+.notification-blur {
+  backdrop-filter: blur(2px);
+}
 @import "tailwindcss";
