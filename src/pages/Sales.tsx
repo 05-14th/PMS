@@ -30,7 +30,7 @@ function Sales() {
     formatDate: (value: string) => string
   ): Promise<void> => {
     try {
-      const res = await axios.get(`${serverHost}/getSimpleSales`);
+      const res = await axios.get(`${serverHost}/getHarvests`);
       const formatted = res.data.map((item: Record<string, any>) => {
         const newItem: Record<string, any> = {};
         for (const key in item) {
@@ -53,7 +53,7 @@ function Sales() {
     <MainBody>
       <section className="w-full">
         <div className="overflow-x-auto">
-          <Table data={itemData} actionable={true} name="getSales" paramName="sales_id" viewable={true}/>
+          <Table data={itemData} actionable={true} name="getHarvests" paramName="HarvestID" viewable={true} excluded_index={[0,1,3,4,5]}/>
         </div>
       </section>
       <Section>

@@ -8,11 +8,13 @@ type TableProps = {
   name: string;
   paramName: string;
   viewable: boolean;
+  excluded_index: any[];
+  addMethod: string
 };
 
 const PAGE_SIZE = 10;
 
-const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewable}) => {
+const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewable, excluded_index, addMethod = ""}) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [page, setPage] = useState(1);
   const [id, setId] = useState(0);
@@ -22,6 +24,7 @@ const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewab
   const navigate = useNavigate();
 
   const openModal = (index, mode, param_Name) => {
+    console.log(index)
     navigate('/target', { state: { 
       openModal: true,
       apiEndpoint: `${serverHost}/${name}`,
@@ -97,7 +100,7 @@ const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewab
 
       <button
         className="text-white bg-orange-500 hover:bg-orange-600 px-3 py-1 rounded"
-        onClick={openModal}
+        onClick={() => openModal(0, addMethod, paramName)}
       >
         Add
       </button>
@@ -109,7 +112,11 @@ const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewab
           <table className="min-w-full table-auto border-collapse">
             <thead>
               <tr>
-                {columns.slice(1, -1).map((col) => (
+                {(
+                  excluded_index?.length
+                    ? columns.filter((_, i) => !excluded_index.includes(i))
+                    : columns
+                ).map((col) => (
                   <th
                     key={col}
                     onClick={() => handleSort(col)}
@@ -131,34 +138,37 @@ const Table: React.FC<TableProps> = ({ data, actionable, name, paramName, viewab
             <tbody>
               {pageData.map((row, idx) => (
                 <tr key={idx} className="border-b">
-                  {columns.slice(1, -1).map((col) => (
+                  {(excluded_index?.length
+                    ? columns.filter((_, i) => !excluded_index.includes(i))
+                    : columns
+                  ).map((col) => (
                     <td key={col} className="px-4 py-2 text-gray-600">
                       {typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col]}
                     </td>
                   ))}
                   {actionable && (
                     <td className="px-4 py-2 space-x-2">
-  {viewable && (
-    <button
-      className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
-      onClick={() => openModal(row[columns[0]], "view", paramName)}
-    >
-      View
-    </button>
-  )}
-  <button
-    className="text-white bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded"
-    onClick={() => openModal(row[columns[0]], "modify", paramName)}
-  >
-    Modify
-  </button>
-  <button
-    className="text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded"
-    onClick={() => openModal(row[columns[0]], "delete", paramName)}
-  >
-    Delete
-  </button>
-</td>
+                      {viewable && (
+                        <button
+                          className="text-white bg-green-500 hover:bg-green-600 px-3 py-1 rounded"
+                          onClick={() => openModal(row[columns[0]], "view", paramName)}
+                        >
+                          View
+                        </button>
+                      )}
+                      <button
+                        className="text-white bg-yellow-500 hover:bg-yellow-600 px-3 py-1 rounded"
+                        onClick={() => openModal(row[columns[0]], "modify", paramName)}
+                      >
+                        Modify
+                      </button>
+                      <button
+                        className="text-white bg-red-500 hover:bg-red-600 px-3 py-1 rounded"
+                        onClick={() => openModal(row[columns[0]], "delete", paramName)}
+                      >
+                        Delete
+                      </button>
+                    </td>
                   )}
                 </tr>
               ))}

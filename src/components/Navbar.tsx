@@ -16,7 +16,7 @@ import {
   LogOut,
   UserCircle,
   Plug,
-  ChevronDown,
+  LayoutList
 } from "lucide-react";
 
 interface NavbarProps {
@@ -56,34 +56,24 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               
               {/* Inventory Dropdown */}
-              <li className="relative">
-                <button
-                  onClick={() => setIsInventoryOpen(!isInventoryOpen)}
+              <li>
+                <Link
+                  to="/inventory"
                   className="flex items-center text-white hover:text-orange-500 space-x-1"
                 >
                   <Package size={20} />
                   <span>Inventory</span>
-                  <ChevronDown size={16} className={`transition-transform ${isInventoryOpen ? 'rotate-180' : ''}`} />
-                </button>
-                
-                {isInventoryOpen && (
-                  <div className="absolute left-0 mt-2 w-48 bg-white rounded-md shadow-lg z-50 border border-gray-200">
-                    <Link
-                      to="/products"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 border-b border-gray-100"
-                      onClick={() => setIsInventoryOpen(false)}
-                    >
-                      Products
-                    </Link>
-                    <Link
-                      to="/inventory"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100"
-                      onClick={() => setIsInventoryOpen(false)}
-                    >
-                      Supplies
-                    </Link>
-                  </div>
-                )}
+                </Link>
+              </li>
+
+              <li>
+                <Link
+                  to="/batches"
+                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                >
+                  <LayoutList size={20} />
+                  <span>Batches</span>
+                </Link>
               </li>
 
               <li>
@@ -97,11 +87,11 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               <li>
                 <Link
-                  to="/users"
+                  to="/suppliers"
                   className="flex items-center text-white hover:text-orange-500 space-x-1"
                 >
                   <Users size={20} />
-                  <span>Users</span>
+                  <span>Suppliers</span>
                 </Link>
               </li>
               <li>

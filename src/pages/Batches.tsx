@@ -18,21 +18,21 @@ const formatDate = (isoDate: string): string => {
   return `${month}/${day}/${year}`;
 };
 
-function Inventory() {
-  const [inventoryData, setItemData] = useState<any[]>([]);
+function Batches() {
+  const [batchesData, setBatchesData] = useState<any[]>([]);
   const serverHost = import.meta.env.VITE_APP_SERVERHOST;
 
   useEffect(() => {
     axios
-      .get(`${serverHost}/getItems`)
+      .get(`${serverHost}/getBatches`)
       .then((res) => {
-        //console.log("API response:", res.data);
+        console.log("API response:", res.data);
 
         // Attempt to extract an array safely
         const dataArray = Array.isArray(res.data)
           ? res.data
-          : Array.isArray(res.data.items)
-          ? res.data.items
+          : Array.isArray(res.data.batches)
+          ? res.data.batches
           : [];
 
         const formatted = dataArray.map((item: Record<string, any>) => {
@@ -44,7 +44,7 @@ function Inventory() {
           return newItem;
         });
 
-        setItemData(formatted);
+        setBatchesData(formatted);
       })
       .catch((err) => console.error("Error fetching items:", err));
   }, []);
@@ -53,14 +53,14 @@ function Inventory() {
     <MainBody>
       <section className="w-full">
         <div className="overflow-x-auto">
-          <Table data={inventoryData} actionable={true} name="getItems" paramName="ItemID" viewable={true} excluded_index={[0, 6]} addMethod='addInventory'/>
+          <Table data={batchesData} actionable={true} name="getBatches" paramName="BatchID" viewable={true} excluded_index={[6,7,8,9,10]} addMethod='addBatch'/>
         </div>
       </section>
       <Section>
-        <Developing/>
+        
       </Section>
     </MainBody>
   );
 }
 
-export default Inventory;
+export default Batches;

@@ -5,7 +5,7 @@ import LoginModal from './pages/LoginModal'
 import SignUpPage from './pages/SignUpPage'
 import HomePage from './pages/HomePage'
 import Inventory from './pages/Inventory'
-import UserPage from './pages/UserPage'
+import Supplier from './pages/Supplier'
 import Control from './pages/Control'
 import Sales from './pages/Sales'
 import Environment from './controlPage/Environment'
@@ -14,6 +14,7 @@ import Poultry from './controlPage/Poultry'
 import Notification from './controlPage/Notification'
 import TargetModal from './components/TargetModal'
 import Products from './pages/Product'
+import Batches from './pages/Batches'
 
 
 
@@ -27,9 +28,10 @@ function App() {
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/homepage" element={<HomePage />} />
             <Route path="/inventory" element={<Inventory />} />
+            <Route path="/batches" element={<Batches />} />
             <Route path="/products" element={<Products />}/>
             <Route path="/sales" element={<Sales />} />
-            <Route path="/users" element={<UserPage />} />
+            <Route path="/suppliers" element={<Supplier />} />
             <Route path="/control" element={<Control />} />
             <Route path="/environment" element={<Environment />} />
             <Route path="/feedWater" element={<FeedingWatering />} />

@@ -5,14 +5,14 @@ import axios from 'axios'
 import Table from '../components/Table'
 import Section from '../components/Section'
 
-function UserPage() {
-  const [userData, setUserData] = useState<any[]>([]);
+function Supplier() {
+  const [supplierData, setSupplierData] = useState<any[]>([]);
   const serverHost = import.meta.env.VITE_APP_SERVERHOST;
 
   useEffect(() => {
     axios
-      .get(`${serverHost}/getUsers`)
-      .then((res) => setUserData(res.data))
+      .get(`${serverHost}/getSupplier`)
+      .then((res) => setSupplierData(res.data))
       .catch((err) => console.error(err));
   }, []);
 
@@ -21,7 +21,7 @@ function UserPage() {
         <MainBody>
           <section className="w-full">
             <div className="overflow-x-auto">
-              <Table data={userData} actionable={true} name="getUsers" paramName="material_id" viewable={false}/>
+              <Table data={supplierData} actionable={true} name="getSupplier" paramName="SupplierID" viewable={false} excluded_index={[0]} addMethod='addSupplier'/>
             </div>
           </section>
           <Section>
@@ -32,4 +32,4 @@ function UserPage() {
   )
 }
 
-export default UserPage;
+export default Supplier;

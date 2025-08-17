@@ -277,6 +277,50 @@ func getSupplier(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(suppliers)
 }
 
+func createBatch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var batchData struct {
+		TotalChicken        int     `json:"TotalChicken"`
+		StartDate           string  `json:"StartDate"`
+		ExpectedHarvestDate string  `json:"ExpectedHarvestDate"`
+		Amount              float64 `json:"Amount"`
+		Supplier            string  `json:"Supplier"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&batchData); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// Insert data into database
+	stmt, err := db.Prepare()
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(batchData.Temperature, batchData.Humidity, batchData.CageNum)
+	if err != nil {
+		http.Error(w, "Failed to insert data", http.StatusInternalServerError)
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	response := map[string]interface{}{
+		"success": true,
+		"id":      id,
+		"message": "Data received successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func getSimpleSales(w http.ResponseWriter, r *http.Request) {
 	query := "SELECT sales_id, sales_amount, sales_status, sales_date, sales_remarks FROM cm_sales"
 	rows, err := db.Query(query)

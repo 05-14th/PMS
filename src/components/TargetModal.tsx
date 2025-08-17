@@ -1,10 +1,14 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import axios from 'axios';
+import { div } from 'framer-motion/client';
+import BatchForm from './BatchForm';
+import InventoryForm from './InventoryForm';
+import SupplierForm from './SupplierForm';
 
 interface ModalProps {
   apiEndpoint: string;
-  mode: 'view' | 'modify' | 'delete';
+  mode: 'view' | 'modify' | 'delete' | 'addBatch' | 'addInventory' | 'addSupplier';
   id: number;
   param: string;
 }
@@ -22,6 +26,10 @@ const TargetModal = () => {
   // Get props from location state
   const { apiEndpoint, mode, id, param } = location.state as ModalProps;
 
+  function formatColumn(col) {
+    return col.replace(/([a-z])([A-Z])/g, '$1 $2').toUpperCase();
+  }
+
   useEffect(() => {
     if (location.state?.openModal) {
       setIsOpen(true);
@@ -37,15 +45,23 @@ const TargetModal = () => {
       if (mode === 'view') {
         // POST with id to fetch data for view mode
         response = await axios.post(apiEndpoint, { [param]: id });
+        console.log(apiEndpoint)
       } else {
         // GET for modify and delete modes
         response = await axios.post(apiEndpoint, { [param]: id });
       }
 
-      setData(response.data);
+      let record = response.data;
+
+      if (Array.isArray(record)) {
+        // Assume the backend returns an array (e.g., SELECT * FROM table WHERE id = ?)
+        record = record.find(item => item[param] === id) || record[0];
+      }
+
+      setData(record);
 
       if (mode === 'modify') {
-        setModifiedData(response.data);
+        setModifiedData(record);
       }
     } catch (err) {
       setError('Failed to fetch data. Please try again.');
@@ -179,12 +195,16 @@ const renderFormFields = (obj: any, prefix = '') => {
   );
 };
 
+  const prettifyKey = (key: string) => key.replace(/([a-z])([A-Z])/g, "$1 $2");
 
-  
   const renderSimpleList = (data: any): JSX.Element => {
-  if (data === null || data === undefined) return <p className="italic text-gray-500">No data available</p>;
+  if (data === null || data === undefined) {
+    return <p className="italic text-gray-500">No data available</p>;
+  }
 
-  if (typeof data !== 'object') return <span>{String(data)}</span>;
+  if (typeof data !== "object") {
+    return <span>{String(data)}</span>;
+  }
 
   if (Array.isArray(data)) {
     return (
@@ -205,7 +225,7 @@ const renderFormFields = (obj: any, prefix = '') => {
 
         return (
           <li key={key} className="border-b pb-1 last:border-b-0">
-            <span className="font-semibold">{formattedKey}: </span>
+            <span className="font-semibold">{prettifyKey(formattedKey)}: </span>
             <span>{renderSimpleList(value)}</span>
           </li>
         );
@@ -232,6 +252,7 @@ const renderFormFields = (obj: any, prefix = '') => {
               {mode === 'view' && 'View Data'}
               {mode === 'modify' && 'Modify Data'}
               {mode === 'delete' && 'Confirm Deletion'}
+              {mode === 'addBatch' && 'Add Batch'}
             </h2>
 
             {loading && <p className="text-center py-4">Loading...</p>}
@@ -278,6 +299,24 @@ const renderFormFields = (obj: any, prefix = '') => {
                     </div>
                   </div>
                 )}
+
+                {(mode === 'addBatch' && (
+                  <div>
+                    <BatchForm/>
+                  </div>
+                ))}
+
+                {(mode === 'addInventory' && (
+                  <div>
+                    <InventoryForm/>
+                  </div>
+                ))}
+
+                {(mode === 'addSupplier' && (
+                  <div>
+                    <SupplierForm/>
+                  </div>
+                ))}
               </>
             )}
           </div>
