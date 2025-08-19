@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react';
-import Developing from '../components/Developing';
 import MainBody from '../components/MainBody';
 import axios from 'axios';
-import Table from '../components/Table';
-import Section from '../components/Section';
+import BatchMain from '../components/BatchMain';
+
 
 // Utility to detect YYYY-MM-DD strings
 const isIsoDateString = (value: any): boolean =>
@@ -53,12 +52,9 @@ function Batches() {
     <MainBody>
       <section className="w-full">
         <div className="overflow-x-auto">
-          <Table data={batchesData} actionable={true} name="getBatches" paramName="BatchID" viewable={true} excluded_index={[6,7,8,9,10]} addMethod='addBatch'/>
+          <BatchMain/>
         </div>
       </section>
-      <Section>
-        
-      </Section>
     </MainBody>
   );
 }
