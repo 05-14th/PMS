@@ -117,7 +117,6 @@ export default function BatchMain() {
   const [usageEntries, setUsageEntries] = useState<InventoryUsageEntry[]>([]);
   const [mortalityEntries, setMortalityEntries] = useState<MortalityEntry[]>([]);
 
-  const units: Unit[] = ["kg", "g", "lb", "pcs", "ml", "l"];
 
   const selectedBatch = useMemo(() => batches.find(b => b.id === batchId) || null, [batches, batchId]);
   const todayAge = useMemo(() => (selectedBatch ? daysBetween(selectedBatch.startDate, new Date()) : 0), [selectedBatch]);
