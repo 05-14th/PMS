@@ -26,7 +26,6 @@ interface NavbarProps {
 const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   const navigate = useNavigate();
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
-  const [isInventoryOpen, setIsInventoryOpen] = useState(false);
 
   const handleLogout = () => {
     navigate("/");
