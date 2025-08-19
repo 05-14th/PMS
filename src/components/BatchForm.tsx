@@ -73,17 +73,17 @@ const BatchForm: React.FC = () => {
         setLoadingSuppliers(true);
         setError("");
         // Adjust endpoint if different in your API
-        const res = await axios.get(`${serverHost}/getSupplier`)
+        await axios.get(`${serverHost}/getSupplier`)
             .then((res) => setSuppliers(res.data))
             .catch((err) => console.error(err));
-      } catch (e: any) {
+      } catch {
         setError("Failed to load suppliers");
       } finally {
         setLoadingSuppliers(false);
       }
     };
     fetchSuppliers();
-  }, []);
+  }, [serverHost]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -139,8 +139,14 @@ const BatchForm: React.FC = () => {
       setNotes("");
 
       alert("Batch saved successfully.");
-    } catch (e: any) {
-      const msg = e?.response?.data || e?.message || "Failed to save batch.";
+    } catch (e) {
+      // Try to extract error message if possible
+      let msg = "Failed to save batch.";
+      if (typeof e === "object" && e !== null && "response" in e && typeof (e as any).response?.data === "string") {
+        msg = (e as any).response.data;
+      } else if (typeof e === "object" && e !== null && "message" in e && typeof (e as any).message === "string") {
+        msg = (e as any).message;
+      }
       setError(String(msg));
     }
   };
