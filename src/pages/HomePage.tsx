@@ -16,9 +16,7 @@ function HomePage() {
     <MainBody>
       {/* Content Area */}
       <div className="flex flex-col items-center justify-center min-h-screen pt-10 pb-10 bg-white">
-        <h1 className="text-xl font-semibold mb-4 text-gray-800">
-          Home page is under development
-        </h1>
+      
 
         {/* Graph-like Placeholders */}
         <div className="w-full max-w-5xl mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 px-4">

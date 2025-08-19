@@ -27,7 +27,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   const navigate = useNavigate();
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
   const [isInventoryOpen, setIsInventoryOpen] = useState(false);
-  const [isMobileInventoryOpen, setIsMobileInventoryOpen] = useState(false);
 
   const handleLogout = () => {
     navigate("/");
@@ -35,7 +34,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
 
   return (
     <nav className="p-4 shadow-md" style={{ backgroundColor: "#576070" }}>
-      <div className="container mx-auto flex items-center justify-between">
+      <div className="container mx-auto flex items-center justify-between w-full px-2 sm:px-0">
         {/* Left: Logo */}
         <Link to="/homepage" className="flex items-center">
           <img src="/Extras/logo.png" alt="Logo" className="h-10 w-auto" />
@@ -203,9 +202,10 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
       {/* Bottom Mobile Navigation */}
       <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-[#576070] shadow-inner z-50">
         <ul className="flex justify-around items-center py-2 text-xs">
-          {!isControl ? (
+          {/* Always show Batches tab except when isControl is true */}
+          {!isControl && (
             <>
-              <li className="w-1/5 text-center">
+              <li className="w-1/6 text-center">
                 <Link
                   to="/homepage"
                   className="flex flex-col items-center text-white hover:text-orange-500"
@@ -214,38 +214,25 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                   <span className="text-[11px] leading-tight whitespace-normal">Home</span>
                 </Link>
               </li>
-              
-              {/* Mobile Inventory Dropdown */}
-              <li className="w-1/5 text-center relative">
-                <button
-                  onClick={() => setIsMobileInventoryOpen(!isMobileInventoryOpen)}
-                  className="flex flex-col items-center text-white hover:text-orange-500 w-full"
+              <li className="w-1/6 text-center">
+                <Link
+                  to="/inventory"
+                  className="flex flex-col items-center text-white hover:text-orange-500"
                 >
                   <Package size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Inventory</span>
-                </button>
-                
-                {isMobileInventoryOpen && (
-                  <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-48 bg-white rounded-md shadow-lg z-50 border border-gray-200">
-                    <Link
-                      to="/inventory/products"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 border-b border-gray-100 text-sm"
-                      onClick={() => setIsMobileInventoryOpen(false)}
-                    >
-                      Products
-                    </Link>
-                    <Link
-                      to="/inventory/materials"
-                      className="block px-4 py-2 text-gray-700 hover:bg-gray-100 text-sm"
-                      onClick={() => setIsMobileInventoryOpen(false)}
-                    >
-                      Supplies
-                    </Link>
-                  </div>
-                )}
+                </Link>
               </li>
-
-              <li className="w-1/5 text-center">
+              <li className="w-1/6 text-center">
+                <Link
+                  to="/batches"
+                  className="flex flex-col items-center text-white hover:text-orange-500"
+                >
+                  <LayoutList size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Batches</span>
+                </Link>
+              </li>
+              <li className="w-1/6 text-center">
                 <Link
                   to="/sales"
                   className="flex flex-col items-center text-white hover:text-orange-500"
@@ -254,16 +241,16 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                   <span className="text-[11px] leading-tight whitespace-normal">Sales</span>
                 </Link>
               </li>
-              <li className="w-1/5 text-center">
+              <li className="w-1/6 text-center">
                 <Link
-                  to="/users"
+                  to="/suppliers"
                   className="flex flex-col items-center text-white hover:text-orange-500"
                 >
                   <Users size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Users</span>
+                  <span className="text-[11px] leading-tight whitespace-normal">Suppliers</span>
                 </Link>
               </li>
-              <li className="w-1/5 text-center">
+              <li className="w-1/6 text-center">
                 <Link
                   to="/control"
                   className="flex flex-col items-center text-white hover:text-orange-500"
@@ -273,7 +260,9 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                 </Link>
               </li>
             </>
-          ) : (
+          )}
+          {/* If isControl, show only control-related tabs, but hide Batches */}
+          {isControl && (
             <>
               <li className="w-1/5 text-center">
                 <Link
