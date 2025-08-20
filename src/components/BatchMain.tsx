@@ -190,10 +190,10 @@ export default function BatchMain() {
   const [tab, setTab] = useState<'monitoring' | 'harvesting'>('monitoring');
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
-      <main className="max-w-6xl mx-auto w-full px-4 py-16 space-y-8 flex-1">
+    <div className="min-h-[200vh] sm:min-h-[120vh] bg-gray-50 text-gray-900 flex flex-col">
+      <main className="max-w-full mx-auto w-full px-2 sm:px-6 md:px-10 lg:px-20 py-6 sm:py-10 md:py-16 lg:py-20 space-y-10 sm:space-y-12 md:space-y-16 flex-1 pb-32">
         {/* Sub-tabs */}
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-4 flex-wrap">
           <button
             className={`px-4 py-2 rounded-t-lg font-semibold text-sm border-b-2 transition-colors duration-150 ${tab === 'monitoring' ? 'border-orange-500 text-orange-600 bg-white' : 'border-transparent text-gray-500 bg-gray-100 hover:border-orange-500 hover:text-orange-600'}`}
             onClick={() => setTab('monitoring')}
@@ -209,38 +209,119 @@ export default function BatchMain() {
         </div>
 
         {tab === 'harvesting' && (
-          <Card title="Batch" right={<Pill>{selectedBatch ? `Start ${formatDate(selectedBatch.startDate)}` : "Select a batch"}</Pill>}>
-            <div className="grid sm:grid-cols-2 gap-4">
-              <Field label="Batch">
-                <select
-                  value={batchId}
-                  onChange={e => setBatchId(e.target.value)}
-                  className="w-full rounded-lg border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                >
-                  {batches.map(b => (
-                    <option key={b.id} value={b.id}>{b.name}</option>
-                  ))}
-                </select>
-              </Field>
-              <Field label="Population">
-                <input readOnly value={selectedBatch?.population ?? ""} className="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50" />
-              </Field>
-              <Field label="Age">
-                <input readOnly value={selectedBatch ? `${todayAge} days` : ""} className="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50" />
-              </Field>
-            </div>
-          </Card>
-        )}
-
-        {tab === 'monitoring' && (
-          <React.Fragment>
+          <>
             <Card title="Batch" right={<Pill>{selectedBatch ? `Start ${formatDate(selectedBatch.startDate)}` : "Select a batch"}</Pill>}>
-              <div className="grid sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 lg:gap-12">
                 <Field label="Batch">
                   <select
                     value={batchId}
                     onChange={e => setBatchId(e.target.value)}
                     className="w-full rounded-lg border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    {batches.map(b => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </Field>
+                <Field label="Population">
+                  <input readOnly value={selectedBatch?.population ?? ""} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+                </Field>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 lg:gap-12 mt-4">
+                <Field label="Age">
+                  <input readOnly value={selectedBatch ? `${todayAge} days` : ""} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+                </Field>
+                <Field label="Mortality">
+                  <input readOnly value={mortalityEntries.filter(m => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+                </Field>
+              </div>
+              <div className="flex flex-col sm:flex-row justify-end gap-4 mt-4">
+                <button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                  Add
+                </button>
+                <button className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3a2 2 0 01.586-1.414z" /></svg>
+                  Edit
+                </button>
+                <button className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m5 0H4" /></svg>
+                  Delete
+                </button>
+              </div>
+            </Card>
+            {/* Harvesting Table OUTSIDE the Card */}
+            <div className="overflow-x-auto max-h-72 rounded-lg border mt-8">
+              <table className="min-w-full bg-white border border-gray-200 rounded-lg text-sm">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-700">
+                    <th className="px-4 py-2 border">Date</th>
+                    <th className="px-4 py-2 border">Bird Quantity</th>
+            
+                    <th className="px-4 py-2 border">Weight Total</th>
+                    <th className="px-4 py-2 border">Unit</th>
+                    <th className="px-4 py-2 border">Type</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Replace with dynamic DB data when available */}
+                  {/* Example: harvestingEntries.map(row => ( ... )) */}
+                  <tr>
+                    <td colSpan={7} className="text-center text-gray-500 py-8">No entries yet</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            {/* Bird Quality, Type, Weight Total, Add to Inventory */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 sm:gap-6 mt-8 items-end">
+              <div>
+                <Field label="Bird Quantity">
+                  <input type="text" className="w-full rounded-lg border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Enter quantity" />
+                </Field>
+              </div>
+              <div>
+                <Field label="Type">
+                  <select className="w-full rounded-lg border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                    <option value="">Select type</option>
+                    <option value="Harvest">Harvest</option>
+                    <option value="Cull">Cull</option>
+                  </select>
+                </Field>
+              </div>
+              <div>
+                <Field label="Weight Total">
+                  <div className="flex items-center gap-2">
+                    <input type="number" className="w-full rounded-lg border px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500" placeholder="0" min="0" step="0.01" />
+                    <span className="text-sm text-gray-700">Kg</span>
+                  </div>
+                </Field>
+              </div>
+              <div>
+                <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold w-full" type="button">
+                  Add to Inventory
+                </button>
+              </div>
+            </div>
+          </>
+                  
+        )}
+
+        {tab === 'monitoring' && (
+          <React.Fragment>
+            <Card 
+              title="Batch" 
+              right={
+                <div className="flex items-center gap-4">
+                  <Pill>{selectedBatch ? `Start ${formatDate(selectedBatch.startDate)}` : "Select a batch"}</Pill>
+                </div>
+              }
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 lg:gap-12 items-end">
+                <Field label="Batch">
+                  <select
+                    value={batchId}
+                    onChange={e => setBatchId(e.target.value)}
+                        className="w-full rounded-lg border px-4 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
                     {batches.map(b => (
                       <option key={b.id} value={b.id}>
@@ -250,19 +331,39 @@ export default function BatchMain() {
                   </select>
                 </Field>
                 <Field label="Population">
-                  <input readOnly value={selectedBatch?.population ?? ""} className="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50" />
-                </Field>
-                <Field label="Age">
-                  <input readOnly value={selectedBatch ? `${todayAge} days` : ""} className="w-full rounded-lg border px-3 py-2 text-sm bg-gray-50" />
-                </Field>
-              </div>
+                <input readOnly value={selectedBatch?.population ?? ""} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-8 lg:gap-12 mt-4">
+              <Field label="Age">
+                <input readOnly value={selectedBatch ? `${todayAge} days` : ""} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+              </Field>
+              <Field label="Mortality">
+                <input readOnly value={mortalityEntries.filter(m => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+              </Field>
+            </div>
+            <div className="flex flex-col sm:flex-row justify-end gap-4 mt-4">
+              <button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                Add
+              </button>
+              <button className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3a2 2 0 01.586-1.414z" /></svg>
+                Edit
+              </button>
+              <button className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m5 0H4" /></svg>
+                Delete
+              </button>
+            </div>
             </Card>
+           
 
-            <Card title="Feed and Medicine consumption">
-              <div className="lg:grid lg:grid-cols-3 gap-6">
+            <Card title="Feed and Medicine Consumption">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-10">
                 {/* Left side: form and table */}
                 <div className="lg:col-span-2 space-y-4">
-                  <div className="grid sm:grid-cols-4 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
                     <div className="sm:col-span-2">
                       <Field label="Item">
                         <select
@@ -281,7 +382,7 @@ export default function BatchMain() {
                       </Field>
                     </div>
                     <div>
-                      <Field label="Qty">
+                      <Field label="Quantity">
                         <NumberInput value={fmQty} onChange={setFmQty} min={0} step={0.01} placeholder="0" />
                       </Field>
                     </div>
@@ -313,7 +414,7 @@ export default function BatchMain() {
                     </button>
                   </div>
 
-                  <div className="overflow-auto max-h-72 rounded-lg border">
+                  <div className="overflow-x-auto max-h-72 rounded-lg border">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-gray-600 border-b bg-gray-50">
@@ -351,9 +452,9 @@ export default function BatchMain() {
 
             {/* Inventory usage */}
             <Card title="Inventory usage">
-              <div className="lg:grid lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-10">
                 <div className="lg:col-span-2 space-y-4">
-                  <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     <div className="sm:col-span-2">
                       <Field label="Item">
                         <select
@@ -368,7 +469,7 @@ export default function BatchMain() {
                       </Field>
                     </div>
                     <div>
-                      <Field label="Qty">
+                      <Field label="Quantity">
                         <NumberInput value={useQty} onChange={setUseQty} min={0} step={1} placeholder="0" />
                       </Field>
                     </div>
@@ -387,7 +488,7 @@ export default function BatchMain() {
                     </button>
                   </div>
 
-                  <div className="overflow-auto max-h-72 rounded-lg border">
+                  <div className="overflow-x-auto max-h-72 rounded-lg border">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-gray-600 border-b bg-gray-50">
@@ -422,9 +523,9 @@ export default function BatchMain() {
 
             {/* Mortality */}
             <Card title="Mortality">
-              <div className="lg:grid lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-10">
                 <div className="lg:col-span-2 space-y-4">
-                  <div className="grid sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
                     <div>
                       <Field label="Count">
                         <NumberInput value={mortCount} onChange={setMortCount} min={0} step={1} placeholder="0" />
@@ -457,7 +558,7 @@ export default function BatchMain() {
                     </button>
                   </div>
 
-                  <div className="overflow-auto max-h-72 rounded-lg border">
+                  <div className="overflow-x-auto max-h-72 rounded-lg border">
                     <table className="w-full text-sm">
                       <thead>
                         <tr className="text-left text-gray-600 border-b bg-gray-50">
@@ -491,24 +592,23 @@ export default function BatchMain() {
             </Card>
 
             <Divider />
-            <div className="text-xs text-gray-500">
-              <p>UI scaffold with chart slots integrated beside each section.</p>
-            </div>
+      
           </React.Fragment>
         )}
       </main>
-
-      {/* Bottom action bar */}
-      <div className="sticky bottom-0 bg-white border-t">
-        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-end">
-          <button
-            onClick={() => alert("Wire this to your API later")}
-            className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors"
-          >
+      {/* Save Button as normal block below content, only in monitoring */}
+{tab === 'monitoring' && (
+        <div className="w-full flex justify-end m-0 mb-20 px-2 sm:pr-6 md:pr-10 lg:pr-20">
+          <button className="w-full sm:max-w-xs bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl shadow-lg font-bold text-lg flex items-center justify-center gap-2" type="button">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
             Save
           </button>
         </div>
-      </div>
-    </div>
+      )}
+
+   
+        </div>
+      
+   
   );
 }
