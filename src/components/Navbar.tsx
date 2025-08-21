@@ -162,7 +162,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
           )}
         </ul>
 
-        {/* Right: Profile and Logout */}
+ {/* Right: Profile and Logout */}
         <div className="flex items-center justify-end space-x-2 w-full sm:w-auto">
           {/* Mobile Notification Bell comes before Connect Button */}
           <div className="flex sm:hidden space-x-2">
@@ -194,7 +194,14 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
             <span>Logout</span>
           </button>
 
-          <UserCircle size={38} className="text-white" />
+          {/* User Profile Image Placeholder (visible on all views) */}
+          <div className="ml-2">
+            <img
+              src="/Extras/user-placeholder.png"
+              alt="User"
+              className="h-10 w-10 rounded-full object-cover border-2 border-white shadow"
+            />
+          </div>
         </div>
       </div>
 
