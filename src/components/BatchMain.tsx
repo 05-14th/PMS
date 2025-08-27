@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
+import axios from "axios";
 
 /**
  * Poultry Farm Monitoring UI - UI only
@@ -8,7 +9,7 @@ import React, { useMemo, useState } from "react";
 
 type Batch = {
   id: string;
-  name: string;
+  name: number;
   startDate: string; // ISO date
   population: number;
 };
@@ -96,11 +97,13 @@ function daysBetween(a: string | Date, b: string | Date) {
 }
 
 export default function BatchMain() {
-  // Sample data
-  const [batches] = useState<Batch[]>([
+  /* Sample data
+  const [batches, setBatches] = useState<Batch[]>([
     { id: "b1", name: "Batch 1", startDate: new Date(Date.now() - 14 * 86400000).toISOString(), population: 200 },
     { id: "b2", name: "Batch 2", startDate: new Date(Date.now() - 5 * 86400000).toISOString(), population: 120 },
-  ]);
+  ]); */
+  const serverHost = import.meta.env.VITE_APP_SERVERHOST;
+  const [batches, setBatches] = useState<Batch[]>([]);
 
   const [items] = useState<InventoryItem[]>([
     { id: "i1", name: "Starter Feed", category: "feed", defaultUnit: "kg" },
@@ -108,6 +111,25 @@ export default function BatchMain() {
     { id: "i3", name: "Vitamin Mix", category: "medicine", defaultUnit: "ml" },
     { id: "i4", name: "Bedding", category: "general", defaultUnit: "pcs" },
   ]);
+
+  useEffect(() => {
+    async function fetchBatches() {
+      try {
+        const res = await axios.get(`${serverHost}/getBatches`);
+        // Map backend fields to frontend Batch type
+        const mapped = res.data.map((b: any) => ({
+          id: b.BatchNumber,
+          name: `Batch ${b.BatchNumber}`,
+          startDate: b.StartDate,
+          population: b.CurrentChicken,
+        }));
+        setBatches(mapped);
+      } catch (err) {
+        console.error("Failed to fetch batches:", err);
+      }
+    }
+    fetchBatches();
+  }, []);
 
   // Selection
   const [batchId, setBatchId] = useState<string>("b1");
@@ -323,6 +345,7 @@ export default function BatchMain() {
                     onChange={e => setBatchId(e.target.value)}
                         className="w-full rounded-lg border px-4 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   >
+                    <option value="">Select batch</option>
                     {batches.map(b => (
                       <option key={b.id} value={b.id}>
                         {b.name}
