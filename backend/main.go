@@ -7,10 +7,19 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
+	"golang.org/x/crypto/bcrypt"
+	"io"
+)
+
+// Database configuration
+const (
+	DBName    = "chickmate_poultrydb"
+	TableUsers = "cm_users"
 )
 
 type User struct {
@@ -112,6 +121,17 @@ type DhtData struct {
 	Humidity    float64 `json:"temp_humidity"`
 	CageNum     int     `json:"temp_cage_num"`
 	CreatedAt   string  `json:"created_at"`
+}
+
+type RegisterRequest struct {
+	Username    string `json:"username"`
+	FirstName   string `json:"firstName"`
+	LastName    string `json:"lastName"`
+	Suffix      string `json:"suffix"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phoneNumber"`
+	Password    string `json:"password"`
+	Role        string `json:"role"`
 }
 
 var db *sql.DB
@@ -542,9 +562,134 @@ func handleUpdateMortality(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func registerUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	err := r.ParseMultipartForm(10 << 20) // 10 MB max file size
+	if err != nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Error parsing form data: " + err.Error(),
+		})
+		return
+	}
+
+	username := r.FormValue("username")
+	firstName := r.FormValue("firstName")
+	lastName := r.FormValue("lastName")
+	suffix := r.FormValue("suffix")
+	email := r.FormValue("email")
+	phoneNumber := r.FormValue("phoneNumber")
+	password := r.FormValue("password")
+	role := r.FormValue("role")
+
+	if username == "" || firstName == "" || lastName == "" || email == "" || phoneNumber == "" || password == "" || role == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "All fields are required",
+		})
+		return
+	}
+
+	file, handler, err := r.FormFile("profilePic")
+	var profilePicPath string
+	if err == nil {
+		defer file.Close()
+		
+		ext := filepath.Ext(handler.Filename)
+		profilePicPath = fmt.Sprintf("uploads/profile_%d%s", time.Now().UnixNano(), ext)
+		
+		if _, err := os.Stat("uploads"); os.IsNotExist(err) {
+			os.Mkdir("uploads", 0755)
+		}
+
+		dst, err := os.Create(profilePicPath)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Error saving profile picture",
+			})
+			return
+		}
+		defer dst.Close()
+
+		if _, err := io.Copy(dst, file); err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Error saving profile picture",
+			})
+			return
+		}
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Error hashing password",
+		})
+		return
+	}
+
+	fullName := firstName + " " + lastName
+	if suffix != "" {
+		fullName += " " + suffix
+	}
+
+	query := `INSERT INTO ` + TableUsers + ` 
+		  (username, first_name, last_name, suffix, email, phone_number, password, role, profile_pic, created_at) 
+		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
+
+	_, err = db.Exec(query, 
+		username, 
+		firstName, 
+		lastName, 
+		suffix, 
+		email, 
+		phoneNumber, 
+		hashedPassword, 
+		role, 
+		profilePicPath,
+	)
+	if err != nil {
+		if profilePicPath != "" {
+			os.Remove(profilePicPath)
+		}
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Error creating user: " + err.Error(),
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "User registered successfully",
+	})
+}
+
 func main() {
 	initDB()
-	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
+	// Add CORS middleware to all routes
+	corsHandler := func(h http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
+			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
+			if r.Method == "OPTIONS" {
+				return
+			}
+			h.ServeHTTP(w, r)
+		})
+	}
+
+	http.Handle("/api/register", corsHandler(http.HandlerFunc(registerUser)))
+	http.HandleFunc("/getUsers", withCORS(getUsers))
 	http.HandleFunc("/getItems", withCORS(getItems))
 	http.HandleFunc("/getBatches", withCORS(getBatches))
 	http.HandleFunc("/getHarvests", withCORS(getHarvests))
