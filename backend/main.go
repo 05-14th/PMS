@@ -420,6 +420,48 @@ func getProductById(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(products)
 }
 
+func handleFeedMedsData(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var data struct {
+		ItemName string `json:"item_name"`
+		Category string `json:"category"`
+		Unit     string `json:"unit"`
+		Quantity int    `json:"quantity"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	stmt, err := db.Prepare(os.Getenv("INSERT_INVENTORY"))
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer stmt.Close()
+
+	result, err := stmt.Exec(data.ItemName, data.Category, data.Unit, data.Quantity, 0.0, 1) // Placeholder values for UnitCost and SupplierID
+	if err != nil {
+		http.Error(w, "Failed to insert data", http.StatusInternalServerError)
+		return
+	}
+
+	id, _ := result.LastInsertId()
+	response := map[string]interface{}{
+		"success": true,
+		"id":      id,
+		"message": "Data received successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
 func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -456,6 +498,44 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 		"success": true,
 		"id":      id,
 		"message": "Data received successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+func handleUpdateMortality(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var data struct {
+		MortalityID int `json:"mortality_id"`
+		BirdsLoss   int `json:"birds_loss"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	stmt, err := db.Prepare(os.Getenv("UPDATE_MORTALITY"))
+	if err != nil {
+		http.Error(w, "Database error", http.StatusInternalServerError)
+		return
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(data.BirdsLoss, data.MortalityID)
+	if err != nil {
+		http.Error(w, "Failed to update data", http.StatusInternalServerError)
+		return
+	}
+
+	response := map[string]interface{}{
+		"success": true,
+		"message": "Data updated successfully",
 	}
 
 	w.Header().Set("Content-Type", "application/json")
