@@ -240,13 +240,24 @@ INSERT INTO `cm_suppliers` (`SupplierID`, `SupplierName`, `ContactPerson`, `Phon
 -- Table structure for table `cm_users`
 --
 
+DROP TABLE IF EXISTS `cm_users`;
+
 CREATE TABLE `cm_users` (
-  `usr_id` int(11) NOT NULL,
-  `usr_fullname` varchar(255) NOT NULL,
-  `usr_username` varchar(30) NOT NULL,
-  `usr_pass` varchar(255) NOT NULL,
-  `usr_role` varchar(15) NOT NULL,
-  `usr_status` varchar(10) NOT NULL
+  `id` int(11) NOT NULL AUTO_INCREMENT,
+  `username` varchar(50) NOT NULL,
+  `first_name` varchar(100) NOT NULL,
+  `last_name` varchar(100) NOT NULL,
+  `suffix` varchar(10) DEFAULT NULL,
+  `email` varchar(100) NOT NULL,
+  `phone_number` varchar(20) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` varchar(20) NOT NULL,
+  `profile_pic` varchar(255) DEFAULT NULL,
+  `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  UNIQUE KEY `email` (`email`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;
 
 --
@@ -314,7 +325,8 @@ ALTER TABLE `cm_suppliers`
 -- Indexes for table `cm_users`
 --
 ALTER TABLE `cm_users`
-  ADD PRIMARY KEY (`usr_id`);
+  ADD KEY `idx_username` (`username`),
+  ADD KEY `idx_email` (`email`);
 
 --
 -- AUTO_INCREMENT for dumped tables
@@ -372,7 +384,7 @@ ALTER TABLE `cm_suppliers`
 -- AUTO_INCREMENT for table `cm_users`
 --
 ALTER TABLE `cm_users`
-  MODIFY `usr_id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
 
 --
 -- Constraints for dumped tables
