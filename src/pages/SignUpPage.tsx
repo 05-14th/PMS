@@ -22,7 +22,7 @@ const SignUpPage: React.FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -42,10 +42,50 @@ const SignUpPage: React.FC = () => {
 
     setLoading(true);
 
-    setTimeout(() => {
+    try {
+      const formData = new FormData();
+      formData.append('username', username);
+      formData.append('firstName', firstName);
+      formData.append('lastName', lastName);
+      formData.append('suffix', suffix);
+      formData.append('email', email);
+      formData.append('phoneNumber', phoneNumber);
+      formData.append('password', password);
+      formData.append('role', role);
+      formData.append('profilePic', profilePic);
+
+      const response = await fetch('http://localhost:8080/api/register', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(text || 'Registration failed');
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Registration failed');
+      }
+
+      alert('Registration successful! Please login.');
+      window.location.href = '/login';
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      setError(errorMessage);
+      console.error('Registration error:', err);
+    } finally {
       setLoading(false);
-      alert(`Signed up successfully as ${role}!`);
-    }, 1000);
+    }
   };
 
   return (
