@@ -49,9 +49,9 @@ type MortalityEntry = {
 
 function Card({ title, children, right }: { title: string; children?: React.ReactNode; right?: React.ReactNode }) {
   return (
-    <div className="rounded-lg shadow border border-gray-200 bg-white">
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white">
-        <h3 className="text-base font-semibold text-gray-800">{title}</h3>
+    <div className="rounded-lg shadow-md border border-gray-100 bg-white overflow-hidden">
+      <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-white">
+        <h3 className="text-lg font-semibold text-gray-800">{title}</h3>
         {right}
       </div>
       <div className="p-4">{children}</div>
@@ -139,7 +139,6 @@ export default function BatchMain() {
   const [usageEntries, setUsageEntries] = useState<InventoryUsageEntry[]>([]);
   const [mortalityEntries, setMortalityEntries] = useState<MortalityEntry[]>([]);
 
-
   const selectedBatch = useMemo(() => batches.find(b => b.id === batchId) || null, [batches, batchId]);
   const todayAge = useMemo(() => (selectedBatch ? daysBetween(selectedBatch.startDate, new Date()) : 0), [selectedBatch]);
 
@@ -214,16 +213,24 @@ export default function BatchMain() {
   return (
     <div className="min-h-[200vh] sm:min-h-[120vh] bg-gray-50 text-gray-900 flex flex-col">
       <main className="max-w-full mx-auto w-full px-2 sm:px-6 md:px-10 lg:px-20 py-6 sm:py-10 md:py-16 lg:py-20 space-y-10 sm:space-y-12 md:space-y-16 flex-1 pb-32">
-        {/* Sub-tabs */}
-        <div className="flex gap-2 mb-4 flex-wrap">
+        {/* Modern Tabs */}
+        <div className="flex space-x-1 rounded-lg bg-gray-100 p-1">
           <button
-            className={`px-4 py-2 rounded-t-lg font-semibold text-sm border-b-2 transition-colors duration-150 ${tab === 'monitoring' ? 'border-orange-500 text-orange-600 bg-white' : 'border-transparent text-gray-500 bg-gray-100 hover:border-orange-500 hover:text-orange-600'}`}
+            className={`flex-1 rounded-md py-2.5 text-sm font-medium leading-5 transition-all duration-200 ${
+              tab === 'monitoring'
+                ? 'bg-white shadow-md text-green-600'
+                : 'text-gray-600 hover:bg-white/[0.12] hover:text-gray-700'
+            }`}
             onClick={() => setTab('monitoring')}
           >
             Monitoring
           </button>
           <button
-            className={`px-4 py-2 rounded-t-lg font-semibold text-sm border-b-2 transition-colors duration-150 ${tab === 'harvesting' ? 'border-orange-500 text-orange-600 bg-white' : 'border-transparent text-gray-500 bg-gray-100 hover:border-orange-500 hover:text-orange-600'}`}
+            className={`flex-1 rounded-md py-2.5 text-sm font-medium leading-5 transition-all duration-200 ${
+              tab === 'harvesting'
+                ? 'bg-white shadow-md text-green-600'
+                : 'text-gray-600 hover:bg-white/[0.12] hover:text-gray-700'
+            }`}
             onClick={() => setTab('harvesting')}
           >
             Harvesting
@@ -257,17 +264,32 @@ export default function BatchMain() {
                   <input readOnly value={mortalityEntries.filter(m => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
                 </Field>
               </div>
-              <div className="flex flex-col sm:flex-row justify-end gap-4 mt-4">
-                <button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+              <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+                <button 
+                  className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm hover:shadow" 
+                  type="button"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
                   Add
                 </button>
-                <button className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3a2 2 0 01.586-1.414z" /></svg>
+                <button 
+                  className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 shadow-sm hover:shadow" 
+                  type="button"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3a2 2 0 01.586-1.414z" />
+                  </svg>
                   Edit
                 </button>
-                <button className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m5 0H4" /></svg>
+                <button 
+                  className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-sm hover:shadow" 
+                  type="button"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m5 0H4" />
+                  </svg>
                   Delete
                 </button>
               </div>
@@ -319,7 +341,10 @@ export default function BatchMain() {
                 </Field>
               </div>
               <div>
-                <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-semibold w-full" type="button">
+                <button className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-5 py-2.5 rounded-lg text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-green-500 shadow-sm hover:shadow flex items-center gap-2" type="button">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
                   Add to Inventory
                 </button>
               </div>
@@ -365,17 +390,32 @@ export default function BatchMain() {
                 <input readOnly value={mortalityEntries.filter(m => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
               </Field>
             </div>
-            <div className="flex flex-col sm:flex-row justify-end gap-4 mt-4">
-              <button className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+              <button 
+                className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm hover:shadow" 
+                type="button"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                </svg>
                 Add
               </button>
-              <button className="bg-blue-500 hover:bg-blue-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3a2 2 0 01.586-1.414z" /></svg>
+              <button 
+                className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 shadow-sm hover:shadow" 
+                type="button"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 112.828 2.828L11.828 15.828a2 2 0 01-1.414.586H7v-3a2 2 0 01.586-1.414z" />
+                </svg>
                 Edit
               </button>
-              <button className="bg-red-500 hover:bg-red-600 text-white px-8 py-4 rounded-xl flex items-center gap-4 text-center justify-center sm:justify-start w-full sm:w-auto text-lg font-bold" type="button">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m5 0H4" /></svg>
+              <button 
+                className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-5 py-2.5 rounded-lg flex items-center gap-2 text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-red-500 shadow-sm hover:shadow" 
+                type="button"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m5 0H4" />
+                </svg>
                 Delete
               </button>
             </div>
@@ -424,16 +464,19 @@ export default function BatchMain() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <button
                       onClick={() => {
                         if (!fmItemId || !fmQty) return alert("Pick item and qty");
                         addFeedMedEntry({ itemId: fmItemId, qty: fmQty, unit: fmUnit });
                         setFmQty(undefined);
                       }}
-                      className="rounded-xl bg-orange-500 text-white px-4 py-2 text-sm font-semibold hover:bg-orange-600 transition-colors"
+                      className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm hover:shadow flex items-center gap-2"
                     >
-                      Add entry
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Entry
                     </button>
                   </div>
 
@@ -498,16 +541,19 @@ export default function BatchMain() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <button
                       onClick={() => {
                         if (!useItemId || !useQty) return alert("Pick item and qty");
                         addUsageEntry({ itemId: useItemId, qty: useQty });
                         setUseQty(undefined);
                       }}
-                      className="rounded-xl bg-orange-500 text-white px-4 py-2 text-sm font-semibold hover:bg-black"
+                      className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm hover:shadow flex items-center gap-2"
                     >
-                      Add entry
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Entry
                     </button>
                   </div>
 
@@ -567,7 +613,7 @@ export default function BatchMain() {
                     </div>
                   </div>
 
-                  <div className="flex gap-2">
+                  <div className="flex gap-3">
                     <button
                       onClick={() => {
                         if (!mortCount) return alert("Enter a count");
@@ -575,9 +621,12 @@ export default function BatchMain() {
                         setMortCount(undefined);
                         setMortCause("");
                       }}
-                      className="rounded-xl bg-orange-500 text-white px-4 py-2 text-sm font-semibold hover:bg-black"
+                      className="bg-white text-gray-800 border border-gray-200 hover:bg-gray-50 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 shadow-sm hover:shadow flex items-center gap-2"
                     >
-                      Add entry
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                      </svg>
+                      Add Entry
                     </button>
                   </div>
 
@@ -621,10 +670,15 @@ export default function BatchMain() {
       </main>
       {/* Save Button as normal block below content, only in monitoring */}
 {tab === 'monitoring' && (
-        <div className="w-full flex justify-end m-0 mb-20 px-2 sm:pr-6 md:pr-10 lg:pr-20">
-          <button className="w-full sm:max-w-xs bg-green-600 hover:bg-green-700 text-white py-4 rounded-xl shadow-lg font-bold text-lg flex items-center justify-center gap-2" type="button">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
-            Save
+        <div className="w-full flex justify-end m-0 mb-20 px-4 sm:px-6 md:px-10 lg:px-20">
+          <button 
+            className="w-full sm:max-w-xs bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-medium transition-colors duration-200 focus:ring-2 focus:ring-offset-2 focus:ring-green-500 shadow-sm hover:shadow flex items-center justify-center gap-2" 
+            type="button"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            Save Changes
           </button>
         </div>
       )}

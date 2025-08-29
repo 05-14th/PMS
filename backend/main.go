@@ -10,15 +10,16 @@ import (
 	"path/filepath"
 	"time"
 
+	"io"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 	"golang.org/x/crypto/bcrypt"
-	"io"
 )
 
 // Database configuration
 const (
-	DBName    = "chickmate_poultrydb"
+	DBName     = "chickmate_poultrydb"
 	TableUsers = "cm_users"
 )
 
@@ -596,10 +597,10 @@ func registerUser(w http.ResponseWriter, r *http.Request) {
 	var profilePicPath string
 	if err == nil {
 		defer file.Close()
-		
+
 		ext := filepath.Ext(handler.Filename)
 		profilePicPath = fmt.Sprintf("uploads/profile_%d%s", time.Now().UnixNano(), ext)
-		
+
 		if _, err := os.Stat("uploads"); os.IsNotExist(err) {
 			os.Mkdir("uploads", 0755)
 		}
@@ -644,15 +645,15 @@ func registerUser(w http.ResponseWriter, r *http.Request) {
 		  (username, first_name, last_name, suffix, email, phone_number, password, role, profile_pic, created_at) 
 		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
 
-	_, err = db.Exec(query, 
-		username, 
-		firstName, 
-		lastName, 
-		suffix, 
-		email, 
-		phoneNumber, 
-		hashedPassword, 
-		role, 
+	_, err = db.Exec(query,
+		username,
+		firstName,
+		lastName,
+		suffix,
+		email,
+		phoneNumber,
+		hashedPassword,
+		role,
 		profilePicPath,
 	)
 	if err != nil {

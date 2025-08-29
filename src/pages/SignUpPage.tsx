@@ -120,8 +120,8 @@ const SignUpPage: React.FC = () => {
                        file:mr-4 file:py-2 file:px-4 
                        file:rounded-full file:border-0 
                        file:text-sm file:font-semibold 
-                       file:bg-orange-50 file:text-orange-600 
-                       hover:file:bg-orange-100"
+                       file:bg-green-50 file:text-green-600 
+                       hover:file:bg-green-100"
             required
           />
         </div>
@@ -147,7 +147,7 @@ const SignUpPage: React.FC = () => {
             <input
               type="email"
               className="w-full px-4 py-2 border rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-orange-500"
+                         focus:outline-none focus:ring-2 focus:ring-green-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -160,7 +160,7 @@ const SignUpPage: React.FC = () => {
             <input
               type="text"
               className="w-full px-4 py-2 border rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-orange-500"
+                         focus:outline-none focus:ring-2 focus:ring-green-500"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               required
@@ -244,7 +244,7 @@ const SignUpPage: React.FC = () => {
             <label className="block text-sm font-semibold mb-1">Role</label>
             <select
               className="w-full px-4 py-2 border rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-orange-500"
+                         focus:outline-none focus:ring-2 focus:ring-green-500"
               value={role}
               onChange={(e) => setRole(e.target.value)}
               required
@@ -264,7 +264,7 @@ const SignUpPage: React.FC = () => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-orange-500 hover:bg-orange-600 text-white 
+          className="w-full bg-green-600 hover:bg-orange-600 text-white 
                      py-3 rounded-lg font-semibold transition shadow-md"
         >
           {loading ? "Signing up..." : "Create Account"}

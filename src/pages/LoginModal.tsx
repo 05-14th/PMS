@@ -73,7 +73,7 @@ const LoginModal: React.FC = () => {
         <button
           type="submit"
           disabled={loading}
-          className="mx-auto block bg-orange-500 hover:bg-orange-600 text-white px-6 py-2 rounded-full text-sm shadow-md"
+          className="mx-auto block bg-green-600 hover:bg-green-400 text-white px-6 py-2 rounded-full text-sm shadow-md"
         >
           {loading ? "Signing in..." : "Login"}
         </button>
@@ -82,7 +82,7 @@ const LoginModal: React.FC = () => {
           <button
             type="button"
             onClick={handleSignUpRedirect}
-            className="text-orange-500 font-semibold hover:underline"
+            className="text-green-500 font-semibold hover:underline"
           >
             Sign Up
           </button>
@@ -92,11 +92,11 @@ const LoginModal: React.FC = () => {
   </div>
 
  {/* Right Side - Logo or Illustration */}
-<div className="flex items-center justify-center bg-[#576070] w-full md:w-2/5 h-24 sm:h-40 md:h-auto">
+<div className="flex items-center justify-center bg-green-800 w-full md:w-2/5 h-20 sm:h-32 md:h-auto">
   <img
     src="/Extras/logo2.png"
     alt="Chickmate Logo"
-    className="w-12 sm:w-32 md:w-70"
+    className="w-10 sm:w-24 md:w-60"
   />
 </div>
 

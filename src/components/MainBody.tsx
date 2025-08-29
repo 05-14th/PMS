@@ -7,9 +7,9 @@ interface MainBodyProps {
 
 function MainBody({ children }: MainBodyProps) {
   return (
-    <div className="min-h-screen min-w-screen">
+    <div className="min-h-screen min-w-screen bg-white">
       <Navbar isControl={false}/>
-      <div className="bg-white min-w-screen">
+      <div className="min-w-screen bg-white">
         {children}
       </div>
     </div>

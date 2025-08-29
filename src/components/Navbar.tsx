@@ -32,11 +32,11 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   };
 
   return (
-    <nav className="p-4 shadow-md" style={{ backgroundColor: "#576070" }}>
+    <nav className="p-4 shadow-md bg-green-800">
       <div className="container mx-auto flex items-center justify-between w-full px-2 sm:px-0">
         {/* Left: Logo */}
         <Link to="/homepage" className="flex items-center">
-          <img src="/Extras/logo.png" alt="Logo" className="h-10 w-auto" />
+          <img src="/Extras/logo.png" alt="Logo" className="h-8 w-auto" />
         </Link>
 
         {/* Center: Navigation links */}
@@ -85,15 +85,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               <li>
                 <Link
-                  to="/suppliers"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <Users size={20} />
-                  <span>Suppliers</span>
-                </Link>
-              </li>
-              <li>
-                <Link
                   to="/control"
                   className="flex items-center text-white hover:text-orange-500 space-x-1"
                 >
@@ -111,24 +102,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                 >
                   <LayoutDashboard size={20} />
                   <span>Dashboard</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/environment"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <Thermometer size={20} />
-                  <span>Environmental Control</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/feedWater"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <Droplets size={20} />
-                  <span>Feeding & Watering</span>
                 </Link>
               </li>
               <li>
@@ -164,49 +137,49 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
 
  {/* Right: Profile and Logout */}
         <div className="flex items-center justify-end space-x-2 w-full sm:w-auto">
-          {/* Mobile Notification Bell comes before Connect Button */}
-          <div className="flex sm:hidden space-x-2">
-            <Link to="/notification" className="text-white">
-              <Bell size={28} className="hover:text-orange-500" />
-            </Link>
-            {/* Connect Button */}
-            <button
-              onClick={() => setIsConnectModalOpen(true)}
-              className="flex items-center bg-green-600 text-white px-3 py-1 rounded-full hover:bg-green-500 transition"
-            >
-              <Plug size={20} className="mr-1" />
-              <span>Connect</span>
-            </button>
-          </div>
-
-          {/* Connect Modal */}
-          <ConnectModal
-            isOpen={isConnectModalOpen}
-            onClose={() => setIsConnectModalOpen(false)}
-          />
-
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            className="flex items-center bg-orange-600 text-white px-3 py-1 rounded-full hover:bg-orange-500 transition"
-          >
-            <LogOut size={20} className="mr-0" />
-            <span>Logout</span>
-          </button>
-
-          {/* User Profile Image Placeholder (visible on all views) */}
-          <div className="ml-2">
+          {/* Mobile Profile and Logout */}
+          <div className="flex sm:hidden items-center space-x-3">
             <img
               src="/Extras/user-placeholder.png"
               alt="User"
-              className="h-10 w-10 rounded-full object-cover border-2 border-white shadow"
+              className="h-8 w-8 rounded-full object-cover border-2 border-white"
             />
+            <button
+              onClick={handleLogout}
+              className="flex items-center text-white hover:text-orange-500"
+              title="Logout"
+            >
+              <LogOut size={24} />
+            </button>
+          </div>
+
+          {/* Desktop Profile and Logout */}
+          <div className="hidden sm:flex items-center space-x-2">
+      
+
+            {/* User Profile Image Placeholder (visible on all views) */}
+            <div className="hidden sm:block ml-2">
+              <img
+                src="/Extras/user-placeholder.png"
+                alt="User"
+                className="h-10 w-10 rounded-full object-cover border-2 border-white shadow"
+              />
+            </div>
+
+            {/* Logout Button - Moved after profile for web view */}
+            <button
+              onClick={handleLogout}
+              className="hidden sm:flex items-center text-gray-300 hover:text-gray-500 px-3 py-1.5 text-sm font-medium rounded-md hover:bg-gray-100 transition-colors"
+            >
+              <LogOut size={18} className="mr-2" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </div>
 
       {/* Bottom Mobile Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-[#576070] shadow-inner z-50">
+      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-green-800 shadow-inner z-50">
         <ul className="flex justify-around items-center py-2 text-xs">
           {/* Always show Batches tab except when isControl is true */}
           {!isControl && (
@@ -249,15 +222,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               <li className="w-1/6 text-center">
                 <Link
-                  to="/suppliers"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
-                >
-                  <Users size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Suppliers</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
                   to="/control"
                   className="flex flex-col items-center text-white hover:text-orange-500"
                 >
@@ -290,29 +254,29 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               <li className="w-1/5 text-center">
                 <Link
-                  to="/environment"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
-                >
-                  <Thermometer size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Environmental Control</span>
-                </Link>
-              </li>
-              <li className="w-1/5 text-center">
-                <Link
-                  to="/feedWater"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
-                >
-                  <Droplets size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Feeding & Watering</span>
-                </Link>
-              </li>
-              <li className="w-1/5 text-center">
-                <Link
                   to="/poultry"
                   className="flex flex-col items-center text-white hover:text-orange-500"
                 >
                   <Feather size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Poultry</span>
+                </Link>
+              </li>
+              <li className="w-1/5 text-center">
+                <Link
+                  to="/notification"
+                  className="flex flex-col items-center text-white hover:text-orange-500"
+                >
+                  <Bell size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Notification</span>
+                </Link>
+              </li>
+              <li className="w-1/5 text-center">
+                <Link
+                  to="/homepage"
+                  className="flex flex-col items-center text-white hover:text-orange-500"
+                >
+                  <ServerCog size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">System</span>
                 </Link>
               </li>
             </>
