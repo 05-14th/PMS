@@ -1,7 +1,5 @@
 import React, { useState } from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import ControlBody from "../components/ControlBody";
-import Developing from "../components/Developing";
 import Feedingandwatering from "./Extra/Feedingandwatering";
 
 

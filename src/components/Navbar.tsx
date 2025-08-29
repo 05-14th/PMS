@@ -1,21 +1,15 @@
 import React, { useState } from "react";
-import ConnectModal from "./ConnectModal";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Home,
   Package,
   ShoppingCart,
-  Users,
   Settings,
   LayoutDashboard,
-  Thermometer,
-  Droplets,
   Feather,
   Bell,
   ServerCog,
   LogOut,
-  UserCircle,
-  Plug,
   LayoutList
 } from "lucide-react";
 
@@ -25,7 +19,7 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   const navigate = useNavigate();
-  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [] = useState(false);
 
   const handleLogout = () => {
     navigate("/");

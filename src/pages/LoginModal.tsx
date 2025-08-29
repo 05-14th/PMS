@@ -54,7 +54,7 @@ const LoginModal: React.FC = () => {
           <input
             type="text"
             placeholder="Enter your email"
-            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
             value={username}
             onChange={(e) => setUsername(e.target.value)}
           />
@@ -64,7 +64,7 @@ const LoginModal: React.FC = () => {
           <input
             type="password"
             placeholder="Enter your password"
-            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500"
+            className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
           />

@@ -261,7 +261,7 @@ export default function BatchMain() {
                   <input readOnly value={selectedBatch ? `${todayAge} days` : ""} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
                 </Field>
                 <Field label="Mortality">
-                  <input readOnly value={mortalityEntries.filter(m => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+                  <input readOnly value={mortalityEntries.filter(() => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
                 </Field>
               </div>
               <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
@@ -387,7 +387,7 @@ export default function BatchMain() {
                 <input readOnly value={selectedBatch ? `${todayAge} days` : ""} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
               </Field>
               <Field label="Mortality">
-                <input readOnly value={mortalityEntries.filter(m => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
+                <input readOnly value={mortalityEntries.filter(() => selectedBatch && batches.find(b => b.id === batchId)?.id === batchId).reduce((sum, m) => sum + m.count, 0)} className="w-full rounded-lg border px-4 py-2 text-sm bg-gray-50" />
               </Field>
             </div>
             <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
