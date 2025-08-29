@@ -16,8 +16,6 @@ import TargetModal from './components/TargetModal'
 import Products from './pages/Product'
 import Batches from './pages/Batches'
 
-
-
 function App() {
   return (
     <div className="min-h-screen bg-black">
@@ -25,6 +23,7 @@ function App() {
         <Router>
           <Routes>
             <Route path="/" element={<LoginModal />} />
+            <Route path="/login" element={<LoginModal />} />
             <Route path="/signup" element={<SignUpPage />} />
             <Route path="/homepage" element={<HomePage />} />
             <Route path="/inventory" element={<Inventory />} />
@@ -34,7 +33,6 @@ function App() {
    
             <Route path="/control" element={<Control />} />
        
- 
             <Route path="/poultry" element={<Poultry />} />
             <Route path="/notification" element={<Notification />} />
 

@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const SignUpPage: React.FC = () => {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -78,7 +80,7 @@ const SignUpPage: React.FC = () => {
       }
 
       alert('Registration successful! Please login.');
-      window.location.href = '/login';
+      navigate('/login');
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
       setError(errorMessage);
