@@ -22,6 +22,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   const [] = useState(false);
 
   const handleLogout = () => {
+    localStorage.removeItem("isAuthenticated");
     navigate("/");
   };
 

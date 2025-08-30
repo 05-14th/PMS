@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 
 const LoginModal: React.FC = () => {
@@ -7,6 +7,13 @@ const LoginModal: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    const isAuthenticated = localStorage.getItem("isAuthenticated");
+    if (isAuthenticated) {
+      navigate("/homepage");
+    }
+  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,6 +33,7 @@ const LoginModal: React.FC = () => {
       setLoading(false);
 
       if (data.success) {
+        localStorage.setItem("isAuthenticated", "true");
         navigate("/homepage");
       } else {
         setError(data.error || "Invalid email or password");
