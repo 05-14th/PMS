@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Card, Input, Select, Table, Space, Button, Typography, Row, Col, message } from 'antd';
+import { Card, Input, Select, Table, Space, Button, Typography, Row, Col, message, Modal } from 'antd';
 import type { TableProps } from 'antd';
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
 import AddForm from './Forms_Itemlist/AddForm';
@@ -53,6 +53,9 @@ const ItemList: React.FC = () => {
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
+  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
 
   // ✅ Categories for filtering and form
   const [categories] = useState<Array<{ value: string; label: string; text: string }>>([
@@ -206,8 +209,29 @@ const ItemList: React.FC = () => {
   // 👉 Connect to DELETE /api/items/:id
   // -------------------------------
   const handleDelete = (key: string) => {
-    setItems(items.filter(item => item.key !== key));
-    message.success('Item deleted successfully');
+    setDeletingKey(key);
+    setIsDeleteModalVisible(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!deletingKey) return;
+    
+    try {
+      setIsLoading(true);
+      // TODO: Connect to your API to delete the item
+      // await api.deleteItem(deletingKey);
+      
+      // Update local state
+      setItems(items.filter(item => item.key !== deletingKey));
+      message.success('Item deleted successfully');
+    } catch (error) {
+      console.error('Error deleting item:', error);
+      message.error('Failed to delete item');
+    } finally {
+      setIsLoading(false);
+      setIsDeleteModalVisible(false);
+      setDeletingKey(null);
+    }
   };
 
   return (
@@ -300,6 +324,22 @@ const ItemList: React.FC = () => {
           initialValues={editingItem}
         />
       )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        title="Confirm Delete"
+        open={isDeleteModalVisible}
+        onOk={confirmDelete}
+        onCancel={() => {
+          setIsDeleteModalVisible(false);
+          setDeletingKey(null);
+        }}
+        confirmLoading={isLoading}
+        okText="Delete"
+        okButtonProps={{ danger: true }}
+      >
+        <p>Are you sure you want to delete this item? This action cannot be undone.</p>
+      </Modal>
     </div>
   );
 };
