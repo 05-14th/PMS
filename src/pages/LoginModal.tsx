@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import Cookies from 'js-cookie';
 
 const LoginModal: React.FC = () => {
   const navigate = useNavigate();
@@ -8,13 +7,6 @@ const LoginModal: React.FC = () => {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const isAuthenticated = Cookies.get('session_token');
-    if (isAuthenticated) {
-      navigate('/homepage');
-    }
-  }, [navigate]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +26,6 @@ const LoginModal: React.FC = () => {
       setLoading(false);
 
       if (data.success) {
-        Cookies.set('session_token', data.token, { expires: 1 }); // Assumes token is returned in `data.token`
         navigate("/homepage");
       } else {
         setError(data.error || "Invalid email or password");
