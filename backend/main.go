@@ -698,8 +698,9 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var storedPassword string
-	query := "SELECT password FROM " + TableUsers + " WHERE email = ?"
-	err := db.QueryRow(query, req.Email).Scan(&storedPassword)
+	var userRole string
+	query := "SELECT password, role FROM " + TableUsers + " WHERE email = ?"
+	err := db.QueryRow(query, req.Email).Scan(&storedPassword, &userRole)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			w.WriteHeader(http.StatusUnauthorized)
@@ -730,6 +731,7 @@ func loginUser(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "Login successful",
+		"role":    userRole,
 	})
 }
 

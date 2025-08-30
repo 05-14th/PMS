@@ -23,8 +23,13 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
 
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userRole");  
     navigate("/");
   };
+
+  const userEmail = localStorage.getItem("userEmail") || "";
+  const userRole = localStorage.getItem("userRole") || "";
 
   return (
     <nav className="p-4 shadow-md bg-green-800">
@@ -121,7 +126,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
           )}
         </ul>
 
- {/* Right: Profile and Logout */}
+        {/* Right: User Info and Logout */}
         <div className="flex items-center justify-end space-x-2 w-full sm:w-auto">
           {/* Mobile Profile and Logout */}
           <div className="flex sm:hidden items-center space-x-3">
@@ -135,13 +140,20 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
           </div>
 
           {/* Desktop Profile and Logout */}
-          <div className="hidden sm:flex items-center space-x-2">
-      
-
-            {/* Logout Button - Moved after profile for web view */}
+          <div className="hidden sm:flex items-center space-x-4">
+            {userEmail && (
+              <div className="hidden sm:flex flex-col items-end">
+                <span className="text-white text-sm font-medium">{userEmail}</span>
+                {userRole && (
+                  <span className="text-green-200 text-xs">
+                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                  </span>
+                )}
+              </div>
+            )}
             <button
               onClick={handleLogout}
-              className="hidden sm:flex items-center text-gray-300 hover:text-gray-500 px-3 py-1.5 text-sm font-medium rounded-md hover:bg-gray-100 transition-colors"
+              className="flex items-center text-white hover:bg-green-700 px-3 py-1 rounded-md text-sm font-medium"
             >
               <LogOut size={18} className="mr-2" />
               <span>Logout</span>

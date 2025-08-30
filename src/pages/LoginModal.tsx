@@ -34,6 +34,8 @@ const LoginModal: React.FC = () => {
 
       if (data.success) {
         localStorage.setItem("isAuthenticated", "true");
+        localStorage.setItem("userEmail", email);
+        localStorage.setItem("userRole", data.role);  
         navigate("/homepage");
       } else {
         setError(data.error || "Invalid email or password");
