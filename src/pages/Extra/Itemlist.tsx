@@ -1,7 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Card, Input, Select, Table, Space, Button, Typography, Row, Col, message } from 'antd';
 import type { TableProps } from 'antd';
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
+import AddForm from './Forms_Itemlist/AddForm';
+import EditForm from './Forms_Itemlist/EditForm';
 
 const { Title } = Typography;
 
@@ -15,12 +17,44 @@ interface Item {
 }
 
 const ItemList: React.FC = () => {
-  const [items, setItems] = useState<Item[]>([]);
-  const [loading, setLoading] = useState<boolean>(false);
+  // -------------------------------
+  // Gerry (Backend Dev 👨‍💻)
+  // 👉 Replace this placeholder with API response from GET /api/items
+  // -------------------------------
+  const [items, setItems] = useState<Item[]>([
+    {
+      key: '1',
+      ItemID: '1',
+      ItemName: 'Chicken Feed',
+      Category: 'Feed',
+      Unit: 'kg',
+      SupplierID: '101',
+    },
+    {
+      key: '2',
+      ItemID: '2',
+      ItemName: 'Vitamin Boost',
+      Category: 'Vitamins',
+      Unit: 'pcs',
+      SupplierID: '102',
+    },
+    {
+      key: '3',
+      ItemID: '3',
+      ItemName: 'Disinfectant',
+      Category: 'Medicine',
+      Unit: 'liter',
+      SupplierID: '103',
+    },
+  ]);
+
   const [searchText, setSearchText] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
 
-  // ✅ Categories for filtering
+  // ✅ Categories for filtering and form
   const [categories] = useState<Array<{ value: string; label: string; text: string }>>([
     { value: 'all', label: 'All Categories', text: 'All Categories' },
     { value: 'feed', label: 'Feed', text: 'Feed' },
@@ -29,32 +63,11 @@ const ItemList: React.FC = () => {
     { value: 'equipment', label: 'Equipment', text: 'Equipment' },
   ]);
 
-  // ✅ Fetch items from backend API
-  useEffect(() => {
-    const fetchItems = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch('http://localhost:8080/api/items'); // adjust API URL
-        if (!res.ok) throw new Error('Failed to fetch items');
-        const data = await res.json();
-        // Add a "key" field for antd table
-        const formatted = data.map((item: any) => ({
-          ...item,
-          key: item.ItemID.toString(),
-        }));
-        setItems(formatted);
-      } catch (err) {
-        console.error(err);
-        message.error('Error fetching items');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchItems();
-  }, []);
-
-  // ✅ Table columns
+  // -------------------------------
+  // Gerry (Backend Dev 👨‍💻)
+  // 👉 Define how to render data from API in the table
+  // Columns map to database fields (ItemName, Category, Unit)
+  // -------------------------------
   const columns: TableProps<Item>['columns'] = [
     {
       title: 'ITEM NAME',
@@ -88,12 +101,32 @@ const ItemList: React.FC = () => {
       width: 200,
       render: (_, record) => (
         <Space size="small">
+          {/* -------------------------------
+              Gerry (Backend Dev 👨‍💻)
+              👉 Hook this button to POST /api/items (duplicate/add based on record)
+          -------------------------------- */}
+          <Button
+            type="text"
+            icon={<PlusOutlined className="text-green-500" />}
+            onClick={() => handleAdd()}
+            className="hover:bg-green-50"
+          />
+
+          {/* -------------------------------
+              Gerry (Backend Dev 👨‍💻)
+              👉 Hook this button to PUT /api/items/:id
+          -------------------------------- */}
           <Button
             type="text"
             icon={<EditOutlined className="text-blue-500" />}
             onClick={() => handleEdit(record)}
             className="hover:bg-blue-50"
           />
+
+          {/* -------------------------------
+              Gerry (Backend Dev 👨‍💻)
+              👉 Hook this button to DELETE /api/items/:id
+          -------------------------------- */}
           <Button
             type="text"
             danger
@@ -122,14 +155,56 @@ const ItemList: React.FC = () => {
     setCategoryFilter(value);
   };
 
+  // -------------------------------
+  // Gerry (Backend Dev 👨‍💻)
+  // 👉 Connect to POST /api/items for adding a new item
+  // -------------------------------
   const handleAdd = () => {
-    console.log('Add new item');
+    setIsAddModalVisible(true);
   };
 
-  const handleEdit = (item: Item) => {
-    console.log('Edit item:', item);
+  const handleAddCancel = () => {
+    setIsAddModalVisible(false);
   };
 
+  const handleAddSubmit = (values: any) => {
+    // TODO: Connect to your API to add the new item
+    console.log('Received values of form: ', values);
+    
+    // For now, just show a success message and close the modal
+    message.success('Item added successfully');
+    setIsAddModalVisible(false);
+    
+    // TODO: Update the items list after successful API call
+    // setItems([...items, newItem]);
+  };
+
+  const handleEdit = (record: Item) => {
+    setEditingItem(record);
+    setIsEditModalVisible(true);
+  };
+
+  const handleUpdate = (values: any) => {
+    // TODO: Connect to your API to update the item
+    console.log('Updating item:', values);
+    
+    // For now, just show a success message and close the modal
+    message.success('Item updated successfully');
+    setIsEditModalVisible(false);
+    
+    // TODO: Update the items list after successful API call
+    // setItems(items.map(item => item.key === values.key ? { ...item, ...values } : item));
+  };
+
+  const handleEditCancel = () => {
+    setIsEditModalVisible(false);
+    setEditingItem(null);
+  };
+
+  // -------------------------------
+  // Gerry (Backend Dev 👨‍💻)
+  // 👉 Connect to DELETE /api/items/:id
+  // -------------------------------
   const handleDelete = (key: string) => {
     setItems(items.filter(item => item.key !== key));
     message.success('Item deleted successfully');
@@ -174,14 +249,7 @@ const ItemList: React.FC = () => {
               />
             </Col>
             <Col xs={8} sm={24} md={24} lg={6} xl={4} className="flex justify-end">
-              <Button
-                type="text"
-                icon={<PlusOutlined className="text-green-600" />}
-                onClick={handleAdd}
-                className="w-full sm:w-auto flex items-center gap-1 text-green-600 hover:text-green-700 transition-colors"
-              >
-                <span className="hidden sm:inline">Add New Item</span>
-              </Button>
+              {/* Removed the Add New Item button as requested */}
             </Col>
           </Row>
         </div>
@@ -190,7 +258,6 @@ const ItemList: React.FC = () => {
           <Table
             columns={columns}
             dataSource={filteredItems}
-            loading={loading}
             rowKey="key"
             pagination={{
               pageSize: 10,
@@ -214,6 +281,25 @@ const ItemList: React.FC = () => {
           />
         </div>
       </Card>
+
+      {/* Add Item Modal */}
+      <AddForm
+        visible={isAddModalVisible}
+        onCreate={handleAddSubmit}
+        onCancel={handleAddCancel}
+        categories={categories}
+      />
+      
+      {/* Edit Item Modal */}
+      {editingItem && (
+        <EditForm
+          visible={isEditModalVisible}
+          onUpdate={handleUpdate}
+          onCancel={handleEditCancel}
+          categories={categories}
+          initialValues={editingItem}
+        />
+      )}
     </div>
   );
 };

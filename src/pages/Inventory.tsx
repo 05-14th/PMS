@@ -2,6 +2,7 @@ import { useState } from "react";
 import MainBody from "../components/MainBody";
 import StockLevels from "./Extra/StockLevels";
 import ItemList from "./Extra/Itemlist";
+import Supplier from "./Extra/Supplier";
 
 // Define the tab types
 type TabType = "stock" | "items" | "suppliers";
@@ -23,7 +24,7 @@ function InventoryPage() {
       case "items":
         return <ItemList />;
       case "suppliers":
-        return <div>Suppliers content will go here</div>;
+        return <Supplier />;
       default:
         return <ItemList />;
     }
