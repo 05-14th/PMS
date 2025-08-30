@@ -151,92 +151,94 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
       </div>
 
       {/* Bottom Mobile Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-white shadow-inner z-50 border-t border-gray-200">
+      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-green-800 shadow-inner z-50">
         <ul className="flex justify-around items-center py-2 text-xs">
           {/* Always show Batches tab except when isControl is true */}
-          {!isControl ? (
+          {!isControl && (
             <>
               <li className="w-1/6 text-center">
                 <Link
                   to="/homepage"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Home size={20} className="text-green-600" />
+                  <Home size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Home</span>
                 </Link>
               </li>
               <li className="w-1/6 text-center">
                 <Link
                   to="/inventory"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Package size={20} className="text-green-600" />
+                  <Package size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Inventory</span>
                 </Link>
               </li>
               <li className="w-1/6 text-center">
                 <Link
                   to="/batches"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <LayoutList size={20} className="text-green-600" />
+                  <LayoutList size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Batches</span>
                 </Link>
               </li>
               <li className="w-1/6 text-center">
                 <Link
                   to="/sales"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <ShoppingCart size={20} className="text-green-600" />
+                  <ShoppingCart size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Sales</span>
                 </Link>
               </li>
               <li className="w-1/6 text-center">
                 <Link
                   to="/control"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Settings size={20} className="text-green-600" />
+                  <Settings size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Control</span>
                 </Link>
               </li>
             </>
-          ) : (
+          )}
+          {/* If isControl, show only control-related tabs, but hide Batches */}
+          {isControl && (
             <>
               <li className="w-1/5 text-center">
                 <Link
                   to="/homepage"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <ServerCog size={20} className="text-green-600" />
+                  <ServerCog size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">System</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
                   to="/poultry"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Feather size={20} className="text-green-600" />
+                  <Feather size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Poultry</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
                   to="/notification"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Bell size={20} className="text-green-600" />
+                  <Bell size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Notification</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
                   to="/homepage"
-                  className="flex flex-col items-center text-green-600 hover:text-green-700"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <ServerCog size={20} className="text-green-600" />
+                  <ServerCog size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">System</span>
                 </Link>
               </li>
