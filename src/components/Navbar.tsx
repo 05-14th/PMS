@@ -130,6 +130,16 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
         <div className="flex items-center justify-end space-x-2 w-full sm:w-auto">
           {/* Mobile Profile and Logout */}
           <div className="flex sm:hidden items-center space-x-3">
+            {userEmail && (
+              <div className="flex flex-col items-end mr-2">
+                <span className="text-white text-sm font-medium">{userEmail}</span>
+                {userRole && (
+                  <span className="text-green-200 text-xs">
+                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                  </span>
+                )}
+              </div>
+            )}
             <button
               onClick={handleLogout}
               className="flex items-center text-white hover:text-green-500"
