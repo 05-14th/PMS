@@ -36,13 +36,13 @@ function HomePage() {
 
       {/* Sticky Connect Button */}
       <div className="bg-gray-300 py-7 px-4 flex flex-col items-center justify-center shadow-inner">
-        <h2 className="text-white text-center text-lg md:text-xl mb-3">
+        <h2 className="text-gray-100 text-center text-lg md:text-xl mb-3">
           Connect your device via WiFi and click ‘Connect’ to get started!
         </h2>
 
         <button
           onClick={() => setIsConnectModalOpen(true)}
-          className="bg-orange-600 hover:bg-orange-700 text-white font-semibold py-4 px-10 rounded-lg flex items-center gap-2 text-base shadow"
+          className="bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-10 rounded-lg flex items-center gap-2 text-base shadow"
         >
           Connect Device
           <svg

@@ -135,6 +135,11 @@ type RegisterRequest struct {
 	Role        string `json:"role"`
 }
 
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 var db *sql.DB
 
 func initDB() {
@@ -674,6 +679,60 @@ func registerUser(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func loginUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	var req LoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Email == "" || req.Password == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Email and password are required",
+		})
+		return
+	}
+
+	var storedPassword string
+	query := "SELECT password FROM " + TableUsers + " WHERE email = ?"
+	err := db.QueryRow(query, req.Email).Scan(&storedPassword)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			w.WriteHeader(http.StatusUnauthorized)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Invalid email or password",
+			})
+		} else {
+			w.WriteHeader(http.StatusInternalServerError)
+			json.NewEncoder(w).Encode(map[string]interface{}{
+				"success": false,
+				"error":   "Database error: " + err.Error(),
+			})
+		}
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(req.Password))
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "Invalid email or password",
+		})
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Login successful",
+	})
+}
+
 func main() {
 	initDB()
 	// Add CORS middleware to all routes
@@ -689,6 +748,7 @@ func main() {
 		})
 	}
 
+	http.Handle("/api/login", corsHandler(http.HandlerFunc(loginUser)))
 	http.Handle("/api/register", corsHandler(http.HandlerFunc(registerUser)))
 	http.HandleFunc("/getUsers", withCORS(getUsers))
 	http.HandleFunc("/getItems", withCORS(getItems))

@@ -1,17 +1,9 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-const mockLogin = async (username: string, password: string): Promise<boolean> => {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve(username === "admin" && password === "password");
-    }, 1000);
-  });
-};
-
 const LoginModal: React.FC = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,13 +13,26 @@ const LoginModal: React.FC = () => {
     setError("");
     setLoading(true);
 
-    const success = await mockLogin(username, password);
-    setLoading(false);
+    try {
+      const response = await fetch("http://localhost:8080/api/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ email, password }),
+      });
 
-    if (success) {
-      navigate("/homepage");
-    } else {
-      setError("Invalid username or password");
+      const data = await response.json();
+      setLoading(false);
+
+      if (data.success) {
+        navigate("/homepage");
+      } else {
+        setError(data.error || "Invalid email or password");
+      }
+    } catch (err) {
+      setLoading(false);
+      setError("Failed to connect to the server. Please try again later.");
     }
   };
 
@@ -59,11 +64,11 @@ const LoginModal: React.FC = () => {
             <div>
               <label className="text-sm font-semibold">Email</label>
               <input
-                type="text"
+                type="email"
                 placeholder="Enter your email"
                 className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
               />
             </div>
             <div>

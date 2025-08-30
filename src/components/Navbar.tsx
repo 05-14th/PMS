@@ -91,15 +91,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
             <>
               <li>
                 <Link
-                  to="/control"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <LayoutDashboard size={20} />
-                  <span>Dashboard</span>
-                </Link>
-              </li>
-              <li>
-                <Link
                   to="/poultry"
                   className="flex items-center text-white hover:text-orange-500 space-x-1"
                 >
@@ -235,15 +226,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                 >
                   <ServerCog size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">System</span>
-                </Link>
-              </li>
-              <li className="w-1/5 text-center">
-                <Link
-                  to="/control"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
-                >
-                  <LayoutDashboard size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Dashboard</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
