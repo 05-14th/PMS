@@ -1,11 +1,11 @@
-function Inventory() {
-    return (
-      <div>
-        <h2>Inventory Page</h2>
-        {/* your content */}
-      </div>
-    );
-  }
-  
-  export default Inventory;   // 👈 this fixes your error
-  
+import React from 'react';
+
+const Inventory: React.FC = () => {
+  return (
+    <div>
+      <h2>Inventory</h2>
+    </div>
+  );
+};
+
+export default Inventory;

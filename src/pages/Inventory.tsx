@@ -1,32 +1,31 @@
 import { useState } from "react";
 import MainBody from "../components/MainBody";
-
-// ✅ Make sure these exist in: src/pages/Extra/
 import StockLevels from "./Extra/StockLevels";
 import ItemList from "./Extra/Itemlist";
-import Inventory from "./Extra/Inventory";
 
-type TabType = "inventory" | "items" | "stock";
+// Define the tab types
+type TabType = "stock" | "items" | "suppliers";
 
+// Define the tabs in the desired order: left, center, right
 const tabs: { id: TabType; label: string }[] = [
-  { id: "inventory", label: "Inventory" },
-  { id: "items", label: "Items" },
   { id: "stock", label: "Stock Levels" },
+  { id: "items", label: "Item List" },
+  { id: "suppliers", label: "Suppliers" },
 ];
 
 function InventoryPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("inventory");
+  const [activeTab, setActiveTab] = useState<TabType>("items"); // Default to center tab
 
   const renderTabContent = () => {
     switch (activeTab) {
-      case "inventory":
-        return <Inventory />;
-      case "items":
-        return <ItemList />;
       case "stock":
         return <StockLevels />;
+      case "items":
+        return <ItemList />;
+      case "suppliers":
+        return <div>Suppliers content will go here</div>;
       default:
-        return <Inventory />;
+        return <ItemList />;
     }
   };
 
@@ -50,11 +49,9 @@ function InventoryPage() {
           ))}
         </div>
 
-        {/* Content */}
-        <div className="mt-6">
-          <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-sm">
-            {renderTabContent()}
-          </div>
+        {/* Tab Content */}
+        <div className="mt-4">
+          {renderTabContent()}
         </div>
       </div>
     </MainBody>
