@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import ControlBody from "../components/ControlBody";
-import Feedingandwatering from "./Extra/Feedingandwatering";
+import Feedingandwatering from "./Extra/Control/Feedingandwatering";
 
 
 const SubTabsPage: React.FC = () => {
