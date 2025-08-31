@@ -95,15 +95,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
             </>
           ) : (
             <>
-              <li>
-                <Link
-                  to="/poultry"
-                  className="flex items-center text-white hover:text-green-500 space-x-1"
-                >
-                  <Feather size={20} />
-                  <span>Poultry</span>
-                </Link>
-              </li>
+         
               <li>
                 <Link
                   to="/notification"
@@ -203,15 +195,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                 >
                   <LayoutList size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Batches</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
-                  to="/sales"
-                  className="flex flex-col items-center text-white hover:text-green-500"
-                >
-                  <ShoppingCart size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Sales</span>
                 </Link>
               </li>
               <li className="w-1/6 text-center">

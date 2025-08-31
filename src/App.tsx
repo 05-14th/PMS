@@ -5,12 +5,8 @@ import LoginModal from './pages/LoginModal'
 import SignUpPage from './pages/SignUpPage'
 import HomePage from './pages/HomePage'
 import Inventory from './pages/Inventory'
-
 import Control from './pages/Control'
 import Sales from './pages/Sales'
-
-
-import Poultry from './controlPage/Poultry'
 import Notification from './controlPage/Notification'
 import TargetModal from './components/TargetModal'
 import Products from './pages/Product'
@@ -30,12 +26,8 @@ function App() {
             <Route path="/batches" element={<Batches />} />
             <Route path="/products" element={<Products />}/>
             <Route path="/sales" element={<Sales />} />
-   
             <Route path="/control" element={<Control />} />
-       
-            <Route path="/poultry" element={<Poultry />} />
             <Route path="/notification" element={<Notification />} />
-
           </Routes>
         </Router>
       </div>
