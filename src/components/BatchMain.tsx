@@ -143,6 +143,18 @@ export default function BatchesList() {
                       >
                         Details
                       </button>
+                      <button
+                        className="text-sm font-medium text-gray-900 hover:opacity-80"
+                        onClick={() => {}}
+                      >
+                        Edit
+                      </button>
+                      <button
+                        className="text-sm font-medium text-gray-900 hover:opacity-80"
+                        onClick={() => {}}
+                      >
+                        Delete
+                      </button>
                     </td>
                   </tr>
                 ))}

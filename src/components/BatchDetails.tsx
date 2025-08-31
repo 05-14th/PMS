@@ -9,6 +9,13 @@ type DailyEvent = {
   qty: number;
 };
 
+type DailyEventForm = {
+  event: DailyEvent["event"];
+  date: string;
+  details: string;
+  qty: string;
+};
+
 type DirectCost = {
   id: string;
   date: string;
@@ -31,17 +38,21 @@ const api = axios.create({
 });
 
 export default function BatchDetails({ batchId }: { batchId: string }) {
+  const [unit, setUnit] = useState<string>("");
+  const [isEditing, setIsEditing] = useState(false);
   const [vitals, setVitals] = useState<BatchVitals | null>(null);
   const [events, setEvents] = useState<DailyEvent[]>([]);
   const [costs, setCosts] = useState<DirectCost[]>([]);
+  const [items, setItems] = useState<[]>([]);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [newEvent, setNewEvent] = useState<Partial<DailyEvent>>({
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [newEvent, setNewEvent] = useState<DailyEventForm>({
     event: "Consumption",
     date: new Date().toISOString().slice(0, 10),
     details: "",
-    qty: 0,
+    qty: "",
   });
 
   const totalCost = useMemo(
@@ -73,24 +84,64 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
     };
   }, [batchId]);
 
+  const fetchItemById = async (itemType: string) => {
+    try {
+      if (itemType === "Consumption") {
+        itemType = "Feed";
+      }else if (itemType === "Medication") {
+        itemType = "Medicine";
+     }
+      const res = await api.post(`/getItemByType`, { item_type: itemType });
+      setItems(res.data);
+    } catch (e) {
+      console.error("Failed to fetch item details", e);
+    }
+  };
+  
+  const handleClear = () => {
+    setSelectedIdx(null);
+    setIsEditing(false);
+    setNewEvent({
+      event: "Consumption",
+      date: new Date().toISOString().slice(0, 10),
+      details: "",
+      qty: "",
+    });
+  };
+
   const submitEvent = async () => {
     try {
       const payload = {
-        date: newEvent.date,
-        event: newEvent.event,
-        details: newEvent.details,
-        qty: Number(newEvent.qty || 0),
+        Event: newEvent.event,
+        Date: newEvent.date,
+        Details: newEvent.details,
+        Qty: newEvent.qty === "" ? 0 : Number(newEvent.qty),
       };
-      const res = await api.post<{ data: DailyEvent }>(
-        `/batches/${batchId}/events`,
-        payload
-      );
-      setEvents(prev => [res.data.data, ...prev]);
+      // If editing existing event
+      if (selectedIdx !== null) {
+        // Send PUT request to update event in backend
+        const eventToUpdate = events[selectedIdx];
+        console.log(payload)
+        await api.put(`/batches/${batchId}/events`, {
+            Date: payload.Date,
+            Details: payload.Details,
+            Qty: payload.Qty,
+        });
+        setEvents(prev => prev.map((ev, idx) => idx === selectedIdx ? { ...ev, ...payload, qty: payload.Qty } : ev));
+        setSelectedIdx(null);
+      } else {
+        console.log(payload)
+        const res = await api.post<{ data: DailyEvent }>(
+          `/batches/${batchId}/events`,
+          payload
+        );
+        setEvents(prev => [res.data.data, ...prev]);
+      }
       setNewEvent({
         event: "Consumption",
         date: new Date().toISOString().slice(0, 10),
         details: "",
-        qty: 0,
+        qty: "",
       });
     } catch (e: any) {
       alert(e?.message || "Failed to add event");
@@ -136,11 +187,15 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
               <h3 className="text-base font-medium mb-3">Record a Daily Event</h3>
               <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
                 <select
-                  className="border rounded-xl px-3 py-2"
-                  value={newEvent.event}
-                  onChange={e =>
-                    setNewEvent(prev => ({ ...prev, event: e.target.value as DailyEvent["event"] }))
-                  }
+                    className="border rounded-xl px-3 py-2"
+                    value={newEvent.event}
+                    onChange={e => {
+                    setNewEvent(prev => ({
+                        ...prev,
+                        event: e.target.value as DailyEvent["event"],
+                    }));
+                    fetchItemById(e.target.value);
+                    }}
                 >
                   <option value="Consumption">Record Consumption</option>
                   <option value="Medication">Medication</option>
@@ -148,39 +203,63 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
                   <option value="Other">Other</option>
                 </select>
                 <input
-                  type="date"
+                  type="datetime-normal"
                   className="border rounded-xl px-3 py-2"
                   value={newEvent.date}
                   onChange={e =>
                     setNewEvent(prev => ({ ...prev, date: e.target.value }))
                   }
+                  readOnly={isEditing}
                 />
+                {newEvent.event === "Mortality" ? (
+                    <input
+                        type="text"
+                        placeholder="Details"
+                        className="border rounded-xl px-3 py-2 md:col-span-2"
+                        value={newEvent.details}
+                        onChange={e =>
+                        setNewEvent(prev => ({ ...prev, details: e.target.value }))
+                        }
+                    />
+                    ) : (
+                    <select 
+                        className="border rounded-xl px-3 py-2 md:col-span-2"
+                        value={newEvent.details}
+                        onChange={e =>setNewEvent(prev => ({ ...prev, details: e.target.value }))}
+                    >
+                        <option value="">Select Details</option>   
+                        {items.map((item, idx) => (
+                            <option key={idx} value={item.ItemName}>
+                                {item.ItemName}
+                            </option>
+                        ))}
+                    </select>
+                    )
+                }
                 <input
-                  placeholder="Details"
-                  className="border rounded-xl px-3 py-2 md:col-span-2"
-                  value={newEvent.details}
-                  onChange={e =>
-                    setNewEvent(prev => ({ ...prev, details: e.target.value }))
-                  }
-                />
-                <input
-                  type="number"
-                  min={0}
-                  step="0.01"
+                  type="text"
                   placeholder="Qty or count"
                   className="border rounded-xl px-3 py-2"
-                  value={newEvent.qty ?? ""}
-                  onChange={e =>
-                    setNewEvent(prev => ({ ...prev, qty: Number(e.target.value) }))
-                  }
+                  value={newEvent.qty}
+                  onChange={e => {
+                    // Only allow numbers and dot
+                    const val = e.target.value.replace(/[^0-9.]/g, "");
+                    setNewEvent(prev => ({ ...prev, qty: val }));
+                  }}
                 />
               </div>
-              <div className="mt-3">
+              <div className="mt-3 flex gap-3">
                 <button
                   onClick={submitEvent}
                   className="px-3 py-2 rounded-xl bg-gray-900 text-white text-sm hover:opacity-90"
                 >
-                  Add Entry
+                    {isEditing ? "Save" : "Add Entry"}
+                </button>
+                <button
+                  onClick={handleClear}
+                  className="px-3 py-2 rounded-xl bg-gray-900 text-white text-sm hover:opacity-90"
+                >
+                    Clear
                 </button>
               </div>
             </section>
@@ -199,16 +278,55 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {events.map((ev, idx) => (
-                      <tr key={idx} className="bg-white">
+                      <tr
+                        key={ev.id || idx}
+                        className={`bg-white cursor-pointer ${selectedIdx === idx ? 'bg-blue-50' : ''}`}
+                        onClick={() => {
+                          setSelectedIdx(idx);
+                          setIsEditing(true);
+                          // Extract only numbers from qty
+                          const qtyNum = ev.qty !== undefined ? ev.qty.toString().replace(/[^0-9.]/g, "") : "";
+                          setNewEvent({
+                            event: ev.event,
+                            date: ev.date,
+                            details: ev.details,
+                            qty: qtyNum,
+                          });
+                        }}
+                      >
                         <td className="px-4 py-2">{ev.date}</td>
                         <td className="px-4 py-2">{ev.event}</td>
                         <td className="px-4 py-2">{ev.details}</td>
                         <td className="px-4 py-2">{ev.qty}</td>
+                        <td className="px-4 py-2 text-center">
+                          <span
+                            style={{ cursor: "pointer" }}
+                            title="Delete"
+                            onClick={e => {
+                              e.stopPropagation();
+                              if (window.confirm("Delete this event?")) {
+                                setEvents(prev => prev.filter((_, i) => i !== idx));
+                                if (selectedIdx === idx) {
+                                  setSelectedIdx(null);
+                                  setNewEvent({
+                                    event: "Consumption",
+                                    date: new Date().toISOString().slice(0, 10),
+                                    details: "",
+                                    qty: "",
+                                  });
+                                }
+                                // TODO: Optionally send delete request to backend here
+                              }
+                            }}
+                          >
+                            x
+                          </span>
+                        </td>
                       </tr>
                     ))}
                     {events.length === 0 && (
                       <tr>
-                        <td colSpan={4} className="px-4 py-6 text-center text-gray-500">
+                        <td colSpan={5} className="px-4 py-6 text-center text-gray-500">
                           No events recorded
                         </td>
                       </tr>

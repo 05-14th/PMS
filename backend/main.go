@@ -1,12 +1,15 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
@@ -21,13 +24,11 @@ type User struct {
 }
 
 type Items struct {
-	ID           string `json:"ItemID"`
-	Name         string `json:"ItemName"`
-	Category     string `json:"Category"`
-	Unit         string `json:"Unit"`
-	Quantity     string `json:"Quantity"`
-	UnitCost     string `json:"UnitCost"`
-	SupplierName string `json:"SupplierName"`
+	ID         string `json:"ItemID"`
+	SupplierID string `json:"SupplierID"`
+	Name       string `json:"ItemName"`
+	Category   string `json:"Category"`
+	Unit       string `json:"Unit"`
 }
 
 type Batches struct {
@@ -117,6 +118,51 @@ type DhtData struct {
 
 var db *sql.DB
 
+// PUT /batches/{id}/events
+func updateBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	var payload struct {
+		Date    string  `json:"Date"`
+		Details string  `json:"Details"`
+		Qty     float32 `json:"Qty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Find UsageID in cm_inventory_usage using payload fields
+	var usageID int
+	usageQuery := `SELECT UsageID FROM cm_inventory_usage WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err := db.QueryRow(usageQuery, batchId, payload.Date).Scan(&usageID)
+	if err == nil {
+		// Update the found UsageID
+		updateQuery := `UPDATE cm_inventory_usage SET QuantityUsed = ? WHERE UsageID = ? AND BatchID = ?`
+		res, err := db.Exec(updateQuery, payload.Qty, usageID, batchId)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	// If not found, try to update in cm_mortality (Mortality)
+	var mortalityID int
+	mortalityQuery := `SELECT MortalityID FROM cm_mortality WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err2 := db.QueryRow(mortalityQuery, batchId, payload.Date).Scan(&mortalityID)
+	if err2 == nil {
+		updateMortality := `UPDATE cm_mortality SET BirdsLoss = ?, Notes = ? WHERE MortalityID = ? AND BatchID = ?`
+		res2, err3 := db.Exec(updateMortality, payload.Qty, payload.Details, mortalityID, batchId)
+		if err3 != nil {
+			http.Error(w, err3.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res2.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	http.Error(w, "Event not found for update", http.StatusNotFound)
+}
+
 func initDB() {
 	var err error
 	if err := godotenv.Load(); err != nil {
@@ -140,7 +186,7 @@ func withCORS(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Set CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*") // Allows all origins
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 		// Handle preflight request
@@ -176,8 +222,25 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(users)
 }
 
-func getItems(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query(os.Getenv("GET_ITEMS"))
+func getItemByType(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Decode JSON body
+	var payload struct {
+		ItemType string `json:"item_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println("Fetching item of type:", payload.ItemType)
+
+	// Query using your GET_ITEMS_BY_ID env var
+	rows, err := db.Query(os.Getenv("GET_ITEMS_BY_TYPE"), payload.ItemType)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -185,11 +248,11 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var items []Items
+	// Adjust struct fields accordingly
 
 	for rows.Next() {
 		var item Items
-		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Unit,
-			&item.Quantity, &item.UnitCost, &item.SupplierName); err != nil {
+		if err := rows.Scan(&item.ID, &item.SupplierID, &item.Name, &item.Category, &item.Unit); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -505,42 +568,59 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func handleUpdateMortality(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	// Decode JSON body
+	var payload struct {
+		Date    string  `json:"Date"`
+		Event   string  `json:"Event"`
+		Details string  `json:"Details"`
+		Qty     float32 `json:"Qty"`
 	}
-
-	var data struct {
-		MortalityID int `json:"mortality_id"`
-		BirdsLoss   int `json:"birds_loss"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
-	stmt, err := db.Prepare(os.Getenv("UPDATE_MORTALITY"))
-	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-	defer stmt.Close()
+	category := ""
 
-	_, err = stmt.Exec(data.BirdsLoss, data.MortalityID)
-	if err != nil {
-		http.Error(w, "Failed to update data", http.StatusInternalServerError)
-		return
+	if payload.Event == "Consumption" {
+		category = "Feed"
+	} else if payload.Event == "Medication" {
+		category = "Medicine"
 	}
 
-	response := map[string]interface{}{
-		"success": true,
-		"message": "Data updated successfully",
-	}
+	var ItemID int
+	if category == "Feed" || category == "Medication" {
+		// Insert into cm_inventory_usage
+		itemQuery := `SELECT ItemID FROM cm_items WHERE ItemName = ? LIMIT 1`
+		err := db.QueryRow(itemQuery, payload.Details).Scan(&ItemID)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+		if err != nil {
+			http.Error(w, "Item not found for usage", http.StatusBadRequest)
+			return
+		}
+
+		insertQuery := `INSERT INTO cm_inventory_usage (BatchID, ItemID, Date, QuantityUsed) VALUES (?, ?, ?, ?)`
+		res, err := db.Exec(insertQuery, batchId, ItemID, payload.Date, payload.Qty)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		lastID, _ := res.LastInsertId()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
+	} else if payload.Event == "Mortality" {
+		// Insert into cm_mortality
+		insertQuery := `INSERT INTO cm_mortality (BatchID, Date, BirdsLoss, Notes) VALUES (?, ?, ?, ?)`
+		res, err := db.Exec(insertQuery, batchId, payload.Date, payload.Qty, payload.Details)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		lastID, _ := res.LastInsertId()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
+	} else {
+		http.Error(w, "Unknown event type", http.StatusBadRequest)
+	}
 }
 
 // Router for /batches/{id}/vitals, /events, /costs
@@ -561,12 +641,19 @@ func batchDetailsRouter(w http.ResponseWriter, r *http.Request) {
 	case "vitals":
 		getBatchVitals(w, r, batchId)
 	case "events":
-		getBatchEvents(w, r, batchId)
+		if r.Method == http.MethodPut {
+			updateBatchEvent(w, r, batchId)
+		} else if r.Method == http.MethodPost {
+			insertBatchEvent(w, r, batchId)
+		} else {
+			getBatchEvents(w, r, batchId)
+		}
 	case "costs":
 		getBatchCosts(w, r, batchId)
 	default:
 		http.Error(w, "Not found", http.StatusNotFound)
 	}
+	// PUT /batches/{id}/events
 }
 
 func splitPath(path string) []string {
@@ -671,10 +758,10 @@ func getBatchEvents(w http.ResponseWriter, r *http.Request, batchId string) {
 }
 
 func main() {
-	http.HandleFunc("/batches/", withCORS(batchDetailsRouter))
 	initDB()
-	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
-	http.HandleFunc("/getItems", withCORS(getItems))
+	http.HandleFunc("/batches/", withCORS(batchDetailsRouter))
+	http.HandleFunc("/getUsers", withCORS(getUsers))
+	http.HandleFunc("/getItemByType", withCORS(getItemByType))
 	http.HandleFunc("/getBatches", withCORS(getBatches))
 	http.HandleFunc("/getHarvests", withCORS(getHarvests))
 	http.HandleFunc("/getSupplier", withCORS(getSupplier))
@@ -690,6 +777,41 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	fmt.Println("Server running at http://0.0.0.0:8080")
-	log.Fatal(server.ListenAndServe())
+	// Context that cancels on Ctrl+C or SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Run the server in a goroutine so main can continue
+	go func() {
+		fmt.Println("Server running at http://0.0.0.0:8080")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("ListenAndServe error: %v", err)
+		}
+	}()
+
+	// Example background printer. Replace with whatever you want to print.
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case tm := <-t.C:
+				fmt.Println("tick at", tm.Format(time.RFC3339))
+			}
+		}
+	}()
+
+	// Block until a signal arrives
+	<-ctx.Done()
+	fmt.Println("Shutting down...")
+
+	// Graceful shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Shutdown error: %v", err)
+	}
+	fmt.Println("Shutdown complete.")
 }
