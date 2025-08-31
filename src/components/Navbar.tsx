@@ -200,6 +200,15 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               <li className="w-1/6 text-center">
                 <Link
+                  to="/sales"
+                  className="flex flex-col items-center text-white hover:text-green-500"
+                >
+                  <ShoppingCart size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Sales</span>
+                </Link>
+              </li>
+              <li className="w-1/6 text-center">
+                <Link
                   to="/control"
                   className="flex flex-col items-center text-white hover:text-green-500"
                 >
@@ -237,6 +246,15 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                 >
                   <Package size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Inventory</span>
+                </Link>
+              </li>
+              <li className="w-1/5 text-center">
+                <Link
+                  to="/sales"
+                  className="flex flex-col items-center text-white hover:text-green-500"
+                >
+                  <ShoppingCart size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Sales</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
