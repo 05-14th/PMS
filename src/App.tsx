@@ -29,6 +29,7 @@ function App() {
             <Route path="/homepage" element={<HomePage />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/batches" element={<Batches />} />
+            <Route path="/batches/:id" element={<Batches />} />
             <Route path="/products" element={<Products />}/>
             <Route path="/sales" element={<Sales />} />
             <Route path="/suppliers" element={<Supplier />} />

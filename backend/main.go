@@ -32,6 +32,7 @@ type Items struct {
 
 type Batches struct {
 	ID                  string  `json:"BatchNumber"`
+	BatchName           string  `json:"BatchName"`
 	TotalChicken        int     `json:"TotalChicken"`
 	CurrentChicken      int     `json:"CurrentChicken"`
 	StartDate           string  `json:"StartDate"`
@@ -211,7 +212,7 @@ func getBatches(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var batch Batches
-		if err := rows.Scan(&batch.ID, &batch.TotalChicken, &batch.CurrentChicken, &batch.StartDate,
+		if err := rows.Scan(&batch.ID, &batch.BatchName, &batch.TotalChicken, &batch.CurrentChicken, &batch.StartDate,
 			&batch.ExpectedHarvestDate, &batch.Status, &batch.Notes, &batch.CostType, &batch.Amount,
 			&batch.Description, &batch.BirdsLost); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -542,7 +543,135 @@ func handleUpdateMortality(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// Router for /batches/{id}/vitals, /events, /costs
+func batchDetailsRouter(w http.ResponseWriter, r *http.Request) {
+	// URL: /batches/{id}/vitals, /events, /costs
+	path := r.URL.Path
+	// Extract batchId and subpath
+	// Example: /batches/1/vitals
+	parts := splitPath(path)
+	if len(parts) < 3 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+	batchId := parts[1]
+	sub := parts[2]
+
+	switch sub {
+	case "vitals":
+		getBatchVitals(w, r, batchId)
+	case "events":
+		getBatchEvents(w, r, batchId)
+	case "costs":
+		getBatchCosts(w, r, batchId)
+	default:
+		http.Error(w, "Not found", http.StatusNotFound)
+	}
+}
+
+func splitPath(path string) []string {
+	// Remove leading/trailing slashes, split by /
+	p := path
+	if len(p) > 0 && p[0] == '/' {
+		p = p[1:]
+	}
+	if len(p) > 0 && p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
+	}
+	return split(p, '/')
+}
+
+func split(s string, sep byte) []string {
+	var out []string
+	last := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep {
+			out = append(out, s[last:i])
+			last = i + 1
+		}
+	}
+	out = append(out, s[last:])
+	return out
+}
+
+func getBatchVitals(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := `SELECT Notes AS BatchName, StartDate, CurrentChicken AS CurrentPopulation, DATEDIFF(NOW(), StartDate) AS AgeInDays FROM cm_batches WHERE BatchID = ? LIMIT 1`
+	row := db.QueryRow(query, batchId)
+	var name, startDate string
+	var currentPopulation, ageDays int
+	err := row.Scan(&name, &startDate, &currentPopulation, &ageDays)
+	if err != nil {
+		http.Error(w, "Batch not found", http.StatusNotFound)
+		return
+	}
+	resp := map[string]interface{}{
+		"id":                batchId,
+		"name":              name,
+		"startDate":         startDate,
+		"currentPopulation": currentPopulation,
+		"ageDays":           ageDays,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": resp})
+}
+
+func getBatchCosts(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := `SELECT Date, CostType, Description, Amount FROM cm_production_cost WHERE BatchID = ? ORDER BY Date DESC`
+	rows, err := db.Query(query, batchId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var costs []map[string]interface{}
+	for rows.Next() {
+		var date, costType, description string
+		var amount float64
+		if err := rows.Scan(&date, &costType, &description, &amount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		costs = append(costs, map[string]interface{}{
+			"id":          date + costType + description, // simple id
+			"date":        date,
+			"type":        costType,
+			"description": description,
+			"amount":      amount,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": costs})
+}
+
+func getBatchEvents(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := os.Getenv("GET_EVENTS")
+	rows, err := db.Query(query, batchId, batchId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var events []map[string]interface{}
+	for rows.Next() {
+		var date, event, details, qtyCount string
+		if err := rows.Scan(&date, &event, &details, &qtyCount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		events = append(events, map[string]interface{}{
+			"id":      date + event + details + qtyCount, // simple id
+			"date":    date,
+			"event":   event,
+			"details": details,
+			"qty":     qtyCount,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": events})
+}
+
 func main() {
+	http.HandleFunc("/batches/", withCORS(batchDetailsRouter))
 	initDB()
 	http.HandleFunc("/getUsers", withCORS(getUsers)) // Wrap handler with CORS middleware
 	http.HandleFunc("/getItems", withCORS(getItems))
