@@ -1,6 +1,8 @@
 import React, { useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 const SignUpPage: React.FC = () => {
+  const navigate = useNavigate();
   const [username, setUsername] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -22,7 +24,7 @@ const SignUpPage: React.FC = () => {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
@@ -42,10 +44,50 @@ const SignUpPage: React.FC = () => {
 
     setLoading(true);
 
-    setTimeout(() => {
+    try {
+      const formData = new FormData();
+      formData.append('username', username);
+      formData.append('firstName', firstName);
+      formData.append('lastName', lastName);
+      formData.append('suffix', suffix);
+      formData.append('email', email);
+      formData.append('phoneNumber', phoneNumber);
+      formData.append('password', password);
+      formData.append('role', role);
+      formData.append('profilePic', profilePic);
+
+      const response = await fetch('http://localhost:8080/api/register', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const contentType = response.headers.get('content-type');
+      let data;
+      
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        try {
+          data = JSON.parse(text);
+        } catch {
+          throw new Error(text || 'Registration failed');
+        }
+      }
+
+      if (!response.ok) {
+        throw new Error(data.message || data.error || 'Registration failed');
+      }
+
+      alert('Registration successful! Please login.');
+      navigate('/login');
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      setError(errorMessage);
+      console.error('Registration error:', err);
+    } finally {
       setLoading(false);
-      alert(`Signed up successfully as ${role}!`);
-    }, 1000);
+    }
   };
 
   return (
@@ -80,8 +122,8 @@ const SignUpPage: React.FC = () => {
                        file:mr-4 file:py-2 file:px-4 
                        file:rounded-full file:border-0 
                        file:text-sm file:font-semibold 
-                       file:bg-orange-50 file:text-orange-600 
-                       hover:file:bg-orange-100"
+                       file:bg-green-50 file:text-green-600 
+                       hover:file:bg-green-100"
             required
           />
         </div>
@@ -107,7 +149,7 @@ const SignUpPage: React.FC = () => {
             <input
               type="email"
               className="w-full px-4 py-2 border rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-orange-500"
+                         focus:outline-none focus:ring-2 focus:ring-green-500"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -120,7 +162,7 @@ const SignUpPage: React.FC = () => {
             <input
               type="text"
               className="w-full px-4 py-2 border rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-orange-500"
+                         focus:outline-none focus:ring-2 focus:ring-green-500"
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
               required
@@ -204,7 +246,7 @@ const SignUpPage: React.FC = () => {
             <label className="block text-sm font-semibold mb-1">Role</label>
             <select
               className="w-full px-4 py-2 border rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-orange-500"
+                         focus:outline-none focus:ring-2 focus:ring-green-500"
               value={role}
               onChange={(e) => setRole(e.target.value)}
               required
@@ -224,7 +266,7 @@ const SignUpPage: React.FC = () => {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-orange-500 hover:bg-orange-600 text-white 
+          className="w-full bg-green-600 hover:bg-orange-600 text-white 
                      py-3 rounded-lg font-semibold transition shadow-md"
         >
           {loading ? "Signing up..." : "Create Account"}

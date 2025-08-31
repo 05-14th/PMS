@@ -1,22 +1,17 @@
 import React, { useState } from "react";
-import ConnectModal from "./ConnectModal";
 import { Link, useNavigate } from "react-router-dom";
 import {
   Home,
   Package,
   ShoppingCart,
-  Users,
   Settings,
   LayoutDashboard,
-  Thermometer,
-  Droplets,
   Feather,
   Bell,
   ServerCog,
   LogOut,
-  UserCircle,
-  Plug,
-  LayoutList
+  LayoutList,
+  Layers
 } from "lucide-react";
 
 interface NavbarProps {
@@ -25,18 +20,24 @@ interface NavbarProps {
 
 const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   const navigate = useNavigate();
-  const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
+  const [] = useState(false);
 
   const handleLogout = () => {
+    localStorage.removeItem("isAuthenticated");
+    localStorage.removeItem("userEmail");
+    localStorage.removeItem("userRole");  
     navigate("/");
   };
 
+  const userEmail = localStorage.getItem("userEmail") || "";
+  const userRole = localStorage.getItem("userRole") || "";
+
   return (
-    <nav className="p-4 shadow-md" style={{ backgroundColor: "#576070" }}>
+    <nav className="p-4 shadow-md bg-green-800">
       <div className="container mx-auto flex items-center justify-between w-full px-2 sm:px-0">
         {/* Left: Logo */}
         <Link to="/homepage" className="flex items-center">
-          <img src="/Extras/logo.png" alt="Logo" className="h-10 w-auto" />
+          <img src="/Extras/logo.png" alt="Logo" className="h-8 w-auto" />
         </Link>
 
         {/* Center: Navigation links */}
@@ -46,7 +47,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li>
                 <Link
                   to="/homepage"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
                 >
                   <Home size={20} />
                   <span>Home</span>
@@ -57,7 +58,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li>
                 <Link
                   to="/inventory"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
                 >
                   <Package size={20} />
                   <span>Inventory</span>
@@ -67,7 +68,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li>
                 <Link
                   to="/batches"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
                 >
                   <LayoutList size={20} />
                   <span>Batches</span>
@@ -77,7 +78,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li>
                 <Link
                   to="/sales"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
                 >
                   <ShoppingCart size={20} />
                   <span>Sales</span>
@@ -85,17 +86,8 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               <li>
                 <Link
-                  to="/suppliers"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <Users size={20} />
-                  <span>Suppliers</span>
-                </Link>
-              </li>
-              <li>
-                <Link
                   to="/control"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
                 >
                   <Settings size={20} />
                   <span>Control</span>
@@ -104,46 +96,11 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
             </>
           ) : (
             <>
-              <li>
-                <Link
-                  to="/control"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <LayoutDashboard size={20} />
-                  <span>Dashboard</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/environment"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <Thermometer size={20} />
-                  <span>Environmental Control</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/feedWater"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <Droplets size={20} />
-                  <span>Feeding & Watering</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/poultry"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
-                >
-                  <Feather size={20} />
-                  <span>Poultry</span>
-                </Link>
-              </li>
+         
               <li>
                 <Link
                   to="/notification"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
                 >
                   <Bell size={20} />
                   <span>Notification</span>
@@ -152,7 +109,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li>
                 <Link
                   to="/homepage"
-                  className="flex items-center text-white hover:text-orange-500 space-x-1"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
                 >
                   <ServerCog size={20} />
                   <span>System</span>
@@ -162,51 +119,54 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
           )}
         </ul>
 
- {/* Right: Profile and Logout */}
+        {/* Right: User Info and Logout */}
         <div className="flex items-center justify-end space-x-2 w-full sm:w-auto">
-          {/* Mobile Notification Bell comes before Connect Button */}
-          <div className="flex sm:hidden space-x-2">
-            <Link to="/notification" className="text-white">
-              <Bell size={28} className="hover:text-orange-500" />
-            </Link>
-            {/* Connect Button */}
+          {/* Mobile Profile and Logout */}
+          <div className="flex sm:hidden items-center space-x-3">
+            {userEmail && (
+              <div className="flex flex-col items-end mr-2">
+                <span className="text-white text-sm font-medium">{userEmail}</span>
+                {userRole && (
+                  <span className="text-green-200 text-xs">
+                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                  </span>
+                )}
+              </div>
+            )}
             <button
-              onClick={() => setIsConnectModalOpen(true)}
-              className="flex items-center bg-green-600 text-white px-3 py-1 rounded-full hover:bg-green-500 transition"
+              onClick={handleLogout}
+              className="flex items-center text-white hover:text-green-500"
+              title="Logout"
             >
-              <Plug size={20} className="mr-1" />
-              <span>Connect</span>
+              <LogOut size={24} />
             </button>
           </div>
 
-          {/* Connect Modal */}
-          <ConnectModal
-            isOpen={isConnectModalOpen}
-            onClose={() => setIsConnectModalOpen(false)}
-          />
-
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            className="flex items-center bg-orange-600 text-white px-3 py-1 rounded-full hover:bg-orange-500 transition"
-          >
-            <LogOut size={20} className="mr-0" />
-            <span>Logout</span>
-          </button>
-
-          {/* User Profile Image Placeholder (visible on all views) */}
-          <div className="ml-2">
-            <img
-              src="/Extras/user-placeholder.png"
-              alt="User"
-              className="h-10 w-10 rounded-full object-cover border-2 border-white shadow"
-            />
+          {/* Desktop Profile and Logout */}
+          <div className="hidden sm:flex items-center space-x-4">
+            {userEmail && (
+              <div className="hidden sm:flex flex-col items-end">
+                <span className="text-white text-sm font-medium">{userEmail}</span>
+                {userRole && (
+                  <span className="text-green-200 text-xs">
+                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
+                  </span>
+                )}
+              </div>
+            )}
+            <button
+              onClick={handleLogout}
+              className="flex items-center text-white hover:bg-green-700 px-3 py-1 rounded-md text-sm font-medium"
+            >
+              <LogOut size={18} className="mr-2" />
+              <span>Logout</span>
+            </button>
           </div>
         </div>
       </div>
 
       {/* Bottom Mobile Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-[#576070] shadow-inner z-50">
+      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-green-800 shadow-inner z-50">
         <ul className="flex justify-around items-center py-2 text-xs">
           {/* Always show Batches tab except when isControl is true */}
           {!isControl && (
@@ -214,7 +174,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li className="w-1/6 text-center">
                 <Link
                   to="/homepage"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
                   <Home size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Home</span>
@@ -223,7 +183,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li className="w-1/6 text-center">
                 <Link
                   to="/inventory"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
                   <Package size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Inventory</span>
@@ -232,7 +192,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li className="w-1/6 text-center">
                 <Link
                   to="/batches"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
                   <LayoutList size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Batches</span>
@@ -241,7 +201,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li className="w-1/6 text-center">
                 <Link
                   to="/sales"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
                   <ShoppingCart size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Sales</span>
@@ -249,17 +209,8 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               </li>
               <li className="w-1/6 text-center">
                 <Link
-                  to="/suppliers"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
-                >
-                  <Users size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Suppliers</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
                   to="/control"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
                   <Settings size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Control</span>
@@ -273,46 +224,46 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               <li className="w-1/5 text-center">
                 <Link
                   to="/homepage"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <ServerCog size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">System</span>
+                  <Home size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Home</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
-                  to="/control"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  to="/batches"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <LayoutDashboard size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Dashboard</span>
+                  <Layers size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Batches</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
-                  to="/environment"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  to="/inventory"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Thermometer size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Environmental Control</span>
+                  <Package size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Inventory</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
-                  to="/feedWater"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  to="/sales"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Droplets size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Feeding & Watering</span>
+                  <ShoppingCart size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Sales</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
-                  to="/poultry"
-                  className="flex flex-col items-center text-white hover:text-orange-500"
+                  to="/notification"
+                  className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Feather size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Poultry</span>
+                  <Bell size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Notification</span>
                 </Link>
               </li>
             </>

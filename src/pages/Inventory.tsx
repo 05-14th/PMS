@@ -1,66 +1,62 @@
-import { useState, useEffect } from 'react';
-import Developing from '../components/Developing';
-import MainBody from '../components/MainBody';
-import axios from 'axios';
-import Table from '../components/Table';
-import Section from '../components/Section';
+import { useState } from "react";
+import MainBody from "../components/MainBody";
+import StockLevels from "./Extra/Inventory/StockLevels";
+import ItemList from "./Extra/Inventory/Itemlist";
+import Supplier from "./Extra/Inventory/Supplier";
 
-// Utility to detect YYYY-MM-DD strings
-const isIsoDateString = (value: any): boolean =>
-  typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+// Define the tab types
+type TabType = "stock" | "items" | "suppliers";
 
-// Utility to format date to MM/DD/YYYY
-const formatDate = (isoDate: string): string => {
-  const date = new Date(isoDate);
-  const month = (date.getMonth() + 1).toString().padStart(2, '0');
-  const day = date.getDate().toString().padStart(2, '0');
-  const year = date.getFullYear();
-  return `${month}/${day}/${year}`;
-};
+// Define the tabs in the desired order: left, center, right
+const tabs: { id: TabType; label: string }[] = [
+  { id: "stock", label: "Stock Levels" },
+  { id: "items", label: "Item List" },
+  { id: "suppliers", label: "Suppliers" },
+];
 
-function Inventory() {
-  const [inventoryData, setItemData] = useState<any[]>([]);
-  const serverHost = import.meta.env.VITE_APP_SERVERHOST;
+function InventoryPage() {
+  const [activeTab, setActiveTab] = useState<TabType>("items"); // Default to center tab
 
-  useEffect(() => {
-    axios
-      .get(`${serverHost}/getItems`)
-      .then((res) => {
-        //console.log("API response:", res.data);
-
-        // Attempt to extract an array safely
-        const dataArray = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data.items)
-          ? res.data.items
-          : [];
-
-        const formatted = dataArray.map((item: Record<string, any>) => {
-          const newItem: Record<string, any> = {};
-          for (const key in item) {
-            const value = item[key];
-            newItem[key] = isIsoDateString(value) ? formatDate(value) : value;
-          }
-          return newItem;
-        });
-
-        setItemData(formatted);
-      })
-      .catch((err) => console.error("Error fetching items:", err));
-  }, []);
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case "stock":
+        return <StockLevels />;
+      case "items":
+        return <ItemList />;
+      case "suppliers":
+        return <Supplier />;
+      default:
+        return <ItemList />;
+    }
+  };
 
   return (
     <MainBody>
-      <section className="w-full">
-        <div className="overflow-x-auto">
-          <Table data={inventoryData} actionable={true} name="getItems" paramName="ItemID" viewable={true} excluded_index={[0, 6]} addMethod='addInventory'/>
+      <div className="p-6">
+        {/* Tabs */}
+        <div className="flex space-x-1 rounded-lg bg-gray-100 p-1">
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              className={`flex-1 rounded-md py-2.5 text-sm font-medium leading-5 transition-all duration-200 ${
+                activeTab === tab.id
+                  ? "bg-white shadow-md text-green-600"
+                  : "text-gray-600 hover:bg-white/[0.12] hover:text-green-700"
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
-      </section>
-      <Section>
-        <Developing/>
-      </Section>
+
+        {/* Tab Content */}
+        <div className="mt-4">
+          {renderTabContent()}
+        </div>
+      </div>
     </MainBody>
   );
 }
 
-export default Inventory;
+export default InventoryPage;
