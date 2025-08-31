@@ -104,38 +104,16 @@ const ItemList: React.FC = () => {
       width: 200,
       render: (_, record) => (
         <Space size="small">
-          {/* -------------------------------
-              Gerry (Backend Dev 👨‍💻)
-              👉 Hook this button to POST /api/items (duplicate/add based on record)
-          -------------------------------- */}
-          <Button
-            type="text"
-            icon={<PlusOutlined className="text-green-500" />}
-            onClick={() => handleAdd()}
-            className="hover:bg-green-50"
-          />
-
-          {/* -------------------------------
-              Gerry (Backend Dev 👨‍💻)
-              👉 Hook this button to PUT /api/items/:id
-          -------------------------------- */}
-          <Button
-            type="text"
-            icon={<EditOutlined className="text-blue-500" />}
+          <Button 
             onClick={() => handleEdit(record)}
-            className="hover:bg-blue-50"
+            className="bg-white hover:bg-gray-100 text-gray-800 border-gray-300"
+            icon={<EditOutlined />}
           />
-
-          {/* -------------------------------
-              Gerry (Backend Dev 👨‍💻)
-              👉 Hook this button to DELETE /api/items/:id
-          -------------------------------- */}
-          <Button
-            type="text"
+          <Button 
             danger
-            icon={<DeleteOutlined />}
             onClick={() => handleDelete(record.key)}
-            className="hover:bg-red-50"
+            className="bg-white hover:bg-gray-100 text-red-600 border-gray-300"
+            icon={<DeleteOutlined />}
           />
         </Space>
       ),
@@ -235,76 +213,84 @@ const ItemList: React.FC = () => {
   };
 
   return (
-    <div className="p-2 sm:p-4 md:p-6 bg-gray-50 min-h-screen">
-      <Card className="shadow-sm border-0">
-        <div className="mb-4 sm:mb-6">
-          <Row gutter={[16, 16]} className="mb-4 sm:mb-6">
-            <Col xs={24}>
-              <Title level={4} className="m-0 text-gray-800 text-lg sm:text-xl">
-                Item Management
-              </Title>
+    <div className="p-4">
+      <div className="mb-6">
+        <Row gutter={[16, 16]} className="mb-4">
+          <Col xs={24}>
+            <div>
+              <Title level={4} className="m-0 text-gray-800 text-lg sm:text-xl">Item Management</Title>
               <p className="text-gray-500 m-0 text-sm sm:text-base">
                 Manage your inventory items efficiently
               </p>
-            </Col>
-          </Row>
+            </div>
+          </Col>
+        </Row>
 
-          <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
-            <Col xs={24} sm={16} md={16} lg={12} xl={8}>
-              <Input
-                size="middle"
-                placeholder="Search items..."
-                prefix={<SearchOutlined className="text-gray-400" />}
-                value={searchText}
-                onChange={handleSearch}
-                allowClear
-                className="w-full"
-              />
-            </Col>
-            <Col xs={16} sm={8} md={8} lg={6} xl={4}>
-              <Select
-                size="middle"
-                className="w-full"
-                placeholder="Filter by category"
-                value={categoryFilter}
-                onChange={handleCategoryChange}
-                options={categories}
-                suffixIcon={<FilterOutlined className="text-gray-400" />}
-              />
-            </Col>
-            <Col xs={8} sm={24} md={24} lg={6} xl={4} className="flex justify-end">
-              {/* Removed the Add New Item button as requested */}
-            </Col>
-          </Row>
-        </div>
+        <Row gutter={[16, 16]} className="mb-6" justify="end">
+          <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+            <Button 
+              type="default"
+              icon={<PlusOutlined />}
+              onClick={() => setIsAddModalVisible(true)}
+              className="w-full bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+            >
+              Add Item
+            </Button>
+          </Col>
+        </Row>
+      </div>
 
-        <div className="overflow-x-auto">
-          <Table
-            columns={columns}
-            dataSource={filteredItems}
-            rowKey="key"
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showTotal: (total) => `Total ${total} items`,
-              className: 'px-1 sm:px-4 py-2',
-              size: 'small',
-              showLessItems: true,
-              responsive: true,
-            }}
-            scroll={{ x: 'max-content' }}
-            locale={{
-              emptyText: (
-                <div className="py-8 sm:py-12">
-                  <p className="text-gray-500 text-base sm:text-lg">No items found</p>
-                </div>
-              ),
-            }}
-            className="rounded-lg"
+      <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
+        <Col xs={24} sm={16} md={16} lg={12} xl={8}>
+          <Input
             size="middle"
+            placeholder="Search items..."
+            prefix={<SearchOutlined className="text-gray-400" />}
+            value={searchText}
+            onChange={handleSearch}
+            allowClear
+            className="w-full"
           />
-        </div>
-      </Card>
+        </Col>
+        <Col xs={16} sm={8} md={8} lg={6} xl={4}>
+          <Select
+            size="middle"
+            className="w-full"
+            placeholder="Filter by category"
+            value={categoryFilter}
+            onChange={handleCategoryChange}
+            options={categories}
+            suffixIcon={<FilterOutlined className="text-gray-400" />}
+          />
+        </Col>
+      </Row>
+
+      <div className="overflow-x-auto">
+        <Table
+          columns={columns}
+          dataSource={filteredItems}
+          rowKey="key"
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showTotal: (total) => `Total ${total} items`,
+            className: 'px-1 sm:px-4 py-2',
+            size: 'small',
+            showLessItems: true,
+            responsive: true,
+          }}
+          scroll={{ x: 'max-content' }}
+          locale={{
+            emptyText: (
+              <div className="py-8 sm:py-12">
+                <p className="text-gray-500 text-base sm:text-lg">No items found</p>
+              </div>
+            ),
+          }}
+          className="rounded-lg"
+          size="middle"
+        />
+      </div>
 
       {/* Add Item Modal */}
       <AddForm

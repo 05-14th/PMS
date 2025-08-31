@@ -191,24 +191,16 @@ const Supplier: React.FC = () => {
       width: 200,
       render: (_: any, record: Supplier) => (
         <Space size="small">
-          <Button
-            type="text"
-            icon={<PlusOutlined className="text-green-500" />}
-            onClick={() => handleAdd(record)}
-            className="hover:bg-green-50"
-          />
-          <Button
-            type="text"
-            icon={<EditOutlined className="text-blue-500" />}
+          <Button 
             onClick={() => handleEdit(record)}
-            className="hover:bg-blue-50"
+            className="bg-white hover:bg-gray-100 text-gray-800 border-gray-300"
+            icon={<EditOutlined />}
           />
-          <Button
-            type="text"
+          <Button 
             danger
-            icon={<DeleteOutlined />}
             onClick={() => handleDelete(record.key)}
-            className="hover:bg-red-50"
+            className="bg-white hover:bg-gray-100 text-red-600 border-gray-300"
+            icon={<DeleteOutlined />}
           />
         </Space>
       ),
@@ -216,77 +208,88 @@ const Supplier: React.FC = () => {
   ];
 
   return (
-    <div className="p-2 sm:p-4 md:p-6 bg-gray-50 min-h-screen">
-      <Card className="shadow-sm border-0">
-        <div className="mb-4 sm:mb-6">
-          <Row gutter={[16, 16]} className="mb-4 sm:mb-6">
-            <Col xs={24}>
-              <Title level={4} className="m-0 text-gray-800 text-lg sm:text-xl">
-                Supplier Management
-              </Title>
+    <div className="p-4">
+      <div className="mb-6">
+        <Row gutter={[16, 16]} className="mb-4">
+          <Col xs={24}>
+            <div>
+              <Title level={4} className="m-0 text-gray-800 text-lg sm:text-xl">Suppliers</Title>
               <p className="text-gray-500 m-0 text-sm sm:text-base">
-                Manage your suppliers efficiently
+                Manage your suppliers and their information
               </p>
-            </Col>
-          </Row>
+            </div>
+          </Col>
+        </Row>
 
-          <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
-            <Col xs={24} sm={12} md={12} lg={10} xl={8}>
-              <Input
-                size="middle"
-                placeholder="Search suppliers..."
-                prefix={<SearchOutlined className="text-gray-400" />}
-                value={searchText}
-                onChange={handleSearch}
-                allowClear
-                className="w-full"
-              />
-            </Col>
-            <Col xs={24} sm={12} md={12} lg={10} xl={8}>
-              <Select
-                size="middle"
-                className="w-full"
-                placeholder="Filter by supplier"
-                value={selectedSupplier}
-                onChange={handleSupplierFilter}
-                options={supplierOptions}
-                suffixIcon={<FilterOutlined className="text-gray-400" />}
-                showSearch
-                optionFilterProp="label"
-                allowClear
-                onClear={() => setSelectedSupplier('all')}
-              />
-            </Col>
-          </Row>
-        </div>
+        <Row gutter={[16, 16]} className="mb-6" justify="end">
+          <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+            <Button 
+              type="default"
+              icon={<PlusOutlined />}
+              onClick={() => setIsAddModalVisible(true)}
+              className="w-full bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
+            >
+              Add Supplier
+            </Button>
+          </Col>
+        </Row>
+      </div>
 
-        <div className="overflow-x-auto">
-          <Table
-            columns={columns}
-            dataSource={filteredSuppliers}
-            rowKey="key"
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showTotal: (total) => `Total ${total} suppliers`,
-              className: 'px-1 sm:px-4 py-2',
-              size: 'small',
-              showLessItems: true,
-              responsive: true,
-            }}
-            scroll={{ x: 'max-content' }}
-            locale={{
-              emptyText: (
-                <div className="py-8 sm:py-12">
-                  <p className="text-gray-500 text-base sm:text-lg">No suppliers found</p>
-                </div>
-              ),
-            }}
-            className="rounded-lg"
+      <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
+        <Col xs={24} sm={12} md={12} lg={10} xl={8}>
+          <Input
             size="middle"
+            placeholder="Search suppliers..."
+            prefix={<SearchOutlined className="text-gray-400" />}
+            value={searchText}
+            onChange={handleSearch}
+            allowClear
+            className="w-full"
           />
-        </div>
-      </Card>
+        </Col>
+        <Col xs={24} sm={12} md={12} lg={10} xl={8}>
+          <Select
+            size="middle"
+            className="w-full"
+            placeholder="Filter by supplier"
+            value={selectedSupplier}
+            onChange={handleSupplierFilter}
+            options={supplierOptions}
+            suffixIcon={<FilterOutlined className="text-gray-400" />}
+            showSearch
+            optionFilterProp="label"
+            allowClear
+            onClear={() => setSelectedSupplier('all')}
+          />
+        </Col>
+      </Row>
+
+      <div className="overflow-x-auto">
+        <Table
+          columns={columns}
+          dataSource={filteredSuppliers}
+          rowKey="key"
+          pagination={{
+            pageSize: 10,
+            showSizeChanger: true,
+            showTotal: (total) => `Total ${total} suppliers`,
+            className: 'px-1 sm:px-4 py-2',
+            size: 'small',
+            showLessItems: true,
+            responsive: true,
+          }}
+          scroll={{ x: 'max-content' }}
+          locale={{
+            emptyText: (
+              <div className="py-8 sm:py-12">
+                <p className="text-gray-500 text-base sm:text-lg">No suppliers found</p>
+              </div>
+            ),
+          }}
+          className="rounded-lg"
+          size="middle"
+        />
+      </div>
 
       <AddSupplier
         visible={isAddModalVisible}
