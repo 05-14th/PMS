@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { Table, Input, Button, Card, Typography, Row, Col, Select, Space, message } from 'antd';
 import { SearchOutlined, PlusOutlined, FilterOutlined, PlusCircleOutlined } from '@ant-design/icons';
-import AddStockForm from './Forms_StockLevels/AddStock';
-import RestockForm from './Forms_StockLevels/RestockForm';
+import AddStockForm from '../Forms_StockLevels/AddStock';
+import RestockForm from '../Forms_StockLevels/RestockForm';
 
 const { Title } = Typography;
 

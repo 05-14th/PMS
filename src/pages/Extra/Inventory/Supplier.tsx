@@ -1,8 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { Card, Input, Table, Space, Button, Typography, Row, Col, Select, Modal } from 'antd';
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
-import AddSupplier from './Forms_Supplier/AddSupplier';
-import EditSupplier from './Forms_Supplier/EditSupplier';
+import AddSupplier from '../Forms_Supplier/AddSupplier';
+import EditSupplier from '../Forms_Supplier/EditSupplier';
 
 const { Title } = Typography;
 

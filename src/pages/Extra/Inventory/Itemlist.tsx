@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Card, Input, Select, Table, Space, Button, Typography, Row, Col, message, Modal } from 'antd';
 import type { TableProps } from 'antd';
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
-import AddForm from './Forms_Itemlist/AddForm';
-import EditForm from './Forms_Itemlist/EditForm';
+import AddForm from '../Forms_Itemlist/AddForm';
+import EditForm from '../Forms_Itemlist/EditForm';
 
 const { Title } = Typography;
 

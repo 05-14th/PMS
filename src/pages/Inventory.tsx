@@ -1,8 +1,8 @@
 import { useState } from "react";
 import MainBody from "../components/MainBody";
-import StockLevels from "./Extra/StockLevels";
-import ItemList from "./Extra/Itemlist";
-import Supplier from "./Extra/Supplier";
+import StockLevels from "./Extra/Inventory/StockLevels";
+import ItemList from "./Extra/Inventory/Itemlist";
+import Supplier from "./Extra/Inventory/Supplier";
 
 // Define the tab types
 type TabType = "stock" | "items" | "suppliers";
