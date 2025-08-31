@@ -39,6 +39,7 @@ const EditSupplier: React.FC<EditSupplierProps> = ({
       title="Edit Supplier"
       open={visible}
       onCancel={onCancel}
+      closable={false}
       footer={[
         <Button key="cancel" onClick={onCancel}>
           Cancel

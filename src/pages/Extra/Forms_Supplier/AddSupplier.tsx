@@ -26,6 +26,7 @@ const AddSupplier: React.FC<AddSupplierProps> = ({ visible, onCancel, onAdd, loa
       title="Add Supplier"
       open={visible}
       onCancel={onCancel}
+      closable={false}
       footer={[
         <Button key="cancel" onClick={onCancel}>
           Cancel

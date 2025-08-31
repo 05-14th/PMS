@@ -37,6 +37,7 @@ const EditForm: React.FC<EditFormProps> = ({
       title="Edit Item"
       open={visible}
       onCancel={onCancel}
+      closable={false}
       footer={[
         <Button 
           key="cancel" 

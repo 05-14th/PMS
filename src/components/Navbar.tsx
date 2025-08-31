@@ -10,7 +10,8 @@ import {
   Bell,
   ServerCog,
   LogOut,
-  LayoutList
+  LayoutList,
+  Layers
 } from "lucide-react";
 
 interface NavbarProps {
@@ -216,17 +217,26 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                   to="/homepage"
                   className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <ServerCog size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">System</span>
+                  <Home size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Home</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
                 <Link
-                  to="/poultry"
+                  to="/batches"
                   className="flex flex-col items-center text-white hover:text-green-500"
                 >
-                  <Feather size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">Poultry</span>
+                  <Layers size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Batches</span>
+                </Link>
+              </li>
+              <li className="w-1/5 text-center">
+                <Link
+                  to="/inventory"
+                  className="flex flex-col items-center text-white hover:text-green-500"
+                >
+                  <Package size={20} />
+                  <span className="text-[11px] leading-tight whitespace-normal">Inventory</span>
                 </Link>
               </li>
               <li className="w-1/5 text-center">
@@ -236,15 +246,6 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                 >
                   <Bell size={20} />
                   <span className="text-[11px] leading-tight whitespace-normal">Notification</span>
-                </Link>
-              </li>
-              <li className="w-1/5 text-center">
-                <Link
-                  to="/homepage"
-                  className="flex flex-col items-center text-white hover:text-green-500"
-                >
-                  <ServerCog size={20} />
-                  <span className="text-[11px] leading-tight whitespace-normal">System</span>
                 </Link>
               </li>
             </>

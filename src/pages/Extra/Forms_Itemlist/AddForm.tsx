@@ -17,18 +17,8 @@ const AddForm: React.FC<AddFormProps> = ({ visible, onCreate, onCancel, categori
     <Modal
       title="Add New Item"
       open={visible}
-      onOk={() => {
-        form
-          .validateFields()
-          .then((values) => {
-            form.resetFields();
-            onCreate(values);
-          })
-          .catch((info) => {
-            console.log('Validate Failed:', info);
-          });
-      }}
       onCancel={onCancel}
+      closable={false}
       footer={[
         <Button 
           key="cancel" 
