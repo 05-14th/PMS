@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import MainBody from '../components/MainBody';
 import axios from 'axios';
+import Section from '../components/Section';
 import BatchMain from '../components/BatchMain';
 
 
@@ -52,7 +53,7 @@ function Batches() {
     <MainBody>
       <section className="w-full">
         <div className="overflow-x-auto">
-          <BatchMain/>
+            <BatchMain/>
         </div>
       </section>
     </MainBody>

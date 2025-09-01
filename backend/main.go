@@ -1,26 +1,19 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
+	"os/signal"
+	"syscall"
 	"time"
-
-	"io"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
-	"golang.org/x/crypto/bcrypt"
-)
-
-// Database configuration
-const (
-	DBName     = "chickmate_poultrydb"
-	TableUsers = "cm_users"
 )
 
 type User struct {
@@ -31,17 +24,16 @@ type User struct {
 }
 
 type Items struct {
-	ID           string `json:"ItemID"`
-	Name         string `json:"ItemName"`
-	Category     string `json:"Category"`
-	Unit         string `json:"Unit"`
-	Quantity     string `json:"Quantity"`
-	UnitCost     string `json:"UnitCost"`
-	SupplierName string `json:"SupplierName"`
+	ID         string `json:"ItemID"`
+	SupplierID string `json:"SupplierID"`
+	Name       string `json:"ItemName"`
+	Category   string `json:"Category"`
+	Unit       string `json:"Unit"`
 }
 
 type Batches struct {
 	ID                  string  `json:"BatchNumber"`
+	BatchName           string  `json:"BatchName"`
 	TotalChicken        int     `json:"TotalChicken"`
 	CurrentChicken      int     `json:"CurrentChicken"`
 	StartDate           string  `json:"StartDate"`
@@ -124,23 +116,52 @@ type DhtData struct {
 	CreatedAt   string  `json:"created_at"`
 }
 
-type RegisterRequest struct {
-	Username    string `json:"username"`
-	FirstName   string `json:"firstName"`
-	LastName    string `json:"lastName"`
-	Suffix      string `json:"suffix"`
-	Email       string `json:"email"`
-	PhoneNumber string `json:"phoneNumber"`
-	Password    string `json:"password"`
-	Role        string `json:"role"`
-}
-
-type LoginRequest struct {
-	Email    string `json:"email"`
-	Password string `json:"password"`
-}
-
 var db *sql.DB
+
+// PUT /batches/{id}/events
+func updateBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	var payload struct {
+		Date    string  `json:"Date"`
+		Details string  `json:"Details"`
+		Qty     float32 `json:"Qty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Find UsageID in cm_inventory_usage using payload fields
+	var usageID int
+	usageQuery := `SELECT UsageID FROM cm_inventory_usage WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err := db.QueryRow(usageQuery, batchId, payload.Date).Scan(&usageID)
+	if err == nil {
+		// Update the found UsageID
+		updateQuery := `UPDATE cm_inventory_usage SET QuantityUsed = ? WHERE UsageID = ? AND BatchID = ?`
+		res, err := db.Exec(updateQuery, payload.Qty, usageID, batchId)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	// If not found, try to update in cm_mortality (Mortality)
+	var mortalityID int
+	mortalityQuery := `SELECT MortalityID FROM cm_mortality WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err2 := db.QueryRow(mortalityQuery, batchId, payload.Date).Scan(&mortalityID)
+	if err2 == nil {
+		updateMortality := `UPDATE cm_mortality SET BirdsLoss = ?, Notes = ? WHERE MortalityID = ? AND BatchID = ?`
+		res2, err3 := db.Exec(updateMortality, payload.Qty, payload.Details, mortalityID, batchId)
+		if err3 != nil {
+			http.Error(w, err3.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res2.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	http.Error(w, "Event not found for update", http.StatusNotFound)
+}
 
 func initDB() {
 	var err error
@@ -165,7 +186,7 @@ func withCORS(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Set CORS headers
 		w.Header().Set("Access-Control-Allow-Origin", "*") // Allows all origins
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 		// Handle preflight request
@@ -201,8 +222,25 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(users)
 }
 
-func getItems(w http.ResponseWriter, r *http.Request) {
-	rows, err := db.Query(os.Getenv("GET_ITEMS"))
+func getItemByType(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Decode JSON body
+	var payload struct {
+		ItemType string `json:"item_type"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	fmt.Println("Fetching item of type:", payload.ItemType)
+
+	// Query using your GET_ITEMS_BY_ID env var
+	rows, err := db.Query(os.Getenv("GET_ITEMS_BY_TYPE"), payload.ItemType)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -210,11 +248,11 @@ func getItems(w http.ResponseWriter, r *http.Request) {
 	defer rows.Close()
 
 	var items []Items
+	// Adjust struct fields accordingly
 
 	for rows.Next() {
 		var item Items
-		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Unit,
-			&item.Quantity, &item.UnitCost, &item.SupplierName); err != nil {
+		if err := rows.Scan(&item.ID, &item.SupplierID, &item.Name, &item.Category, &item.Unit); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -237,7 +275,7 @@ func getBatches(w http.ResponseWriter, r *http.Request) {
 
 	for rows.Next() {
 		var batch Batches
-		if err := rows.Scan(&batch.ID, &batch.TotalChicken, &batch.CurrentChicken, &batch.StartDate,
+		if err := rows.Scan(&batch.ID, &batch.BatchName, &batch.TotalChicken, &batch.CurrentChicken, &batch.StartDate,
 			&batch.ExpectedHarvestDate, &batch.Status, &batch.Notes, &batch.CostType, &batch.Amount,
 			&batch.Description, &batch.BirdsLost); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -530,230 +568,200 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func handleUpdateMortality(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
+func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	// Decode JSON body
+	var payload struct {
+		Date    string  `json:"Date"`
+		Event   string  `json:"Event"`
+		Details string  `json:"Details"`
+		Qty     float32 `json:"Qty"`
 	}
-
-	var data struct {
-		MortalityID int `json:"mortality_id"`
-		BirdsLoss   int `json:"birds_loss"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
 		return
 	}
 
-	stmt, err := db.Prepare(os.Getenv("UPDATE_MORTALITY"))
-	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-	defer stmt.Close()
+	category := ""
 
-	_, err = stmt.Exec(data.BirdsLoss, data.MortalityID)
-	if err != nil {
-		http.Error(w, "Failed to update data", http.StatusInternalServerError)
-		return
+	if payload.Event == "Consumption" {
+		category = "Feed"
+	} else if payload.Event == "Medication" {
+		category = "Medicine"
 	}
 
-	response := map[string]interface{}{
-		"success": true,
-		"message": "Data updated successfully",
-	}
+	var ItemID int
+	if category == "Feed" || category == "Medication" {
+		// Insert into cm_inventory_usage
+		itemQuery := `SELECT ItemID FROM cm_items WHERE ItemName = ? LIMIT 1`
+		err := db.QueryRow(itemQuery, payload.Details).Scan(&ItemID)
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
-func registerUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	err := r.ParseMultipartForm(10 << 20) // 10 MB max file size
-	if err != nil {
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Error parsing form data: " + err.Error(),
-		})
-		return
-	}
-
-	username := r.FormValue("username")
-	firstName := r.FormValue("firstName")
-	lastName := r.FormValue("lastName")
-	suffix := r.FormValue("suffix")
-	email := r.FormValue("email")
-	phoneNumber := r.FormValue("phoneNumber")
-	password := r.FormValue("password")
-	role := r.FormValue("role")
-
-	if username == "" || firstName == "" || lastName == "" || email == "" || phoneNumber == "" || password == "" || role == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "All fields are required",
-		})
-		return
-	}
-
-	file, handler, err := r.FormFile("profilePic")
-	var profilePicPath string
-	if err == nil {
-		defer file.Close()
-
-		ext := filepath.Ext(handler.Filename)
-		profilePicPath = fmt.Sprintf("uploads/profile_%d%s", time.Now().UnixNano(), ext)
-
-		if _, err := os.Stat("uploads"); os.IsNotExist(err) {
-			os.Mkdir("uploads", 0755)
-		}
-
-		dst, err := os.Create(profilePicPath)
 		if err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "Error saving profile picture",
-			})
+			http.Error(w, "Item not found for usage", http.StatusBadRequest)
 			return
 		}
-		defer dst.Close()
 
-		if _, err := io.Copy(dst, file); err != nil {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "Error saving profile picture",
-			})
+		insertQuery := `INSERT INTO cm_inventory_usage (BatchID, ItemID, Date, QuantityUsed) VALUES (?, ?, ?, ?)`
+		res, err := db.Exec(insertQuery, batchId, ItemID, payload.Date, payload.Qty)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-	}
-
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Error hashing password",
-		})
-		return
-	}
-
-	fullName := firstName + " " + lastName
-	if suffix != "" {
-		fullName += " " + suffix
-	}
-
-	query := `INSERT INTO ` + TableUsers + ` 
-		  (username, first_name, last_name, suffix, email, phone_number, password, role, profile_pic, created_at) 
-		  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
-
-	_, err = db.Exec(query,
-		username,
-		firstName,
-		lastName,
-		suffix,
-		email,
-		phoneNumber,
-		hashedPassword,
-		role,
-		profilePicPath,
-	)
-	if err != nil {
-		if profilePicPath != "" {
-			os.Remove(profilePicPath)
+		lastID, _ := res.LastInsertId()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
+	} else if payload.Event == "Mortality" {
+		// Insert into cm_mortality
+		insertQuery := `INSERT INTO cm_mortality (BatchID, Date, BirdsLoss, Notes) VALUES (?, ?, ?, ?)`
+		res, err := db.Exec(insertQuery, batchId, payload.Date, payload.Qty, payload.Details)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Error creating user: " + err.Error(),
-		})
-		return
+		lastID, _ := res.LastInsertId()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
+	} else {
+		http.Error(w, "Unknown event type", http.StatusBadRequest)
 	}
-
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "User registered successfully",
-	})
 }
 
-func loginUser(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
-	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+// Router for /batches/{id}/vitals, /events, /costs
+func batchDetailsRouter(w http.ResponseWriter, r *http.Request) {
+	// URL: /batches/{id}/vitals, /events, /costs
+	path := r.URL.Path
+	// Extract batchId and subpath
+	// Example: /batches/1/vitals
+	parts := splitPath(path)
+	if len(parts) < 3 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
 		return
 	}
+	batchId := parts[1]
+	sub := parts[2]
 
-	if req.Email == "" || req.Password == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Email and password are required",
-		})
-		return
-	}
-
-	var storedPassword string
-	var userRole string
-	query := "SELECT password, role FROM " + TableUsers + " WHERE email = ?"
-	err := db.QueryRow(query, req.Email).Scan(&storedPassword, &userRole)
-	if err != nil {
-		if err == sql.ErrNoRows {
-			w.WriteHeader(http.StatusUnauthorized)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "Invalid email or password",
-			})
+	switch sub {
+	case "vitals":
+		getBatchVitals(w, r, batchId)
+	case "events":
+		if r.Method == http.MethodPut {
+			updateBatchEvent(w, r, batchId)
+		} else if r.Method == http.MethodPost {
+			insertBatchEvent(w, r, batchId)
 		} else {
-			w.WriteHeader(http.StatusInternalServerError)
-			json.NewEncoder(w).Encode(map[string]interface{}{
-				"success": false,
-				"error":   "Database error: " + err.Error(),
-			})
+			getBatchEvents(w, r, batchId)
 		}
-		return
+	case "costs":
+		getBatchCosts(w, r, batchId)
+	default:
+		http.Error(w, "Not found", http.StatusNotFound)
 	}
+	// PUT /batches/{id}/events
+}
 
-	err = bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte(req.Password))
+func splitPath(path string) []string {
+	// Remove leading/trailing slashes, split by /
+	p := path
+	if len(p) > 0 && p[0] == '/' {
+		p = p[1:]
+	}
+	if len(p) > 0 && p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
+	}
+	return split(p, '/')
+}
+
+func split(s string, sep byte) []string {
+	var out []string
+	last := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep {
+			out = append(out, s[last:i])
+			last = i + 1
+		}
+	}
+	out = append(out, s[last:])
+	return out
+}
+
+func getBatchVitals(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := `SELECT Notes AS BatchName, StartDate, CurrentChicken AS CurrentPopulation, DATEDIFF(NOW(), StartDate) AS AgeInDays FROM cm_batches WHERE BatchID = ? LIMIT 1`
+	row := db.QueryRow(query, batchId)
+	var name, startDate string
+	var currentPopulation, ageDays int
+	err := row.Scan(&name, &startDate, &currentPopulation, &ageDays)
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "Invalid email or password",
-		})
+		http.Error(w, "Batch not found", http.StatusNotFound)
 		return
 	}
+	resp := map[string]interface{}{
+		"id":                batchId,
+		"name":              name,
+		"startDate":         startDate,
+		"currentPopulation": currentPopulation,
+		"ageDays":           ageDays,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": resp})
+}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Login successful",
-		"role":    userRole,
-	})
+func getBatchCosts(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := `SELECT Date, CostType, Description, Amount FROM cm_production_cost WHERE BatchID = ? ORDER BY Date DESC`
+	rows, err := db.Query(query, batchId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var costs []map[string]interface{}
+	for rows.Next() {
+		var date, costType, description string
+		var amount float64
+		if err := rows.Scan(&date, &costType, &description, &amount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		costs = append(costs, map[string]interface{}{
+			"id":          date + costType + description, // simple id
+			"date":        date,
+			"type":        costType,
+			"description": description,
+			"amount":      amount,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": costs})
+}
+
+func getBatchEvents(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := os.Getenv("GET_EVENTS")
+	rows, err := db.Query(query, batchId, batchId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var events []map[string]interface{}
+	for rows.Next() {
+		var date, event, details, qtyCount string
+		if err := rows.Scan(&date, &event, &details, &qtyCount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		events = append(events, map[string]interface{}{
+			"id":      date + event + details + qtyCount, // simple id
+			"date":    date,
+			"event":   event,
+			"details": details,
+			"qty":     qtyCount,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": events})
 }
 
 func main() {
 	initDB()
-	// Add CORS middleware to all routes
-	corsHandler := func(h http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS, PUT, DELETE")
-			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization")
-			if r.Method == "OPTIONS" {
-				return
-			}
-			h.ServeHTTP(w, r)
-		})
-	}
-
-	http.Handle("/api/login", corsHandler(http.HandlerFunc(loginUser)))
-	http.Handle("/api/register", corsHandler(http.HandlerFunc(registerUser)))
+	http.HandleFunc("/batches/", withCORS(batchDetailsRouter))
 	http.HandleFunc("/getUsers", withCORS(getUsers))
-	http.HandleFunc("/getItems", withCORS(getItems))
+	http.HandleFunc("/getItemByType", withCORS(getItemByType))
 	http.HandleFunc("/getBatches", withCORS(getBatches))
 	http.HandleFunc("/getHarvests", withCORS(getHarvests))
 	http.HandleFunc("/getSupplier", withCORS(getSupplier))
@@ -769,6 +777,41 @@ func main() {
 		WriteTimeout: 10 * time.Second,
 	}
 
-	fmt.Println("Server running at http://0.0.0.0:8080")
-	log.Fatal(server.ListenAndServe())
+	// Context that cancels on Ctrl+C or SIGTERM
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Run the server in a goroutine so main can continue
+	go func() {
+		fmt.Println("Server running at http://0.0.0.0:8080")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("ListenAndServe error: %v", err)
+		}
+	}()
+
+	// Example background printer. Replace with whatever you want to print.
+	go func() {
+		t := time.NewTicker(5 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case tm := <-t.C:
+				fmt.Println("tick at", tm.Format(time.RFC3339))
+			}
+		}
+	}()
+
+	// Block until a signal arrives
+	<-ctx.Done()
+	fmt.Println("Shutting down...")
+
+	// Graceful shutdown
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		log.Printf("Shutdown error: %v", err)
+	}
+	fmt.Println("Shutdown complete.")
 }
