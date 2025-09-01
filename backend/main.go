@@ -118,51 +118,6 @@ type DhtData struct {
 
 var db *sql.DB
 
-// PUT /batches/{id}/events
-func updateBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
-	var payload struct {
-		Date    string  `json:"Date"`
-		Details string  `json:"Details"`
-		Qty     float32 `json:"Qty"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
-	// Find UsageID in cm_inventory_usage using payload fields
-	var usageID int
-	usageQuery := `SELECT UsageID FROM cm_inventory_usage WHERE BatchID = ? AND Date = ? LIMIT 1`
-	err := db.QueryRow(usageQuery, batchId, payload.Date).Scan(&usageID)
-	if err == nil {
-		// Update the found UsageID
-		updateQuery := `UPDATE cm_inventory_usage SET QuantityUsed = ? WHERE UsageID = ? AND BatchID = ?`
-		res, err := db.Exec(updateQuery, payload.Qty, usageID, batchId)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		rowsAffected, _ := res.RowsAffected()
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
-		return
-	}
-	// If not found, try to update in cm_mortality (Mortality)
-	var mortalityID int
-	mortalityQuery := `SELECT MortalityID FROM cm_mortality WHERE BatchID = ? AND Date = ? LIMIT 1`
-	err2 := db.QueryRow(mortalityQuery, batchId, payload.Date).Scan(&mortalityID)
-	if err2 == nil {
-		updateMortality := `UPDATE cm_mortality SET BirdsLoss = ?, Notes = ? WHERE MortalityID = ? AND BatchID = ?`
-		res2, err3 := db.Exec(updateMortality, payload.Qty, payload.Details, mortalityID, batchId)
-		if err3 != nil {
-			http.Error(w, err3.Error(), http.StatusInternalServerError)
-			return
-		}
-		rowsAffected, _ := res2.RowsAffected()
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
-		return
-	}
-	http.Error(w, "Event not found for update", http.StatusNotFound)
-}
-
 func initDB() {
 	var err error
 	if err := godotenv.Load(); err != nil {
@@ -526,6 +481,127 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+func getBatchVitals(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := `SELECT Notes AS BatchName, StartDate, CurrentChicken AS CurrentPopulation, DATEDIFF(NOW(), StartDate) AS AgeInDays FROM cm_batches WHERE BatchID = ? LIMIT 1`
+	row := db.QueryRow(query, batchId)
+	var name, startDate string
+	var currentPopulation, ageDays int
+	err := row.Scan(&name, &startDate, &currentPopulation, &ageDays)
+	if err != nil {
+		http.Error(w, "Batch not found", http.StatusNotFound)
+		return
+	}
+	resp := map[string]interface{}{
+		"id":                batchId,
+		"name":              name,
+		"startDate":         startDate,
+		"currentPopulation": currentPopulation,
+		"ageDays":           ageDays,
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": resp})
+}
+
+func getBatchCosts(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := `SELECT Date, CostType, Description, Amount FROM cm_production_cost WHERE BatchID = ? ORDER BY Date DESC`
+	rows, err := db.Query(query, batchId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var costs []map[string]interface{}
+	for rows.Next() {
+		var date, costType, description string
+		var amount float64
+		if err := rows.Scan(&date, &costType, &description, &amount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		costs = append(costs, map[string]interface{}{
+			"id":          date + costType + description, // simple id
+			"date":        date,
+			"type":        costType,
+			"description": description,
+			"amount":      amount,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": costs})
+}
+
+func getBatchEvents(w http.ResponseWriter, r *http.Request, batchId string) {
+	query := os.Getenv("GET_EVENTS")
+	rows, err := db.Query(query, batchId, batchId)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+	var events []map[string]interface{}
+	for rows.Next() {
+		var date, event, details, qtyCount string
+		if err := rows.Scan(&date, &event, &details, &qtyCount); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		events = append(events, map[string]interface{}{
+			"id":      date + event + details + qtyCount, // simple id
+			"date":    date,
+			"event":   event,
+			"details": details,
+			"qty":     qtyCount,
+		})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"data": events})
+}
+
+// PUT /batches/{id}/events
+func updateBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	var payload struct {
+		Date    string  `json:"Date"`
+		Details string  `json:"Details"`
+		Qty     float32 `json:"Qty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Find UsageID in cm_inventory_usage using payload fields
+	var usageID int
+	usageQuery := `SELECT UsageID FROM cm_inventory_usage WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err := db.QueryRow(usageQuery, batchId, payload.Date).Scan(&usageID)
+	if err == nil {
+		// Update the found UsageID
+		updateQuery := `UPDATE cm_inventory_usage SET QuantityUsed = ? WHERE UsageID = ? AND BatchID = ?`
+		res, err := db.Exec(updateQuery, payload.Qty, usageID, batchId)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	// If not found, try to update in cm_mortality (Mortality)
+	var mortalityID int
+	mortalityQuery := `SELECT MortalityID FROM cm_mortality WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err2 := db.QueryRow(mortalityQuery, batchId, payload.Date).Scan(&mortalityID)
+	if err2 == nil {
+		updateMortality := `UPDATE cm_mortality SET BirdsLoss = ?, Notes = ? WHERE MortalityID = ? AND BatchID = ?`
+		res2, err3 := db.Exec(updateMortality, payload.Qty, payload.Details, mortalityID, batchId)
+		if err3 != nil {
+			http.Error(w, err3.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res2.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	http.Error(w, "Event not found for update", http.StatusNotFound)
+}
+
 func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
 	// Decode JSON body
 	var payload struct {
@@ -624,6 +700,42 @@ func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
 	}
 }
 
+func deleteBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var payload struct {
+		ID   string `json:"id"`
+		DATE string `json:"date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Try to delete from cm_inventory_usage first
+	usageDel := `DELETE FROM cm_inventory_usage WHERE BatchID = ? AND Date = ?`
+	res, err := db.Exec(usageDel, batchId, payload.DATE)
+	if err == nil {
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected > 0 {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+			return
+		}
+	}
+	// If not found, try to delete from cm_mortality
+	mortDel := `DELETE FROM cm_mortality WHERE BatchID = ? AND Date = ?`
+	res2, err2 := db.Exec(mortDel, batchId, payload.DATE)
+	if err2 == nil {
+		rowsAffected2, _ := res2.RowsAffected()
+		if rowsAffected2 > 0 {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected2})
+			return
+		}
+	}
+	http.Error(w, "Event not found for delete", http.StatusNotFound)
+}
+
 // Router for /batches/{id}/vitals, /events, /costs
 func batchDetailsRouter(w http.ResponseWriter, r *http.Request) {
 	// URL: /batches/{id}/vitals, /events, /costs
@@ -646,6 +758,8 @@ func batchDetailsRouter(w http.ResponseWriter, r *http.Request) {
 			updateBatchEvent(w, r, batchId)
 		} else if r.Method == http.MethodPost {
 			insertBatchEvent(w, r, batchId)
+		} else if r.Method == http.MethodDelete {
+			deleteBatchEvent(w, r, batchId)
 		} else {
 			getBatchEvents(w, r, batchId)
 		}
@@ -680,82 +794,6 @@ func split(s string, sep byte) []string {
 	}
 	out = append(out, s[last:])
 	return out
-}
-
-func getBatchVitals(w http.ResponseWriter, r *http.Request, batchId string) {
-	query := `SELECT Notes AS BatchName, StartDate, CurrentChicken AS CurrentPopulation, DATEDIFF(NOW(), StartDate) AS AgeInDays FROM cm_batches WHERE BatchID = ? LIMIT 1`
-	row := db.QueryRow(query, batchId)
-	var name, startDate string
-	var currentPopulation, ageDays int
-	err := row.Scan(&name, &startDate, &currentPopulation, &ageDays)
-	if err != nil {
-		http.Error(w, "Batch not found", http.StatusNotFound)
-		return
-	}
-	resp := map[string]interface{}{
-		"id":                batchId,
-		"name":              name,
-		"startDate":         startDate,
-		"currentPopulation": currentPopulation,
-		"ageDays":           ageDays,
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"data": resp})
-}
-
-func getBatchCosts(w http.ResponseWriter, r *http.Request, batchId string) {
-	query := `SELECT Date, CostType, Description, Amount FROM cm_production_cost WHERE BatchID = ? ORDER BY Date DESC`
-	rows, err := db.Query(query, batchId)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-	var costs []map[string]interface{}
-	for rows.Next() {
-		var date, costType, description string
-		var amount float64
-		if err := rows.Scan(&date, &costType, &description, &amount); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		costs = append(costs, map[string]interface{}{
-			"id":          date + costType + description, // simple id
-			"date":        date,
-			"type":        costType,
-			"description": description,
-			"amount":      amount,
-		})
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"data": costs})
-}
-
-func getBatchEvents(w http.ResponseWriter, r *http.Request, batchId string) {
-	query := os.Getenv("GET_EVENTS")
-	rows, err := db.Query(query, batchId, batchId, batchId)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-	var events []map[string]interface{}
-	for rows.Next() {
-		var date, event, details, qtyCount string
-		if err := rows.Scan(&date, &event, &details, &qtyCount); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		events = append(events, map[string]interface{}{
-			"id":      date + event + details + qtyCount, // simple id
-			"date":    date,
-			"event":   event,
-			"details": details,
-			"qty":     qtyCount,
-		})
-	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{"data": events})
 }
 
 func main() {
