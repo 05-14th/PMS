@@ -60,28 +60,36 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
     [costs]
   );
 
+  const fetchData = async () => {
+    try{
+        let ok = true;
+        setLoading(true);
+        Promise.all([
+        api.get<{ data: BatchVitals }>(`/batches/${batchId}/vitals`),
+        api.get<{ data: DailyEvent[] }>(`/batches/${batchId}/events`),
+        api.get<{ data: DirectCost[] }>(`/batches/${batchId}/costs`),
+        ])
+        .then(([v, e, c]) => {
+            if (!ok) return;
+            setVitals(v.data.data);
+            setEvents(e.data.data);
+            setCosts(c.data.data);
+        })
+        .catch(e => {
+            if (!ok) return;
+            setErr(e?.message || "Failed to load");
+        })
+        .finally(() => ok && setLoading(false));
+        return () => {
+        ok = false;
+        };
+    } catch (e) {
+        setErr("Failed to load data");
+    }
+  }
+
   useEffect(() => {
-    let ok = true;
-    setLoading(true);
-    Promise.all([
-      api.get<{ data: BatchVitals }>(`/batches/${batchId}/vitals`),
-      api.get<{ data: DailyEvent[] }>(`/batches/${batchId}/events`),
-      api.get<{ data: DirectCost[] }>(`/batches/${batchId}/costs`),
-    ])
-      .then(([v, e, c]) => {
-        if (!ok) return;
-        setVitals(v.data.data);
-        setEvents(e.data.data);
-        setCosts(c.data.data);
-      })
-      .catch(e => {
-        if (!ok) return;
-        setErr(e?.message || "Failed to load");
-      })
-      .finally(() => ok && setLoading(false));
-    return () => {
-      ok = false;
-    };
+    fetchData();
   }, [batchId]);
 
   const fetchItemById = async (itemType: string) => {
@@ -90,7 +98,9 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
         itemType = "Feed";
       }else if (itemType === "Medication") {
         itemType = "Medicine";
-     }
+        } else {
+        return;
+        }
       const res = await api.post(`/getItemByType`, { item_type: itemType });
       setItems(res.data);
     } catch (e) {
@@ -127,7 +137,7 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
             Details: payload.Details,
             Qty: payload.Qty,
         });
-        setEvents(prev => prev.map((ev, idx) => idx === selectedIdx ? { ...ev, ...payload, qty: payload.Qty } : ev));
+        fetchData();
         setSelectedIdx(null);
       } else {
         console.log(payload)
@@ -135,7 +145,7 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
           `/batches/${batchId}/events`,
           payload
         );
-        setEvents(prev => [res.data.data, ...prev]);
+        fetchData();
       }
       setNewEvent({
         event: "Consumption",
@@ -190,11 +200,11 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
                     className="border rounded-xl px-3 py-2"
                     value={newEvent.event}
                     onChange={e => {
-                    setNewEvent(prev => ({
-                        ...prev,
-                        event: e.target.value as DailyEvent["event"],
-                    }));
-                    fetchItemById(e.target.value);
+                        setNewEvent(prev => ({
+                            ...prev,
+                            event: e.target.value as DailyEvent["event"],
+                        }));
+                        fetchItemById(e.target.value);
                     }}
                 >
                   <option value="Consumption">Record Consumption</option>

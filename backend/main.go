@@ -484,48 +484,6 @@ func getProductById(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(products)
 }
 
-func handleFeedMedsData(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var data struct {
-		ItemName string `json:"item_name"`
-		Category string `json:"category"`
-		Unit     string `json:"unit"`
-		Quantity int    `json:"quantity"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
-
-	stmt, err := db.Prepare(os.Getenv("INSERT_INVENTORY"))
-	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-	defer stmt.Close()
-
-	result, err := stmt.Exec(data.ItemName, data.Category, data.Unit, data.Quantity, 0.0, 1) // Placeholder values for UnitCost and SupplierID
-	if err != nil {
-		http.Error(w, "Failed to insert data", http.StatusInternalServerError)
-		return
-	}
-
-	id, _ := result.LastInsertId()
-	response := map[string]interface{}{
-		"success": true,
-		"id":      id,
-		"message": "Data received successfully",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
 func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -581,35 +539,79 @@ func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
 		return
 	}
 
-	category := ""
+	// assuming payload has Event, Details, Date, Qty
+	var itemID int
 
-	if payload.Event == "Consumption" {
+	// derive category from the event
+	var category string
+	fmt.Println("Inserting event:", payload.Event, "Details:", payload.Details, "Date:", payload.Date, "Qty:", payload.Qty)
+	switch payload.Event {
+	case "Consumption":
 		category = "Feed"
-	} else if payload.Event == "Medication" {
+	case "Medication":
 		category = "Medicine"
+	case "Mortality":
+		// handled below
+	default:
+		http.Error(w, "Unknown event type", http.StatusBadRequest)
+		return
 	}
 
-	var ItemID int
-	if category == "Feed" || category == "Medication" {
-		// Insert into cm_inventory_usage
-		itemQuery := `SELECT ItemID FROM cm_items WHERE ItemName = ? LIMIT 1`
-		err := db.QueryRow(itemQuery, payload.Details).Scan(&ItemID)
+	if payload.Event == "Consumption" || payload.Event == "Medication" {
+		if payload.Details == "" {
+			http.Error(w, "Details (item name) is required", http.StatusBadRequest)
+			return
+		}
 
-		if err != nil {
+		// Find item by name and its type to avoid mismatches
+		itemQuery := `SELECT ItemID FROM cm_items WHERE ItemName = ? AND Category = ? LIMIT 1`
+		err := db.QueryRow(itemQuery, payload.Details, category).Scan(&itemID)
+		if err == sql.ErrNoRows {
 			http.Error(w, "Item not found for usage", http.StatusBadRequest)
 			return
 		}
-
-		insertQuery := `INSERT INTO cm_inventory_usage (BatchID, ItemID, Date, QuantityUsed) VALUES (?, ?, ?, ?)`
-		res, err := db.Exec(insertQuery, batchId, ItemID, payload.Date, payload.Qty)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Database error while fetching item", http.StatusInternalServerError)
 			return
 		}
+
+		if payload.Date == "" {
+			http.Error(w, "Date is required", http.StatusBadRequest)
+			return
+		}
+
+		// validate qty
+		if payload.Qty <= 0 {
+			http.Error(w, "Qty must be greater than 0", http.StatusBadRequest)
+			return
+		}
+
+		// If your column is literally named Date, consider renaming to UsageDate to avoid confusion
+		sqlInsert := os.Getenv("INSERT_ITEM_USAGE")
+		if sqlInsert == "" {
+			http.Error(w, "missing INSERT_ITEM_USAGE env var", http.StatusInternalServerError)
+			return
+		}
+
+		res, err := db.Exec(sqlInsert, batchId, itemID, payload.Date, payload.Qty)
+		if err != nil {
+			// log the SQL so you can confirm the table name being used
+			log.Printf("Exec failed for INSERT_ITEM_USAGE: %q err=%v", sqlInsert, err)
+			http.Error(w, "database insert failed", http.StatusInternalServerError)
+			return
+		}
+
 		lastID, _ := res.LastInsertId()
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
-	} else if payload.Event == "Mortality" {
-		// Insert into cm_mortality
+		return
+	}
+
+	if payload.Event == "Mortality" {
+		if payload.Date == "" {
+			http.Error(w, "Date is required", http.StatusBadRequest)
+			return
+		}
+
 		insertQuery := `INSERT INTO cm_mortality (BatchID, Date, BirdsLoss, Notes) VALUES (?, ?, ?, ?)`
 		res, err := db.Exec(insertQuery, batchId, payload.Date, payload.Qty, payload.Details)
 		if err != nil {
@@ -618,8 +620,7 @@ func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
 		}
 		lastID, _ := res.LastInsertId()
 		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
-	} else {
-		http.Error(w, "Unknown event type", http.StatusBadRequest)
+		return
 	}
 }
 
@@ -732,7 +733,7 @@ func getBatchCosts(w http.ResponseWriter, r *http.Request, batchId string) {
 
 func getBatchEvents(w http.ResponseWriter, r *http.Request, batchId string) {
 	query := os.Getenv("GET_EVENTS")
-	rows, err := db.Query(query, batchId, batchId)
+	rows, err := db.Query(query, batchId, batchId, batchId)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
