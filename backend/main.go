@@ -118,51 +118,6 @@ type DhtData struct {
 
 var db *sql.DB
 
-// PUT /batches/{id}/events
-func updateBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
-	var payload struct {
-		Date    string  `json:"Date"`
-		Details string  `json:"Details"`
-		Qty     float32 `json:"Qty"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
-	// Find UsageID in cm_inventory_usage using payload fields
-	var usageID int
-	usageQuery := `SELECT UsageID FROM cm_inventory_usage WHERE BatchID = ? AND Date = ? LIMIT 1`
-	err := db.QueryRow(usageQuery, batchId, payload.Date).Scan(&usageID)
-	if err == nil {
-		// Update the found UsageID
-		updateQuery := `UPDATE cm_inventory_usage SET QuantityUsed = ? WHERE UsageID = ? AND BatchID = ?`
-		res, err := db.Exec(updateQuery, payload.Qty, usageID, batchId)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		rowsAffected, _ := res.RowsAffected()
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
-		return
-	}
-	// If not found, try to update in cm_mortality (Mortality)
-	var mortalityID int
-	mortalityQuery := `SELECT MortalityID FROM cm_mortality WHERE BatchID = ? AND Date = ? LIMIT 1`
-	err2 := db.QueryRow(mortalityQuery, batchId, payload.Date).Scan(&mortalityID)
-	if err2 == nil {
-		updateMortality := `UPDATE cm_mortality SET BirdsLoss = ?, Notes = ? WHERE MortalityID = ? AND BatchID = ?`
-		res2, err3 := db.Exec(updateMortality, payload.Qty, payload.Details, mortalityID, batchId)
-		if err3 != nil {
-			http.Error(w, err3.Error(), http.StatusInternalServerError)
-			return
-		}
-		rowsAffected, _ := res2.RowsAffected()
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
-		return
-	}
-	http.Error(w, "Event not found for update", http.StatusNotFound)
-}
-
 func initDB() {
 	var err error
 	if err := godotenv.Load(); err != nil {
@@ -484,48 +439,6 @@ func getProductById(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(products)
 }
 
-func handleFeedMedsData(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	var data struct {
-		ItemName string `json:"item_name"`
-		Category string `json:"category"`
-		Unit     string `json:"unit"`
-		Quantity int    `json:"quantity"`
-	}
-
-	if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
-
-	stmt, err := db.Prepare(os.Getenv("INSERT_INVENTORY"))
-	if err != nil {
-		http.Error(w, "Database error", http.StatusInternalServerError)
-		return
-	}
-	defer stmt.Close()
-
-	result, err := stmt.Exec(data.ItemName, data.Category, data.Unit, data.Quantity, 0.0, 1) // Placeholder values for UnitCost and SupplierID
-	if err != nil {
-		http.Error(w, "Failed to insert data", http.StatusInternalServerError)
-		return
-	}
-
-	id, _ := result.LastInsertId()
-	response := map[string]interface{}{
-		"success": true,
-		"id":      id,
-		"message": "Data received successfully",
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
-}
-
 func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -566,119 +479,6 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
-}
-
-func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
-	// Decode JSON body
-	var payload struct {
-		Date    string  `json:"Date"`
-		Event   string  `json:"Event"`
-		Details string  `json:"Details"`
-		Qty     float32 `json:"Qty"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
-		return
-	}
-
-	category := ""
-
-	if payload.Event == "Consumption" {
-		category = "Feed"
-	} else if payload.Event == "Medication" {
-		category = "Medicine"
-	}
-
-	var ItemID int
-	if category == "Feed" || category == "Medication" {
-		// Insert into cm_inventory_usage
-		itemQuery := `SELECT ItemID FROM cm_items WHERE ItemName = ? LIMIT 1`
-		err := db.QueryRow(itemQuery, payload.Details).Scan(&ItemID)
-
-		if err != nil {
-			http.Error(w, "Item not found for usage", http.StatusBadRequest)
-			return
-		}
-
-		insertQuery := `INSERT INTO cm_inventory_usage (BatchID, ItemID, Date, QuantityUsed) VALUES (?, ?, ?, ?)`
-		res, err := db.Exec(insertQuery, batchId, ItemID, payload.Date, payload.Qty)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		lastID, _ := res.LastInsertId()
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
-	} else if payload.Event == "Mortality" {
-		// Insert into cm_mortality
-		insertQuery := `INSERT INTO cm_mortality (BatchID, Date, BirdsLoss, Notes) VALUES (?, ?, ?, ?)`
-		res, err := db.Exec(insertQuery, batchId, payload.Date, payload.Qty, payload.Details)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		lastID, _ := res.LastInsertId()
-		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
-	} else {
-		http.Error(w, "Unknown event type", http.StatusBadRequest)
-	}
-}
-
-// Router for /batches/{id}/vitals, /events, /costs
-func batchDetailsRouter(w http.ResponseWriter, r *http.Request) {
-	// URL: /batches/{id}/vitals, /events, /costs
-	path := r.URL.Path
-	// Extract batchId and subpath
-	// Example: /batches/1/vitals
-	parts := splitPath(path)
-	if len(parts) < 3 {
-		http.Error(w, "Invalid path", http.StatusBadRequest)
-		return
-	}
-	batchId := parts[1]
-	sub := parts[2]
-
-	switch sub {
-	case "vitals":
-		getBatchVitals(w, r, batchId)
-	case "events":
-		if r.Method == http.MethodPut {
-			updateBatchEvent(w, r, batchId)
-		} else if r.Method == http.MethodPost {
-			insertBatchEvent(w, r, batchId)
-		} else {
-			getBatchEvents(w, r, batchId)
-		}
-	case "costs":
-		getBatchCosts(w, r, batchId)
-	default:
-		http.Error(w, "Not found", http.StatusNotFound)
-	}
-	// PUT /batches/{id}/events
-}
-
-func splitPath(path string) []string {
-	// Remove leading/trailing slashes, split by /
-	p := path
-	if len(p) > 0 && p[0] == '/' {
-		p = p[1:]
-	}
-	if len(p) > 0 && p[len(p)-1] == '/' {
-		p = p[:len(p)-1]
-	}
-	return split(p, '/')
-}
-
-func split(s string, sep byte) []string {
-	var out []string
-	last := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == sep {
-			out = append(out, s[last:i])
-			last = i + 1
-		}
-	}
-	out = append(out, s[last:])
-	return out
 }
 
 func getBatchVitals(w http.ResponseWriter, r *http.Request, batchId string) {
@@ -755,6 +555,245 @@ func getBatchEvents(w http.ResponseWriter, r *http.Request, batchId string) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"data": events})
+}
+
+// PUT /batches/{id}/events
+func updateBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	var payload struct {
+		Date    string  `json:"Date"`
+		Details string  `json:"Details"`
+		Qty     float32 `json:"Qty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Find UsageID in cm_inventory_usage using payload fields
+	var usageID int
+	usageQuery := `SELECT UsageID FROM cm_inventory_usage WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err := db.QueryRow(usageQuery, batchId, payload.Date).Scan(&usageID)
+	if err == nil {
+		// Update the found UsageID
+		updateQuery := `UPDATE cm_inventory_usage SET QuantityUsed = ? WHERE UsageID = ? AND BatchID = ?`
+		res, err := db.Exec(updateQuery, payload.Qty, usageID, batchId)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	// If not found, try to update in cm_mortality (Mortality)
+	var mortalityID int
+	mortalityQuery := `SELECT MortalityID FROM cm_mortality WHERE BatchID = ? AND Date = ? LIMIT 1`
+	err2 := db.QueryRow(mortalityQuery, batchId, payload.Date).Scan(&mortalityID)
+	if err2 == nil {
+		updateMortality := `UPDATE cm_mortality SET BirdsLoss = ?, Notes = ? WHERE MortalityID = ? AND BatchID = ?`
+		res2, err3 := db.Exec(updateMortality, payload.Qty, payload.Details, mortalityID, batchId)
+		if err3 != nil {
+			http.Error(w, err3.Error(), http.StatusInternalServerError)
+			return
+		}
+		rowsAffected, _ := res2.RowsAffected()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+		return
+	}
+	http.Error(w, "Event not found for update", http.StatusNotFound)
+}
+
+func insertBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	// Decode JSON body
+	var payload struct {
+		Date    string  `json:"Date"`
+		Event   string  `json:"Event"`
+		Details string  `json:"Details"`
+		Qty     float32 `json:"Qty"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+
+	// assuming payload has Event, Details, Date, Qty
+	var itemID int
+
+	// derive category from the event
+	var category string
+	fmt.Println("Inserting event:", payload.Event, "Details:", payload.Details, "Date:", payload.Date, "Qty:", payload.Qty)
+	switch payload.Event {
+	case "Consumption":
+		category = "Feed"
+	case "Medication":
+		category = "Medicine"
+	case "Mortality":
+		// handled below
+	default:
+		http.Error(w, "Unknown event type", http.StatusBadRequest)
+		return
+	}
+
+	if payload.Event == "Consumption" || payload.Event == "Medication" {
+		if payload.Details == "" {
+			http.Error(w, "Details (item name) is required", http.StatusBadRequest)
+			return
+		}
+
+		// Find item by name and its type to avoid mismatches
+		itemQuery := `SELECT ItemID FROM cm_items WHERE ItemName = ? AND Category = ? LIMIT 1`
+		err := db.QueryRow(itemQuery, payload.Details, category).Scan(&itemID)
+		if err == sql.ErrNoRows {
+			http.Error(w, "Item not found for usage", http.StatusBadRequest)
+			return
+		}
+		if err != nil {
+			http.Error(w, "Database error while fetching item", http.StatusInternalServerError)
+			return
+		}
+
+		if payload.Date == "" {
+			http.Error(w, "Date is required", http.StatusBadRequest)
+			return
+		}
+
+		// validate qty
+		if payload.Qty <= 0 {
+			http.Error(w, "Qty must be greater than 0", http.StatusBadRequest)
+			return
+		}
+
+		// If your column is literally named Date, consider renaming to UsageDate to avoid confusion
+		sqlInsert := os.Getenv("INSERT_ITEM_USAGE")
+		if sqlInsert == "" {
+			http.Error(w, "missing INSERT_ITEM_USAGE env var", http.StatusInternalServerError)
+			return
+		}
+
+		res, err := db.Exec(sqlInsert, batchId, itemID, payload.Date, payload.Qty)
+		if err != nil {
+			// log the SQL so you can confirm the table name being used
+			log.Printf("Exec failed for INSERT_ITEM_USAGE: %q err=%v", sqlInsert, err)
+			http.Error(w, "database insert failed", http.StatusInternalServerError)
+			return
+		}
+
+		lastID, _ := res.LastInsertId()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
+		return
+	}
+
+	if payload.Event == "Mortality" {
+		if payload.Date == "" {
+			http.Error(w, "Date is required", http.StatusBadRequest)
+			return
+		}
+
+		insertQuery := `INSERT INTO cm_mortality (BatchID, Date, BirdsLoss, Notes) VALUES (?, ?, ?, ?)`
+		res, err := db.Exec(insertQuery, batchId, payload.Date, payload.Qty, payload.Details)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		lastID, _ := res.LastInsertId()
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
+		return
+	}
+}
+
+func deleteBatchEvent(w http.ResponseWriter, r *http.Request, batchId string) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var payload struct {
+		ID   string `json:"id"`
+		DATE string `json:"date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Try to delete from cm_inventory_usage first
+	usageDel := `DELETE FROM cm_inventory_usage WHERE BatchID = ? AND Date = ?`
+	res, err := db.Exec(usageDel, batchId, payload.DATE)
+	if err == nil {
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected > 0 {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected})
+			return
+		}
+	}
+	// If not found, try to delete from cm_mortality
+	mortDel := `DELETE FROM cm_mortality WHERE BatchID = ? AND Date = ?`
+	res2, err2 := db.Exec(mortDel, batchId, payload.DATE)
+	if err2 == nil {
+		rowsAffected2, _ := res2.RowsAffected()
+		if rowsAffected2 > 0 {
+			json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "rowsAffected": rowsAffected2})
+			return
+		}
+	}
+	http.Error(w, "Event not found for delete", http.StatusNotFound)
+}
+
+// Router for /batches/{id}/vitals, /events, /costs
+func batchDetailsRouter(w http.ResponseWriter, r *http.Request) {
+	// URL: /batches/{id}/vitals, /events, /costs
+	path := r.URL.Path
+	// Extract batchId and subpath
+	// Example: /batches/1/vitals
+	parts := splitPath(path)
+	if len(parts) < 3 {
+		http.Error(w, "Invalid path", http.StatusBadRequest)
+		return
+	}
+	batchId := parts[1]
+	sub := parts[2]
+
+	switch sub {
+	case "vitals":
+		getBatchVitals(w, r, batchId)
+	case "events":
+		if r.Method == http.MethodPut {
+			updateBatchEvent(w, r, batchId)
+		} else if r.Method == http.MethodPost {
+			insertBatchEvent(w, r, batchId)
+		} else if r.Method == http.MethodDelete {
+			deleteBatchEvent(w, r, batchId)
+		} else {
+			getBatchEvents(w, r, batchId)
+		}
+	case "costs":
+		getBatchCosts(w, r, batchId)
+	default:
+		http.Error(w, "Not found", http.StatusNotFound)
+	}
+	// PUT /batches/{id}/events
+}
+
+func splitPath(path string) []string {
+	// Remove leading/trailing slashes, split by /
+	p := path
+	if len(p) > 0 && p[0] == '/' {
+		p = p[1:]
+	}
+	if len(p) > 0 && p[len(p)-1] == '/' {
+		p = p[:len(p)-1]
+	}
+	return split(p, '/')
+}
+
+func split(s string, sep byte) []string {
+	var out []string
+	last := 0
+	for i := 0; i < len(s); i++ {
+		if s[i] == sep {
+			out = append(out, s[last:i])
+			last = i + 1
+		}
+	}
+	out = append(out, s[last:])
+	return out
 }
 
 func main() {
