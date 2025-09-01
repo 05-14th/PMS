@@ -482,11 +482,11 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 }
 
 func getBatchVitals(w http.ResponseWriter, r *http.Request, batchId string) {
-	query := `SELECT Notes AS BatchName, StartDate, CurrentChicken AS CurrentPopulation, DATEDIFF(NOW(), StartDate) AS AgeInDays FROM cm_batches WHERE BatchID = ? LIMIT 1`
+	query := `SELECT a.Notes AS BatchName, StartDate, CurrentChicken AS CurrentPopulation, DATEDIFF(NOW(), StartDate) AS AgeInDays, SUM(BirdsLoss) FROM cm_batches a JOIN cm_mortality b ON a.BatchID = b.BatchID WHERE a.BatchID = ? LIMIT 1`
 	row := db.QueryRow(query, batchId)
 	var name, startDate string
-	var currentPopulation, ageDays int
-	err := row.Scan(&name, &startDate, &currentPopulation, &ageDays)
+	var currentPopulation, ageDays, mortalityTotal int
+	err := row.Scan(&name, &startDate, &currentPopulation, &ageDays, &mortalityTotal)
 	if err != nil {
 		http.Error(w, "Batch not found", http.StatusNotFound)
 		return
@@ -497,6 +497,7 @@ func getBatchVitals(w http.ResponseWriter, r *http.Request, batchId string) {
 		"startDate":         startDate,
 		"currentPopulation": currentPopulation,
 		"ageDays":           ageDays,
+		"mortalityTotal":    mortalityTotal,
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{"data": resp})

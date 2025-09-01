@@ -30,6 +30,7 @@ type BatchVitals = {
   startDate: string;
   ageDays: number;
   currentPopulation: number;
+  mortalityTotal: number;
 };
 
 const api = axios.create({
@@ -262,6 +263,7 @@ export default function BatchDetails({ batchId }: { batchId: string }) {
                 <div>Start Date: {vitals.startDate}</div>
                 <div>Age: {vitals.ageDays} days</div>
                 <div>Current Population: {vitals.currentPopulation}</div>
+                <div>Total Mortality: {vitals.mortalityTotal}</div>
               </div>
             </section>
 
