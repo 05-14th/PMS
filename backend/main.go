@@ -12,6 +12,8 @@ import (
 	"syscall"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 )
@@ -175,6 +177,29 @@ func getUsers(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
+}
+
+func getAllItems(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query(os.Getenv("GET_ALL_ITEMS"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var items []Items
+
+	for rows.Next() {
+		var item Items
+		if err := rows.Scan(&item.ID, &item.Name, &item.Category, &item.Unit, &item.SupplierID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		items = append(items, item)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
 }
 
 func getItemByType(w http.ResponseWriter, r *http.Request) {
@@ -797,9 +822,70 @@ func split(s string, sep byte) []string {
 	return out
 }
 
+// POST /addItem
+func addItem(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var payload struct {
+		ItemName string `json:"ItemName"`
+		Category string `json:"Category"`
+		Unit     string `json:"Unit"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Insert into cm_items
+	query := `INSERT INTO cm_items (ItemName, Category, Unit) VALUES (?, ?, ?)`
+	res, err := db.Exec(query, payload.ItemName, payload.Category, payload.Unit)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	lastID, _ := res.LastInsertId()
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "insertedId": lastID})
+}
+
+// POST /api/login
+func loginHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var payload struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		http.Error(w, "Invalid JSON body", http.StatusBadRequest)
+		return
+	}
+	// Query user by email
+	var dbPassword, role string
+	query := `SELECT password, role FROM cm_users WHERE email = ? LIMIT 1`
+	err := db.QueryRow(query, payload.Email).Scan(&dbPassword, &role)
+	if err == sql.ErrNoRows {
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "User not found"})
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Use bcrypt to compare password
+	if bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(payload.Password)) == nil {
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "role": role})
+	} else {
+		json.NewEncoder(w).Encode(map[string]interface{}{"success": false, "error": "Invalid password"})
+	}
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/batches/", withCORS(batchDetailsRouter))
+	http.HandleFunc("/getAllItems", withCORS(getAllItems))
 	http.HandleFunc("/getUsers", withCORS(getUsers))
 	http.HandleFunc("/getItemByType", withCORS(getItemByType))
 	http.HandleFunc("/getBatches", withCORS(getBatches))
@@ -810,6 +896,8 @@ func main() {
 	http.HandleFunc("/getProducts", withCORS(getProducts))
 	http.HandleFunc("/getProductInfo", withCORS(getProductById))
 	http.HandleFunc("/api/dht22-data", withCORS(handleDhtData))
+	http.HandleFunc("/addItem", withCORS(addItem))
+	http.HandleFunc("/api/login", withCORS(loginHandler))
 
 	server := &http.Server{
 		Addr:         "0.0.0.0:8080",
