@@ -209,120 +209,132 @@ const Supplier: React.FC = () => {
 
   return (
     <div className="p-4">
-      <div className="mb-6">
-        <Row gutter={[16, 16]} className="mb-4">
-          <Col xs={24}>
-            <div>
-              <Title level={4} className="m-0 text-gray-800 text-lg sm:text-xl">Suppliers</Title>
+      <div className="relative mb-6">
+        <Title level={3} className="text-gray-800">Suppliers</Title>
+        <Button 
+          type="default"
+          icon={<PlusOutlined />} 
+          onClick={() => setIsAddModalVisible(true)}
+          className="absolute top-0 right-0 bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-800"
+          style={{
+            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.375rem',
+            padding: '0.5rem 1rem',
+            height: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center'
+          }}
+        >
+          Add Supplier
+        </Button>
+      </div>
+
+      <Card className="shadow-sm">
+        <div className="mb-6">
+          <Row gutter={[16, 16]} className="mb-4">
+            <Col xs={24}>
               <p className="text-gray-500 m-0 text-sm sm:text-base">
                 Manage your suppliers and their information
               </p>
-            </div>
+            </Col>
+          </Row>
+
+          <Row gutter={[16, 16]} className="mb-6" justify="end">
+            <Col xs={24} sm={12} md={8} lg={6} xl={4}>
+            </Col>
+          </Row>
+        </div>
+
+        <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
+          <Col xs={24} sm={12} md={12} lg={10} xl={8}>
+            <Input
+              size="middle"
+              placeholder="Search suppliers..."
+              prefix={<SearchOutlined className="text-gray-400" />}
+              value={searchText}
+              onChange={handleSearch}
+              allowClear
+              className="w-full"
+            />
+          </Col>
+          <Col xs={24} sm={12} md={12} lg={10} xl={8}>
+            <Select
+              size="middle"
+              className="w-full"
+              placeholder="Filter by supplier"
+              value={selectedSupplier}
+              onChange={handleSupplierFilter}
+              options={supplierOptions}
+              suffixIcon={<FilterOutlined className="text-gray-400" />}
+              showSearch
+              optionFilterProp="label"
+              allowClear
+              onClear={() => setSelectedSupplier('all')}
+            />
           </Col>
         </Row>
 
-        <Row gutter={[16, 16]} className="mb-6" justify="end">
-          <Col xs={24} sm={12} md={8} lg={6} xl={4}>
-            <Button 
-              type="default"
-              icon={<PlusOutlined />}
-              onClick={() => setIsAddModalVisible(true)}
-              className="w-full bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-            >
-              Add Supplier
-            </Button>
-          </Col>
-        </Row>
-      </div>
-
-      <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
-        <Col xs={24} sm={12} md={12} lg={10} xl={8}>
-          <Input
+        <div className="overflow-x-auto">
+          <Table
+            columns={columns}
+            dataSource={filteredSuppliers}
+            rowKey="key"
+            pagination={{
+              pageSize: 10,
+              showSizeChanger: true,
+              showTotal: (total) => `Total ${total} suppliers`,
+              className: 'px-1 sm:px-4 py-2',
+              size: 'small',
+              showLessItems: true,
+              responsive: true,
+            }}
+            scroll={{ x: 'max-content' }}
+            locale={{
+              emptyText: (
+                <div className="py-8 sm:py-12">
+                  <p className="text-gray-500 text-base sm:text-lg">No suppliers found</p>
+                </div>
+              ),
+            }}
+            className="rounded-lg"
             size="middle"
-            placeholder="Search suppliers..."
-            prefix={<SearchOutlined className="text-gray-400" />}
-            value={searchText}
-            onChange={handleSearch}
-            allowClear
-            className="w-full"
           />
-        </Col>
-        <Col xs={24} sm={12} md={12} lg={10} xl={8}>
-          <Select
-            size="middle"
-            className="w-full"
-            placeholder="Filter by supplier"
-            value={selectedSupplier}
-            onChange={handleSupplierFilter}
-            options={supplierOptions}
-            suffixIcon={<FilterOutlined className="text-gray-400" />}
-            showSearch
-            optionFilterProp="label"
-            allowClear
-            onClear={() => setSelectedSupplier('all')}
-          />
-        </Col>
-      </Row>
+        </div>
 
-      <div className="overflow-x-auto">
-        <Table
-          columns={columns}
-          dataSource={filteredSuppliers}
-          rowKey="key"
-          pagination={{
-            pageSize: 10,
-            showSizeChanger: true,
-            showTotal: (total) => `Total ${total} suppliers`,
-            className: 'px-1 sm:px-4 py-2',
-            size: 'small',
-            showLessItems: true,
-            responsive: true,
-          }}
-          scroll={{ x: 'max-content' }}
-          locale={{
-            emptyText: (
-              <div className="py-8 sm:py-12">
-                <p className="text-gray-500 text-base sm:text-lg">No suppliers found</p>
-              </div>
-            ),
-          }}
-          className="rounded-lg"
-          size="middle"
+        <AddSupplier
+          visible={isAddModalVisible}
+          onCancel={() => setIsAddModalVisible(false)}
+          onAdd={handleAddSubmit}
+          loading={isLoading}
         />
-      </div>
 
-      <AddSupplier
-        visible={isAddModalVisible}
-        onCancel={() => setIsAddModalVisible(false)}
-        onAdd={handleAddSubmit}
-        loading={isLoading}
-      />
+        <EditSupplier
+          visible={isEditModalVisible}
+          onCancel={() => {
+            setIsEditModalVisible(false);
+            setEditingSupplier(null);
+          }}
+          onSave={handleEditSubmit}
+          initialValues={editingSupplier}
+          loading={isLoading}
+        />
 
-      <EditSupplier
-        visible={isEditModalVisible}
-        onCancel={() => {
-          setIsEditModalVisible(false);
-          setEditingSupplier(null);
-        }}
-        onSave={handleEditSubmit}
-        initialValues={editingSupplier}
-        loading={isLoading}
-      />
-
-      <Modal
-        title="Confirm Delete"
-        open={isDeleteModalVisible}
-        onOk={confirmDelete}
-        onCancel={() => {
-          setIsDeleteModalVisible(false);
-          setDeletingKey(null);
-        }}
-        confirmLoading={isLoading}
-        okText="Delete"
-        okButtonProps={{ danger: true }}
-      >
-        <p>Are you sure you want to delete this supplier? This action cannot be undone.</p>
-      </Modal>
+        <Modal
+          title="Confirm Delete"
+          open={isDeleteModalVisible}
+          onOk={confirmDelete}
+          onCancel={() => {
+            setIsDeleteModalVisible(false);
+            setDeletingKey(null);
+          }}
+          confirmLoading={isLoading}
+          okText="Delete"
+          okButtonProps={{ danger: true }}
+        >
+          <p>Are you sure you want to delete this supplier? This action cannot be undone.</p>
+        </Modal>
+      </Card>
     </div>
   );
 };

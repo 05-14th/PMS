@@ -276,33 +276,28 @@ const StockLevels: React.FC = () => {
 
   return (
     <div className="p-4">
-      <div className="mb-6">
-        <Row gutter={[16, 16]} className="mb-4">
-          <Col xs={24}>
-            <div>
-              <Title level={4} className="m-0 text-gray-800 text-lg sm:text-xl">Stock Levels</Title>
-              <p className="text-gray-500 m-0 text-sm sm:text-base">
-                Manage your inventory stock levels
-              </p>
-            </div>
-          </Col>
-        </Row>
-
-        <Row gutter={[16, 16]} className="mb-6" justify="end">
-          <Col xs={24} sm={12} md={8} lg={6} xl={4}>
-            <Button 
-              type="default"
-              icon={<PlusOutlined />}
-              onClick={() => setIsAddModalVisible(true)}
-              className="w-full bg-white hover:bg-gray-50 text-gray-800 border-gray-300"
-            >
-              Add Stock
-            </Button>
-          </Col>
-        </Row>
+      <div className="relative mb-6">
+        <Title level={4} className="text-gray-800 text-lg sm:text-xl">Stock Levels</Title>
+        <Button 
+          type="default"
+          icon={<PlusOutlined />} 
+          onClick={() => setIsAddModalVisible(true)}
+          className="absolute top-0 right-0 bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-800"
+          style={{
+            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+            border: '1px solid #d1d5db',
+            borderRadius: '0.375rem',
+            padding: '0.5rem 1rem',
+            height: 'auto',
+            display: 'inline-flex',
+            alignItems: 'center'
+          }}
+        >
+          Add New Item
+        </Button>
       </div>
 
-      <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
+      <Row gutter={[16, 16]} className="mb-4" align="middle">
         <Col xs={24} sm={16} md={16} lg={12} xl={8}>
           <Input
             size="middle"
