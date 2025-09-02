@@ -217,11 +217,6 @@ const StockLevels: React.FC = () => {
       ),
     },
     {
-      title: 'Unit',
-      dataIndex: 'unit',
-      key: 'unit',
-    },
-    {
       title: 'Actions',
       key: 'actions',
       render: (_: any, record: InventoryItem) => (
