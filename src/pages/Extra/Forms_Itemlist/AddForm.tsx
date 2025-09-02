@@ -1,5 +1,6 @@
 import React from 'react';
 import { Form, Input, Select, Modal, Button } from 'antd';
+import axios from 'axios';
 
 const { Option } = Select;
 
@@ -12,6 +13,26 @@ interface AddFormProps {
 
 const AddForm: React.FC<AddFormProps> = ({ visible, onCreate, onCancel, categories }) => {
   const [form] = Form.useForm();
+
+  // Add item handler
+  const handleAddItem = async (values: any) => {
+    try {
+      const api = axios.create({
+        baseURL: import.meta.env.VITE_APP_SERVERHOST,
+        timeout: 10000,
+      });
+      // POST to /addItem endpoint
+      await api.post('/addItem', {
+        ItemName: values.ItemName,
+        Category: values.Category,
+        Unit: values.Unit,
+      });
+      onCreate(values); // call parent handler
+    } catch (err) {
+      // Optionally show error message
+      console.error('Failed to add item', err);
+    }
+  };
 
   return (
     <Modal
@@ -46,7 +67,7 @@ const AddForm: React.FC<AddFormProps> = ({ visible, onCreate, onCancel, categori
               .validateFields()
               .then((values) => {
                 form.resetFields();
-                onCreate(values);
+                handleAddItem(values);
               })
               .catch((info) => {
                 console.log('Validate Failed:', info);

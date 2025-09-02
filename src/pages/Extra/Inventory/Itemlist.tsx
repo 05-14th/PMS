@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, Input, Select, Table, Space, Button, Typography, Row, Col, message, Modal } from 'antd';
 import type { TableProps } from 'antd';
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
 import AddForm from '../Forms_Itemlist/AddForm';
 import EditForm from '../Forms_Itemlist/EditForm';
+import axios from 'axios';
 
 const { Title } = Typography;
 
@@ -15,6 +16,7 @@ interface Item {
   Unit: string;
   SupplierID?: string | null;
 }
+
 
 const ItemList: React.FC = () => {
   // -------------------------------
@@ -56,6 +58,7 @@ const ItemList: React.FC = () => {
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
   const [deletingKey, setDeletingKey] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
 
   // ✅ Categories for filtering and form
   const [categories] = useState<Array<{ value: string; label: string; text: string }>>([
@@ -71,6 +74,41 @@ const ItemList: React.FC = () => {
   // 👉 Define how to render data from API in the table
   // Columns map to database fields (ItemName, Category, Unit)
   // -------------------------------
+  // Yeah Yeah, Whatever bro
+
+  const api = axios.create({
+    baseURL: import.meta.env.VITE_APP_SERVERHOST, // replace with your real API
+    timeout: 10000,
+  });
+
+  const fetchData = async () => {
+    try {
+      let ok = true;
+      setIsLoading(true);
+      Promise.all([
+        api.get<{ data: Item[] }>(`/getAllItems`),
+      ])
+        .then(([v]) => {
+          if (!ok) return;
+          setItems(v.data);
+        })
+        .catch((e) => {
+          if (!ok) return;
+          setErr(e?.message || "Failed to load");
+        })
+        .finally(() => ok && setIsLoading(false));
+      return () => {
+        ok = false;
+      };
+    } catch (e) {
+      setErr("Failed to load data");
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
   const columns: TableProps<Item>['columns'] = [
     {
       title: 'ITEM NAME',
@@ -126,7 +164,7 @@ const ItemList: React.FC = () => {
     const matchesCategory = categoryFilter === 'all' ||
       item.Category?.toLowerCase() === categoryFilter.toLowerCase();
     return matchesSearch && matchesCategory;
-  });
+  }).map((item, idx) => ({ ...item, key: item.ItemID || item.key || String(idx) }));
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchText(e.target.value);
@@ -193,15 +231,13 @@ const ItemList: React.FC = () => {
 
   const confirmDelete = async () => {
     if (!deletingKey) return;
-    
     try {
       setIsLoading(true);
-      // TODO: Connect to your API to delete the item
-      // await api.deleteItem(deletingKey);
-      
-      // Update local state
-      setItems(items.filter(item => item.key !== deletingKey));
+      // Call backend DELETE API
+      await api.delete(`/deleteItem/${deletingKey}`);
       message.success('Item deleted successfully');
+      // Refetch items from backend
+      fetchData();
     } catch (error) {
       console.error('Error deleting item:', error);
       message.error('Failed to delete item');
@@ -269,7 +305,7 @@ const ItemList: React.FC = () => {
         <Table
           columns={columns}
           dataSource={filteredItems}
-          rowKey="key"
+          rowKey={record => record.key}
           pagination={{
             pageSize: 10,
             showSizeChanger: true,

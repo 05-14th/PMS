@@ -882,6 +882,35 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DELETE /deleteItem/{id}
+func deleteItem(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	// Extract item ID from URL
+	path := r.URL.Path
+	parts := splitPath(path)
+	if len(parts) < 2 {
+		http.Error(w, "Missing item ID", http.StatusBadRequest)
+		return
+	}
+	itemID := parts[1]
+	// Delete from cm_items
+	query := `DELETE FROM cm_items WHERE ItemID = ?`
+	res, err := db.Exec(query, itemID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		http.Error(w, "Item not found", http.StatusNotFound)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]interface{}{"success": true, "deletedId": itemID})
+}
+
 func main() {
 	initDB()
 	http.HandleFunc("/batches/", withCORS(batchDetailsRouter))
@@ -897,6 +926,7 @@ func main() {
 	http.HandleFunc("/getProductInfo", withCORS(getProductById))
 	http.HandleFunc("/api/dht22-data", withCORS(handleDhtData))
 	http.HandleFunc("/addItem", withCORS(addItem))
+	http.HandleFunc("/deleteItem/", withCORS(deleteItem))
 	http.HandleFunc("/api/login", withCORS(loginHandler))
 
 	server := &http.Server{
