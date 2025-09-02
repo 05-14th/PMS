@@ -1,77 +1,178 @@
 import { useState } from 'react';
-import Developing from '../components/Developing';
 import MainBody from '../components/MainBody';
-import ConnectModal from '../components/ConnectModal';  // Import the ConnectModal
-import LineChart from '../charts/LineChart';
-import PieChart from '../charts/PieChart';
+import ConnectModal from '../components/ConnectModal';
+import AtAGlance from './Extra/Dashboard/AtAGlance';
+import LiveOperation from './Extra/Dashboard/LiveOperation';
+import FinancialForecast from './Extra/Dashboard/FinancialForecast';
 
-function HomePage() {
+// Types
+type DashboardData = {
+  currentPopulation: number;
+  totalBirds: number;
+  monthlyRevenue: number;
+  sellableInventory: number;
+  accruedCost: number;
+};
+
+type Batch = {
+  id: string;
+  age: number;
+  population: number;
+  daysToHarvest?: number;
+};
+
+type StockItem = {
+  id: string;
+  name: string;
+  level: number;
+  status: 'low' | 'adequate' | 'good';
+  quantity: string;
+};
+
+type FinancialData = {
+  batchId: string;
+  batchName: string;
+  accruedCost: number;
+  estimatedRevenue: number;
+  progress: number;
+  startDate: string;
+  endDate: string;
+};
+
+const HomePage = () => {
   const [isConnectModalOpen, setIsConnectModalOpen] = useState(false);
-  const labels = ['January', 'February', 'March', 'April'];
-  const dataPoints = [65, 59, 80, 81];
-  const plabels = ['Red', 'Blue', 'Yellow', 'Green'];
-  const pDataPoints = [30, 25, 20, 25];
+  
+  // Dashboard data
+  const dashboardData: DashboardData = {
+    currentPopulation: 2,
+    totalBirds: 5000,
+    monthlyRevenue: 250000,
+    sellableInventory: 1500,
+    accruedCost: 1200000,
+  };
+
+  // Batches data
+  const batches: Batch[] = [
+    { id: 'B-2023-001', age: 35, population: 2500, daysToHarvest: 2 },
+    { id: 'B-2023-002', age: 42, population: 2500, daysToHarvest: 5 },
+  ];
+
+  // Stock items data
+  const stockItems: StockItem[] = [
+    { 
+      id: 'feed',
+      name: 'Feed (50kg bags)', 
+      level: 25, 
+      status: 'low', 
+      quantity: '12 left' 
+    },
+    { 
+      id: 'vaccines',
+      name: 'Vaccines', 
+      level: 70, 
+      status: 'adequate', 
+      quantity: '' 
+    },
+  ];
+
+  // Financial forecast data
+  const financialData: FinancialData[] = [
+    {
+      batchId: 'B-2023-001',
+      batchName: 'Batch 1',
+      accruedCost: 30057,
+      estimatedRevenue: 65000,
+      progress: 46,
+      startDate: '2023-07-15',
+      endDate: '2023-10-15'
+    },
+    {
+      batchId: 'B-2023-002',
+      batchName: 'Batch 2',
+      accruedCost: 28000,
+      estimatedRevenue: 70000,
+      progress: 40,
+      startDate: '2023-08-01',
+      endDate: '2023-10-30'
+    }
+  ];
+
+  const handleRefresh = () => {
+    window.location.reload();
+  };
 
   return (
     <MainBody>
-      {/* Content Area */}
-      <div className="flex flex-col items-center justify-center min-h-screen pt-10 pb-10 bg-white">
-      
+      <div className="min-h-screen bg-gray-50 p-4 md:p-6">
+        <header className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+          <h1 className="text-2xl font-bold text-gray-800 mb-2 md:mb-0">
+            Dashboard Overview
+          </h1>
+          <button
+            onClick={handleRefresh}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-blue-700 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors duration-200"
+          >
+            <svg 
+              className="w-4 h-4 mr-2" 
+              fill="none" 
+              stroke="currentColor" 
+              viewBox="0 0 24 24"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" 
+              />
+            </svg>
+            Refresh Data
+          </button>
+        </header>
 
-        {/* Graph-like Placeholders */}
-        <div className="w-full max-w-5xl mt-10 grid grid-cols-1 md:grid-cols-2 gap-6 px-4">
-          {/* Line Graph Placeholder - now appears first */}
-          <div className="bg-white border border-gray-300 rounded-lg p-4 shadow">
-            <h2 className="text-gray-700 font-semibold mb-4">Line Graph</h2>
-            <LineChart labels={labels} dataPoints={dataPoints} />
+        <main className="space-y-6">
+          <AtAGlance data={dashboardData} />
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <LiveOperation batches={batches} stockItems={stockItems} />
+            <FinancialForecast data={financialData} />
           </div>
+        </main>
+      </div>
 
-          {/* Pie Chart Placeholder - now appears second */}
-          <div className="bg-white border border-gray-300 rounded-lg p-4 shadow">
-            <h2 className="text-gray-700 font-semibold mb-4">Pie Chart</h2>
-            <PieChart labels={plabels} dataPoints={pDataPoints} />
+      <div className="bg-green-800 py-4 px-4 flex flex-col items-center justify-center">
+        <div className="w-full max-w-4xl mx-auto">
+          <div className="flex flex-col md:flex-row items-center justify-between">
+            <p className="text-white text-center md:text-left mb-3 md:mb-0">
+              Connect your device via WiFi to get started!
+            </p>
+            <button
+              onClick={() => setIsConnectModalOpen(true)}
+              className="bg-white text-green-700 hover:bg-green-50 px-6 py-2 rounded-md font-medium transition-colors duration-200 flex items-center"
+            >
+              <svg
+                className="w-5 h-5 mr-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6h2m7-6h8m0 0h-2m2 4v2m0 4v2M4 6h16M4 10h16M4 14h16M4 18h16"
+                />
+              </svg>
+              Connect Device
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Sticky Connect Button */}
-      <div className="bg-gray-300 py-7 px-4 flex flex-col items-center justify-center shadow-inner">
-        <h2 className="text-gray-100 text-center text-lg md:text-xl mb-3">
-          Connect your device via WiFi and click ‘Connect’ to get started!
-        </h2>
-
-        <button
-          onClick={() => setIsConnectModalOpen(true)}
-          className="bg-green-600 hover:bg-green-700 text-white font-semibold py-4 px-10 rounded-lg flex items-center gap-2 text-base shadow"
-        >
-          Connect Device
-          <svg
-            xmlns="http://www.w3.org/2000/svg"
-            className="h-8 w-8"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 3C7.03 3 3 7.03 3 12s4.03 9 9 9 9-4.03 9-9-4.03-9-9-9zm0 0c2.5 2.5 2.5 13.5 0 16m0-16c-2.5 2.5-2.5 13.5 0 16M3.6 9h16.8M3.6 15h16.8"
-            />
-          </svg>
-        </button>
-      </div>
-
-    
-      {/* Connect Modal */}
-      {isConnectModalOpen && (
-        <ConnectModal
-          onClose={() => setIsConnectModalOpen(false)}
-          isOpen={isConnectModalOpen}
-        />
-      )}
+      <ConnectModal
+        isOpen={isConnectModalOpen}
+        onClose={() => setIsConnectModalOpen(false)}
+      />
     </MainBody>
   );
-}
+};
 
 export default HomePage;
