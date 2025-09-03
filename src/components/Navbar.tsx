@@ -11,7 +11,8 @@ import {
   ServerCog,
   LogOut,
   LayoutList,
-  Layers
+  Layers,
+  FileText
 } from "lucide-react";
 
 interface NavbarProps {
@@ -82,6 +83,15 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
                 >
                   <ShoppingCart size={20} />
                   <span>Sales</span>
+                </Link>
+              </li>
+              <li>
+                <Link
+                  to="/reports"
+                  className="flex items-center text-white hover:text-green-500 space-x-1"
+                >
+                  <FileText size={20} />
+                  <span>Reports</span>
                 </Link>
               </li>
               <li>

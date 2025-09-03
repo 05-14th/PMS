@@ -1,4 +1,4 @@
-// import { useState } from 'react'
+import React from 'react'
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
 import './App.css'
 import LoginModal from './pages/LoginModal'
@@ -7,6 +7,7 @@ import HomePage from './pages/HomePage'
 import Inventory from './pages/Inventory'
 import Control from './pages/Control'
 import Sales from './pages/Sales'
+import Reports from './pages/Reports'
 import Notification from './controlPage/Notification'
 import TargetModal from './components/TargetModal'
 import Products from './pages/Product'
@@ -27,6 +28,7 @@ function App() {
             <Route path="/batches/:id" element={<Batches />} />
             <Route path="/products" element={<Products />}/>
             <Route path="/sales" element={<Sales />} />
+            <Route path="/reports" element={<Reports />} />
             <Route path="/control" element={<Control />} />
             <Route path="/notification" element={<Notification />} />
           </Routes>
