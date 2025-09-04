@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
@@ -480,10 +481,18 @@ func updateSupplier(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
+// In the "Handlers" section of main.go
 func deleteSupplier(w http.ResponseWriter, r *http.Request) {
-	supplierID := chi.URLParam(r, "id")
-	if supplierID == "" {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
 		handleError(w, http.StatusBadRequest, "Missing supplier ID", nil)
+		return
+	}
+
+	// ADDED: Convert the string ID from the URL to an integer
+	supplierID, err := strconv.Atoi(idStr)
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid supplier ID", err)
 		return
 	}
 
@@ -491,6 +500,7 @@ func deleteSupplier(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	query := "DELETE FROM cm_suppliers WHERE SupplierID = ?"
+	// CHANGED: Pass the integer supplierID to the query
 	res, err := db.ExecContext(ctx, query, supplierID)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to delete supplier", err)
@@ -1183,9 +1193,16 @@ func updateInventoryItem(w http.ResponseWriter, r *http.Request) {
 
 // deleteInventoryItem handles DELETE /items/{id}
 func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
-	itemID := chi.URLParam(r, "id")
-	if itemID == "" {
+	idStr := chi.URLParam(r, "id")
+	if idStr == "" {
 		handleError(w, http.StatusBadRequest, "Missing item ID", nil)
+		return
+	}
+
+	// ADDED: Convert the string ID from the URL to an integer
+	itemID, err := strconv.Atoi(idStr)
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid item ID", err)
 		return
 	}
 
@@ -1193,6 +1210,7 @@ func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	query := "DELETE FROM cm_items WHERE ItemID = ?"
+	// CHANGED: Pass the integer itemID to the query
 	res, err := db.ExecContext(ctx, query, itemID)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to delete item", err)
