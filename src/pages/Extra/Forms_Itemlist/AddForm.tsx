@@ -1,35 +1,44 @@
 import React from 'react';
-import { Form, Input, Select, Modal, Button } from 'antd';
+// Step 1: Import 'message' for displaying feedback to the user
+import { Form, Input, Select, Modal, Button, message } from 'antd';
 import axios from 'axios';
 
 const { Option } = Select;
 
 interface AddFormProps {
   visible: boolean;
-  onCreate: (values: any) => void;
+  // Step 2: Change 'onCreate' to a simpler 'onSuccess' callback
+  // This tells the parent component that the action was successful, so it can refetch the data.
+  onSuccess: () => void;
   onCancel: () => void;
   categories: Array<{ value: string; label: string }>;
 }
 
-const AddForm: React.FC<AddFormProps> = ({ visible, onCreate, onCancel, categories }) => {
+const AddForm: React.FC<AddFormProps> = ({ visible, onSuccess, onCancel, categories }) => {
   const [form] = Form.useForm();
 
-  // Add item handler
   const handleAddItem = async (values: any) => {
     try {
       const api = axios.create({
         baseURL: import.meta.env.VITE_APP_SERVERHOST,
         timeout: 10000,
       });
-      // POST to /addItem endpoint
-      await api.post('/addItem', {
+
+      // Step 3: Use the correct RESTful endpoint for creating an item
+      const response = await api.post('/api/items', {
         ItemName: values.ItemName,
         Category: values.Category,
         Unit: values.Unit,
       });
-      onCreate(values); // call parent handler
+
+      // After a successful API call, call the onSuccess prop to trigger a refresh
+      if (response.data.success) {
+        onSuccess();
+      } else {
+        message.error('An unknown error occurred while adding the item.');
+      }
     } catch (err) {
-      // Optionally show error message
+      message.error('Failed to add item. Please try again.');
       console.error('Failed to add item', err);
     }
   };
@@ -55,18 +64,12 @@ const AddForm: React.FC<AddFormProps> = ({ visible, onCreate, onCancel, categori
         </Button>,
         <Button 
           key="submit" 
-          type="default" 
-          style={{ 
-            background: '#fff', 
-            border: '1px solid #d9d9d9',
-            transition: 'all 0.3s'
-          }}
-          className="hover:bg-green-500 hover:text-white hover:border-green-500"
+          type="primary" // Changed to primary for better UI convention
           onClick={() => {
             form
               .validateFields()
               .then((values) => {
-                form.resetFields();
+                // We no longer reset fields here, the parent will close the modal
                 handleAddItem(values);
               })
               .catch((info) => {

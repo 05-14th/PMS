@@ -9,6 +9,7 @@ interface EditFormProps {
   onCancel: () => void;
   categories: Array<{ value: string; label: string }>;
   initialValues?: {
+    ItemID: string;
     ItemName: string;
     Category: string;
     Unit: string;
@@ -65,7 +66,7 @@ const EditForm: React.FC<EditFormProps> = ({
               .validateFields()
               .then((values) => {
                 form.resetFields();
-                onUpdate({ ...values, key: initialValues?.key });
+                onUpdate({ ...initialValues, ...values });
               })
               .catch((info) => {
                 console.log('Validate Failed:', info);

@@ -1,23 +1,49 @@
-import React, { useState } from 'react';
-import { Form, Input, InputNumber, DatePicker, Select, Modal, Space, Button } from 'antd';
-import { PlusOutlined } from '@ant-design/icons';
+import React, { useState, useEffect } from 'react';
+import { Form, Input, InputNumber, DatePicker, Select, Modal, Button, Checkbox, message, Row, Col } from 'antd';
+import dayjs from 'dayjs';
 
 const { Option } = Select;
+
+interface Supplier {
+  SupplierID: number;
+  SupplierName: string;
+}
 
 interface AddStockFormProps {
   visible: boolean;
   onCancel: () => void;
   onAdd: (values: any) => void;
   loading: boolean;
+  suppliers: Supplier[];
+  categories: Array<{ value: string; label: string }>;
+  units: Array<{ value: string; label: string }>;
 }
 
-const AddStockForm: React.FC<AddStockFormProps> = ({ visible, onCancel, onAdd, loading }) => {
+const AddStockForm: React.FC<AddStockFormProps> = ({ visible, onCancel, onAdd, loading, suppliers, categories, units }) => {
   const [form] = Form.useForm();
+  const [isNewSupplier, setIsNewSupplier] = useState(false);
+
+  useEffect(() => {
+    if (!visible) {
+      form.resetFields();
+      setIsNewSupplier(false);
+    }
+  }, [visible, form]);
 
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
-      onAdd(values);
+      // Ensure empty optional fields are sent as null
+      const payload = {
+        ...values,
+        isNewSupplier,
+        ContactPerson: values.ContactPerson || null,
+        PhoneNumber: values.PhoneNumber || null,
+        Email: values.Email || null,
+        Address: values.Address || null,
+        Notes: values.Notes || null,
+      };
+      onAdd(payload);
     } catch (error) {
       console.error('Validation failed:', error);
     }
@@ -25,113 +51,64 @@ const AddStockForm: React.FC<AddStockFormProps> = ({ visible, onCancel, onAdd, l
 
   return (
     <Modal
-      title="Add New Item"
+      title="Add New Item to Inventory"
       open={visible}
       onCancel={onCancel}
-      closable={false}
-      footer={[
-        <Button key="cancel" onClick={onCancel}>
-          Cancel
-        </Button>,
-        <Button
-          key="submit"
-          type="default"
-          onClick={handleSubmit}
-          loading={loading}
-          icon={<PlusOutlined />}
-          className="bg-white hover:bg-gray-50 border-gray-300 text-gray-700 hover:text-gray-800"
-        >
-          Add Item
-        </Button>,
-      ]}
       width={700}
+      footer={[
+        <Button key="cancel" onClick={onCancel}>Cancel</Button>,
+        <Button key="submit" type="primary" onClick={handleSubmit} loading={loading}>Add Item</Button>,
+      ]}
     >
-      <Form
-        form={form}
-        layout="vertical"
-        initialValues={{
-          purchaseDate: undefined,
-          unit: 'kg',
-        }}
-      >
-        <Form.Item
-          name="itemName"
-          label="Item Name"
-          rules={[{ required: true, message: 'Please enter item name' }]}
-        >
-          <Input placeholder="Enter item name" />
+      <Form form={form} layout="vertical">
+        {/* Item & Purchase Details... */}
+        <Form.Item name="ItemName" label="Item Name" rules={[{ required: true }]}>
+          <Input />
         </Form.Item>
+        <Row gutter={16}>
+          <Col span={12}><Form.Item name="Category" label="Category" rules={[{ required: true }]}><Select>{categories.map(c => <Option key={c.value} value={c.value}>{c.label}</Option>)}</Select></Form.Item></Col>
+          <Col span={12}><Form.Item name="Unit" label="Unit" rules={[{ required: true }]}><Select>{units.map(u => <Option key={u.value} value={u.value}>{u.label}</Option>)}</Select></Form.Item></Col>
+        </Row>
+        <Row gutter={16}>
+          <Col span={12}><Form.Item name="PurchaseDate" label="Purchase Date" rules={[{ required: true }]} initialValue={dayjs()}><DatePicker format="YYYY-MM-DD" style={{ width: '100%' }} /></Form.Item></Col>
+          <Col span={12}><Form.Item name="QuantityPurchased" label="Quantity Purchased" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} /></Form.Item></Col>
+        </Row>
+        <Form.Item name="AmountPaid" label="Amount Paid" rules={[{ required: true }]}><InputNumber min={0} style={{ width: '100%' }} prefix="₱" /></Form.Item>
 
-        <Form.Item
-          name="purchaseDate"
-          label="Purchase Date"
-          rules={[{ required: true, message: 'Please select purchase date' }]}
-        >
-          <DatePicker style={{ width: '100%' }} />
-        </Form.Item>
-
-        <Form.Item
-          name="quantity"
-          label="Quantity Purchased"
-          rules={[{ required: true, message: 'Please enter quantity' }]}
-        >
-          <InputNumber min={0} style={{ width: '100%' }} />
-        </Form.Item>
-
-        <Form.Item
-          name="unit"
-          label="Unit"
-          rules={[{ required: true, message: 'Please select unit' }]}
-        >
-          <Select>
-            <Option value="kg">kg</Option>
-            <Option value="g">g</Option>
-            <Option value="pcs">pcs</Option>
-            <Option value="l">liter</Option>
-            <Option value="ml">ml</Option>
-          </Select>
-        </Form.Item>
-
-        <Form.Item
-          name="amountPaid"
-          label="Amount Paid"
-          rules={[{ required: true, message: 'Please enter amount' }]}
-        >
-          <InputNumber min={0} step={0.01} style={{ width: '100%' }} prefix="₱" />
-        </Form.Item>
-
-        <Form.Item
-          name="supplierId"
-          label="Select Supplier"
-          rules={[{ required: true, message: 'Please select a supplier' }]}
-        >
-          <Select placeholder="Select supplier">
-            <Option value="1">ABC Feeds</Option>
-            <Option value="2">Poultry Supplies Inc.</Option>
-            <Option value="3">Farm Essentials</Option>
-          </Select>
-        </Form.Item>
-
-        <div className="text-center text-gray-600 text-base font-medium mb-3 mt-2">If new:</div>
-
-        <Form.Item
-          name="contactPerson"
-          label="Contact Person"
-          rules={[{ required: true, message: 'Please enter contact person' }]}
-        >
-          <Input placeholder="Enter contact person" />
-        </Form.Item>
+        {/* Supplier Details */}
+        <Checkbox checked={isNewSupplier} onChange={(e) => setIsNewSupplier(e.target.checked)}>
+          Add a new supplier
+        </Checkbox>
         
-        <Form.Item
-          name="contactNumber"
-          label="Contact Number"
-          rules={[
-            { required: true, message: 'Please enter contact number' },
-            { pattern: /^[0-9+\- ]+$/, message: 'Please enter a valid phone number' }
-          ]}
-        >
-          <Input placeholder="Enter contact number" />
-        </Form.Item>
+        {!isNewSupplier ? (
+          <Form.Item name="ExistingSupplierID" label="Select Supplier" rules={[{ required: !isNewSupplier }]}>
+            <Select placeholder="Select supplier" showSearch optionFilterProp="label">
+              {suppliers.map(s => <Option key={s.SupplierID} value={s.SupplierID} label={s.SupplierName}>{s.SupplierName}</Option>)}
+            </Select>
+          </Form.Item>
+        ) : (
+          <div className="mt-4 p-4 border rounded grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* CHANGED: Added validation rules to all fields to match the database */}
+            <Form.Item name="NewSupplierName" label="New Supplier Name" rules={[{ required: isNewSupplier }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="ContactPerson" label="Contact Person">
+            <Input />
+          </Form.Item>
+          <Form.Item name="PhoneNumber" label="Contact Number">
+            <Input />
+          </Form.Item>
+          <Form.Item name="Email" label="Email" rules={[{ type: 'email' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="Address" label="Address" className="md:col-span-2">
+            <Input />
+          </Form.Item>
+          <Form.Item name="Notes" label="Notes" className="md:col-span-2">
+            <Input.TextArea rows={2} />
+          </Form.Item>
+        </div>
+        )}
       </Form>
     </Modal>
   );

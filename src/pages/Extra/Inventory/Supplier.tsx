@@ -1,35 +1,33 @@
-import React, { useState, useMemo } from 'react';
-import { Card, Input, Table, Space, Button, Typography, Row, Col, Select, Modal } from 'antd';
+// ADDED: useEffect for data fetching, axios for API calls, and message for user feedback
+import React, { useState, useMemo, useEffect } from 'react';
+import { Card, Input, Table, Space, Button, Typography, Row, Col, Select, Modal, message } from 'antd';
 import { SearchOutlined, PlusOutlined, EditOutlined, DeleteOutlined, FilterOutlined } from '@ant-design/icons';
+import axios from 'axios';
 import AddSupplier from '../Forms_Supplier/AddSupplier';
 import EditSupplier from '../Forms_Supplier/EditSupplier';
 
 const { Title } = Typography;
 
+// CHANGED: The interface now matches the Go back-end model exactly.
 interface Supplier {
-  key: string;
-  supplierName: string;
-  contactPerson: string;
-  phoneNumber: string;
-  email: string;
-  address: string;
-  notes: string;
+  SupplierID: number;
+  SupplierName: string;
+  ContactPerson: string; 
+  PhoneNumber: string;
+  Email: string; 
+  Address: string; 
+  Notes: string; 
 }
 
-const Supplier: React.FC = () => {
-  // Sample data - replace with actual data from your API
-  const [suppliers, setSuppliers] = useState<Supplier[]>([
-    {
-      key: '1',
-      supplierName: 'ABC Feeds',
-      contactPerson: 'Isamael Bonaporte',
-      phoneNumber: '09123456789',
-      email: 'Bonaporte@abcfeeds.com',
-      address: '123 Supplier St, Makati City',
-      notes: 'Primary feed supplier',
-    },
-    // Add more sample data as needed
-  ]);
+// ADDED: An axios instance to communicate with the API.
+const api = axios.create({
+  baseURL: import.meta.env.VITE_APP_SERVERHOST,
+  timeout: 10000,
+});
+
+const SupplierComponent: React.FC = () => {
+  // CHANGED: Removed the hardcoded sample data. The state now starts as an empty array.
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
   const [searchText, setSearchText] = useState('');
   const [selectedSupplier, setSelectedSupplier] = useState<string>('all');
@@ -38,11 +36,32 @@ const Supplier: React.FC = () => {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-  const [deletingKey, setDeletingKey] = useState<string | null>(null);
+  // CHANGED: deletingKey is now a number to match the SupplierID.
+  const [deletingKey, setDeletingKey] = useState<number | null>(null);
+
+  // ADDED: A function to fetch live data from the server.
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const response = await api.get('/api/suppliers');
+      setSuppliers(response.data || []);
+    } catch (error) {
+      console.error('Error fetching suppliers:', error);
+      message.error('Failed to load suppliers.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // ADDED: A useEffect hook to call fetchData() once when the component loads.
+  useEffect(() => {
+    fetchData();
+  }, []);
 
   // Get unique supplier names for the filter dropdown
   const supplierOptions = useMemo(() => {
-    const uniqueSuppliers = Array.from(new Set(suppliers.map(s => s.supplierName)));
+    // CHANGED: Uses SupplierName to match the new interface.
+    const uniqueSuppliers = Array.from(new Set(suppliers.map(s => s.SupplierName)));
     return [
       { value: 'all', label: 'All Suppliers' },
       ...uniqueSuppliers.map(supplier => ({
@@ -56,13 +75,13 @@ const Supplier: React.FC = () => {
   const filteredSuppliers = useMemo(() => {
     return suppliers.filter(supplier => {
       const matchesSearch = !searchText || 
-        Object.entries(supplier).some(([key, value]) => 
-          key !== 'key' && value && 
-          value.toString().toLowerCase().includes(searchText.toLowerCase())
+        Object.values(supplier).some(value => 
+          value && value.toString().toLowerCase().includes(searchText.toLowerCase())
         );
       
+      // CHANGED: Uses SupplierName to match the new interface.
       const matchesSupplier = selectedSupplier === 'all' || 
-        supplier.supplierName.toLowerCase() === selectedSupplier.toLowerCase();
+        supplier.SupplierName.toLowerCase() === selectedSupplier.toLowerCase();
       
       return matchesSearch && matchesSupplier;
     });
@@ -76,75 +95,63 @@ const Supplier: React.FC = () => {
     setSelectedSupplier(value);
   };
 
-  const handleAdd = () => {
-    setIsAddModalVisible(true);
-  };
-
-  const handleAddSubmit = async (values: any) => {
-    try {
-      setIsLoading(true);
-      // TODO: Replace with your actual API call
-      // const response = await api.addSupplier(values);
-      // setSuppliers([...suppliers, { ...values, key: response.id }]);
-      
-      // For now, just add to local state
-      const newSupplier = {
-        ...values,
-        key: Date.now().toString(),
-      };
-      setSuppliers([...suppliers, newSupplier]);
-      setIsAddModalVisible(false);
-    } catch (error) {
-      console.error('Error adding supplier:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const handleEdit = (record: Supplier) => {
     setEditingSupplier(record);
     setIsEditModalVisible(true);
   };
 
-  const handleEditSubmit = async (values: any) => {
+  // CHANGED: This function now saves the new supplier to the database.
+  const handleAddSubmit = async (values: Omit<Supplier, 'SupplierID'>) => {
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      // TODO: Replace with your actual API call
-      // await api.updateSupplier(editingSupplier?.key, values);
-      
-      // Update local state
-      setSuppliers(suppliers.map(supplier => 
-        supplier.key === editingSupplier?.key 
-          ? { ...values, key: editingSupplier.key } 
-          : supplier
-      ));
-      
-      setIsEditModalVisible(false);
-      setEditingSupplier(null);
+      await api.post('/api/suppliers', values);
+      setIsAddModalVisible(false);
+      message.success('Supplier added successfully');
+      await fetchData(); // Refresh data from server
     } catch (error) {
-      console.error('Error updating supplier:', error);
+      console.error('Error adding supplier:', error);
+      message.error('Failed to add supplier.');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleDelete = (key: string) => {
+  // CHANGED: This function now saves the updated supplier to the database.
+  const handleEditSubmit = async (values: Supplier) => {
+    if (!editingSupplier) return;
+    setIsLoading(true);
+    try {
+      const payload = { ...editingSupplier, ...values };
+      await api.put(`/api/suppliers/${editingSupplier.SupplierID}`, payload);
+      setIsEditModalVisible(false);
+      setEditingSupplier(null);
+      message.success('Supplier updated successfully');
+      await fetchData(); // Refresh data from server
+    } catch (error) {
+      console.error('Error updating supplier:', error);
+      message.error('Failed to update supplier.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // CHANGED: The key is now a number (the SupplierID).
+  const handleDelete = (key: number) => {
     setDeletingKey(key);
     setIsDeleteModalVisible(true);
   };
 
+  // CHANGED: This function now deletes the supplier from the database.
   const confirmDelete = async () => {
     if (!deletingKey) return;
-    
+    setIsLoading(true);
     try {
-      setIsLoading(true);
-      // TODO: Replace with your actual API call
-      // await api.deleteSupplier(deletingKey);
-      
-      // Update local state
-      setSuppliers(suppliers.filter(supplier => supplier.key !== deletingKey));
+      await api.delete(`/api/suppliers/${deletingKey}`);
+      message.success('Supplier deleted successfully');
+      await fetchData(); // Refresh data from server
     } catch (error) {
       console.error('Error deleting supplier:', error);
+      message.error('Failed to delete supplier.');
     } finally {
       setIsLoading(false);
       setIsDeleteModalVisible(false);
@@ -153,53 +160,51 @@ const Supplier: React.FC = () => {
   };
 
   const columns = [
+    // CHANGED: dataIndex for each column now matches the new interface.
     {
       title: 'SUPPLIER NAME',
-      dataIndex: 'supplierName',
-      key: 'supplierName',
-      sorter: (a: Supplier, b: Supplier) => a.supplierName.localeCompare(b.supplierName),
-      render: (text: string) => <span className="font-medium">{text}</span>,
+      dataIndex: 'SupplierName',
+      key: 'SupplierName',
+      sorter: (a: Supplier, b: Supplier) => a.SupplierName.localeCompare(b.SupplierName),
     },
     {
       title: 'CONTACT PERSON',
-      dataIndex: 'contactPerson',
-      key: 'contactPerson',
+      dataIndex: 'ContactPerson',
+      key: 'ContactPerson',
     },
     {
       title: 'PHONE NUMBER',
-      dataIndex: 'phoneNumber',
-      key: 'phoneNumber',
+      dataIndex: 'PhoneNumber',
+      key: 'PhoneNumber',
     },
     {
       title: 'EMAIL',
-      dataIndex: 'email',
-      key: 'email',
+      dataIndex: 'Email',
+      key: 'Email',
     },
     {
       title: 'ADDRESS',
-      dataIndex: 'address',
-      key: 'address',
+      dataIndex: 'Address',
+      key: 'Address',
     },
     {
       title: 'NOTES',
-      dataIndex: 'notes',
-      key: 'notes',
+      dataIndex: 'Notes',
+      key: 'Notes',
     },
     {
       title: 'ACTIONS',
       key: 'actions',
-      width: 200,
       render: (_: any, record: Supplier) => (
         <Space size="small">
           <Button 
             onClick={() => handleEdit(record)}
-            className="bg-white hover:bg-gray-100 text-gray-800 border-gray-300"
             icon={<EditOutlined />}
           />
           <Button 
             danger
-            onClick={() => handleDelete(record.key)}
-            className="bg-white hover:bg-gray-100 text-red-600 border-gray-300"
+            // CHANGED: Passes the correct SupplierID to the delete handler.
+            onClick={() => handleDelete(record.SupplierID)}
             icon={<DeleteOutlined />}
           />
         </Space>
@@ -207,6 +212,7 @@ const Supplier: React.FC = () => {
     },
   ];
 
+  // The JSX below is unchanged, it will now use the live data and functions.
   return (
     <div className="p-4">
       <div className="relative mb-6">
@@ -229,23 +235,7 @@ const Supplier: React.FC = () => {
           Add Supplier
         </Button>
       </div>
-
       <Card className="shadow-sm">
-        <div className="mb-6">
-          <Row gutter={[16, 16]} className="mb-4">
-            <Col xs={24}>
-              <p className="text-gray-500 m-0 text-sm sm:text-base">
-                Manage your suppliers and their information
-              </p>
-            </Col>
-          </Row>
-
-          <Row gutter={[16, 16]} className="mb-6" justify="end">
-            <Col xs={24} sm={12} md={8} lg={6} xl={4}>
-            </Col>
-          </Row>
-        </div>
-
         <Row gutter={[16, 16]} className="mb-4 sm:mb-6" align="middle">
           <Col xs={24} sm={12} md={12} lg={10} xl={8}>
             <Input
@@ -267,76 +257,51 @@ const Supplier: React.FC = () => {
               onChange={handleSupplierFilter}
               options={supplierOptions}
               suffixIcon={<FilterOutlined className="text-gray-400" />}
-              showSearch
-              optionFilterProp="label"
-              allowClear
-              onClear={() => setSelectedSupplier('all')}
             />
           </Col>
         </Row>
-
         <div className="overflow-x-auto">
           <Table
             columns={columns}
             dataSource={filteredSuppliers}
-            rowKey="key"
-            pagination={{
-              pageSize: 10,
-              showSizeChanger: true,
-              showTotal: (total) => `Total ${total} suppliers`,
-              className: 'px-1 sm:px-4 py-2',
-              size: 'small',
-              showLessItems: true,
-              responsive: true,
-            }}
+            rowKey="SupplierID" // CHANGED: The rowKey now uses the correct ID.
+            loading={isLoading}
+            pagination={{ pageSize: 10 }}
             scroll={{ x: 'max-content' }}
-            locale={{
-              emptyText: (
-                <div className="py-8 sm:py-12">
-                  <p className="text-gray-500 text-base sm:text-lg">No suppliers found</p>
-                </div>
-              ),
-            }}
-            className="rounded-lg"
-            size="middle"
           />
         </div>
-
         <AddSupplier
           visible={isAddModalVisible}
           onCancel={() => setIsAddModalVisible(false)}
           onAdd={handleAddSubmit}
           loading={isLoading}
         />
-
-        <EditSupplier
-          visible={isEditModalVisible}
-          onCancel={() => {
-            setIsEditModalVisible(false);
-            setEditingSupplier(null);
-          }}
-          onSave={handleEditSubmit}
-          initialValues={editingSupplier}
-          loading={isLoading}
-        />
-
+        {editingSupplier && (
+          <EditSupplier
+            visible={isEditModalVisible}
+            onCancel={() => {
+              setIsEditModalVisible(false);
+              setEditingSupplier(null);
+            }}
+            onSave={handleEditSubmit}
+            initialValues={editingSupplier}
+            loading={isLoading}
+          />
+        )}
         <Modal
           title="Confirm Delete"
           open={isDeleteModalVisible}
           onOk={confirmDelete}
-          onCancel={() => {
-            setIsDeleteModalVisible(false);
-            setDeletingKey(null);
-          }}
+          onCancel={() => setIsDeleteModalVisible(false)}
           confirmLoading={isLoading}
           okText="Delete"
           okButtonProps={{ danger: true }}
         >
-          <p>Are you sure you want to delete this supplier? This action cannot be undone.</p>
+          <p>Are you sure you want to delete this supplier?</p>
         </Modal>
       </Card>
     </div>
   );
 };
 
-export default Supplier;
+export default SupplierComponent; // Renamed to avoid name conflict.

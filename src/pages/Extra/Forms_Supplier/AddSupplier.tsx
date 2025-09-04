@@ -33,10 +33,9 @@ const AddSupplier: React.FC<AddSupplierProps> = ({ visible, onCancel, onAdd, loa
         </Button>,
         <Button
           key="submit"
-          type="default"
+          type="primary"
           onClick={handleSubmit}
           loading={loading}
-          className="bg-white hover:bg-gray-50 border-gray-300"
         >
           Save
         </Button>,
@@ -49,8 +48,9 @@ const AddSupplier: React.FC<AddSupplierProps> = ({ visible, onCancel, onAdd, loa
         className="mt-6"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* CHANGED: name props are now PascalCase to match the data */}
           <Form.Item
-            name="supplierName"
+            name="SupplierName"
             label="Supplier Name"
             rules={[{ required: true, message: 'Please input the supplier name!' }]}
           >
@@ -58,49 +58,37 @@ const AddSupplier: React.FC<AddSupplierProps> = ({ visible, onCancel, onAdd, loa
           </Form.Item>
           
           <Form.Item
-            name="contactPerson"
+            name="ContactPerson"
             label="Contact Person"
-            rules={[{ required: true, message: 'Please input the contact person!' }]}
           >
             <Input placeholder="Enter contact person" />
           </Form.Item>
           
           <Form.Item
-            name="phoneNumber"
+            name="PhoneNumber"
             label="Phone Number"
-            rules={[
-              { required: true, message: 'Please input the phone number!' },
-              {
-                pattern: /^[0-9+\-\s()]*$/,
-                message: 'Please enter a valid phone number!',
-              },
-            ]}
           >
             <Input placeholder="Enter phone number" />
           </Form.Item>
           
           <Form.Item
-            name="email"
+            name="Email"
             label="Email"
-            rules={[
-              { required: true, message: 'Please input the email!' },
-              { type: 'email', message: 'Please enter a valid email!' },
-            ]}
+            rules={[{ type: 'email', message: 'Please enter a valid email!' }]}
           >
             <Input placeholder="Enter email" />
           </Form.Item>
           
           <Form.Item
-            name="address"
+            name="Address"
             label="Address"
-            rules={[{ required: true, message: 'Please input the address!' }]}
             className="md:col-span-2"
           >
             <Input.TextArea rows={3} placeholder="Enter address" />
           </Form.Item>
           
           <Form.Item
-            name="notes"
+            name="Notes"
             label="Notes"
             className="md:col-span-2"
           >

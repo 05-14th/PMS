@@ -40,18 +40,21 @@ const ItemList: React.FC = () => {
     timeout: 10000,
   });
 
-  const fetchData = async () => {
-    try {
-      setIsLoading(true);
-      const response = await api.get('/items');
-      setItems(response.data);
-    } catch (error) {
-      console.error('Error fetching items:', error);
-      message.error('Failed to load items');
-    } finally {
-      setIsLoading(false);
-    }
-  };
+// In ItemList.tsx
+
+const fetchData = async () => {
+  try {
+    setIsLoading(true);
+    const response = await api.get('/api/items'); 
+    console.log("Items response:", response);
+    setItems(response.data);
+  } catch (error) {
+    console.error('Error fetching items:', error);
+    message.error('Failed to load items');
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   useEffect(() => {
     fetchData();
@@ -85,45 +88,54 @@ const ItemList: React.FC = () => {
     setCategoryFilter(value);
   };
 
-  const handleAdd = (newItem: Omit<Item, 'key'>) => {
-    const itemWithKey = { ...newItem, key: Date.now().toString() };
-    setItems(prevItems => [...prevItems, itemWithKey]);
-    setIsAddModalVisible(false);
-    message.success('Item added successfully');
+const handleAddSuccess = async () => {
+  setIsAddModalVisible(false);
+  message.success('Item added successfully');
+  await fetchData(); 
+};
+
+const handleEdit = async (updatedItem: Item) => {
+  const payload = {
+    ItemName: updatedItem.ItemName,
+    Category: updatedItem.Category,
+    Unit: updatedItem.Unit,
   };
 
-  const handleEdit = (updatedItem: Item) => {
-    setItems(prevItems => 
-      prevItems.map(item => 
-        item.key === updatedItem.key ? updatedItem : item
-      )
-    );
+  try {
+    await api.put(`/api/items/${updatedItem.ItemID}`, payload);
+    
+    message.success('Item updated successfully');
     setIsEditModalVisible(false);
     setEditingItem(null);
-    message.success('Item updated successfully');
-  };
+    await fetchData(); 
+  } catch (error) {
+    console.error('Error updating item:', error);
+    message.error('Failed to update item');
+  }
+};
 
   const handleDelete = (key: string) => {
     setDeletingKey(key);
     setIsDeleteModalVisible(true);
   };
 
-  const confirmDelete = async () => {
-    if (!deletingKey) return;
-    try {
-      setIsLoading(true);
-      await api.delete(`/deleteItem/${deletingKey}`);
-      message.success('Item deleted successfully');
-      await fetchData();
-    } catch (error) {
-      console.error('Error deleting item:', error);
-      message.error('Failed to delete item');
-    } finally {
-      setIsLoading(false);
-      setIsDeleteModalVisible(false);
-      setDeletingKey(null);
-    }
-  };
+const confirmDelete = async () => {
+  if (!deletingKey) return;
+  try {
+    setIsLoading(true);
+
+    await api.delete(`/api/items/${deletingKey}`); 
+    message.success('Item deleted successfully');
+    await fetchData(); 
+  } catch (error) {
+    console.error('Error deleting item:', error);
+    message.error('Failed to delete item');
+  } finally {
+    setIsLoading(false);
+    setIsDeleteModalVisible(false);
+    setDeletingKey(null);
+  }
+};
 
   const columns: TableProps<Item>['columns'] = [
     {
@@ -224,12 +236,12 @@ const ItemList: React.FC = () => {
         />
       </div>
 
-      <AddForm
-        visible={isAddModalVisible}
-        onCreate={handleAdd}
-        onCancel={() => setIsAddModalVisible(false)}
-        categories={categories}
-      />
+        <AddForm
+          visible={isAddModalVisible}
+          onSuccess={handleAddSuccess}
+          onCancel={() => setIsAddModalVisible(false)}
+          categories={categories}
+        />
 
       {editingItem && (
         <EditForm

@@ -1,278 +1,254 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Table, Input, Button, Card, Typography, Row, Col, Select, Space, message } from 'antd';
-import { SearchOutlined, PlusOutlined, FilterOutlined, PlusCircleOutlined } from '@ant-design/icons';
+import { SearchOutlined, PlusOutlined, FilterOutlined } from '@ant-design/icons';
+import axios from 'axios';
 import AddStockForm from '../Forms_StockLevels/AddStock';
 import RestockForm from '../Forms_StockLevels/RestockForm';
 
 const { Title } = Typography;
 
-interface InventoryItem {
-  key: string;
-  itemName: string;
-  totalQuantity: number;
-  unit: string;
-  lowStock: boolean;
+// --- Interfaces for our data types ---
+interface StockLevelSummary {
+  ItemID: number;
+  ItemName: string;
+  TotalQuantityRemaining: number;
+  Unit: string;
 }
 
-interface PurchaseRecord {
-  key: string;
-  purchaseDate: string;
-  quantity: number;
-  remaining: number;
-  cost: number;
-  supplier: string;
-  unit: string;
+interface PurchaseHistoryDetail {
+  PurchaseDate: string;
+  QuantityPurchased: number; 
+  QuantityRemaining: number;
+  UnitCost: number;
+  SupplierName: string;
 }
+
+interface Supplier {
+  SupplierID: number;
+  SupplierName: string;
+}
+
+// --- Axios instance for API calls ---
+const api = axios.create({
+  baseURL: import.meta.env.VITE_APP_SERVERHOST,
+  timeout: 10000,
+});
 
 const StockLevels: React.FC = () => {
-  // State for search and filters
   const [searchText, setSearchText] = useState('');
-  const [selectedItem, setSelectedItem] = useState<string>('all');
+  const [selectedItemFilter, setSelectedItemFilter] = useState<string>('all');
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isRestockModalVisible, setIsRestockModalVisible] = useState(false);
-  const [selectedInventoryItem, setSelectedInventoryItem] = useState<InventoryItem | null>(null);
+  const [selectedInventoryItem, setSelectedInventoryItem] = useState<StockLevelSummary | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [addFormLoading, setAddFormLoading] = useState(false);
+  const [categories, setCategories] = useState<{ value: string, label: string }[]>([]);
+  const [units, setUnits] = useState<{ value: string, label: string }[]>([]);
+  const [inventory, setInventory] = useState<StockLevelSummary[]>([]);
+  const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryDetail[]>([]);
+  const [selectedInventoryId, setSelectedInventoryId] = useState<number | null>(null);
+  const [isLoadingInventory, setIsLoadingInventory] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  
+  // ADDED: State to hold the list of suppliers for the form dropdown
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
-  // Sample data - replace with actual data from your API
-  const [inventory, setInventory] = useState<InventoryItem[]>([
-    {
-      key: '1',
-      itemName: 'Chicken Feed',
-      totalQuantity: 120,
-      unit: 'kg',
-      lowStock: false
+  const fetchStockLevels = async () => {
+    setIsLoadingInventory(true);
+    try {
+      const response = await api.get('/api/stock-levels');
+      setInventory(response.data || []);
+    } catch (error) {
+      console.error('Error fetching stock levels:', error);
+      message.error('Failed to load inventory items.');
+    } finally {
+      setIsLoadingInventory(false);
     }
-  ]);
-
-  const [purchaseHistory, setPurchaseHistory] = useState<PurchaseRecord[]>([
-    {
-      key: '1',
-      purchaseDate: '2025-08-15',
-      quantity: 50,
-      remaining: 35,
-      cost: 2500,
-      supplier: 'ABC Feeds',
-      unit: 'kg'
-    },
-    {
-      key: '1',
-      purchaseDate: '2025-08-20',
-      quantity: 100,
-      remaining: 85,
-      cost: 5000,
-      supplier: 'ABC Feeds',
-      unit: 'kg'
+  };
+  
+  const fetchPurchaseHistory = async (itemId: number) => {
+    if (selectedInventoryId === itemId) {
+      setSelectedInventoryId(null);
+      setPurchaseHistory([]);
+      return;
     }
-  ]);
-  const [selectedInventory, setSelectedInventory] = useState<string | null>(null);
+    setSelectedInventoryId(itemId);
+    setIsLoadingHistory(true);
+    try {
+      const response = await api.get(`/api/purchase-history/${itemId}`);
+      setPurchaseHistory(response.data || []);
+    } catch (error) {
+      console.error('Error fetching purchase history:', error);
+      message.error('Failed to load purchase history.');
+    } finally {
+      setIsLoadingHistory(false);
+    }
+  };
 
-  // Filter inventory items based on search text and selected item
-  const filteredInventory = inventory.filter(item => {
-    const matchesSearch = !searchText || 
-      item.itemName.toLowerCase().includes(searchText.toLowerCase());
-    const matchesFilter = selectedItem === 'all' || 
-      (selectedItem === 'low' && item.lowStock) ||
-      (selectedItem === 'normal' && !item.lowStock);
-    
-    return matchesSearch && matchesFilter;
-  });
+  useEffect(() => {
+  fetchStockLevels();
 
-  // Filter purchase history based on selected inventory item
-  const filteredPurchaseHistory = selectedInventory
-    ? purchaseHistory.filter(record => record.key === selectedInventory)
-    : purchaseHistory; // Show all records when no item is selected
+  const fetchDropdownData = async () => {
+    try {
+  
+      const [suppliersRes, categoriesRes, unitsRes] = await Promise.all([
+        api.get('/api/suppliers'),
+        api.get('/api/categories'),
+        api.get('/api/units')
+      ]);
+   
+      setSuppliers(suppliersRes.data || []);
 
-  // Actions
-  const handleRestock = (item: InventoryItem) => {
+      const categoryOptions = (categoriesRes.data || []).map((cat: string) => ({ value: cat, label: cat }));
+      setCategories(categoryOptions);
+
+      const unitOptions = (unitsRes.data || []).map((unit: string) => ({ value: unit, label: unit }));
+      setUnits(unitOptions);
+
+    } catch (error) {
+      console.error("Failed to load data for forms", error);
+      message.error("Failed to load required data for the forms.");
+    }
+  };
+  
+  fetchDropdownData();
+}, []);
+
+  const filteredInventory = inventory.filter(item => 
+    item.ItemName.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  const handleRestock = (item: StockLevelSummary) => {
     setSelectedInventoryItem(item);
     setIsRestockModalVisible(true);
   };
 
-  const handleRestockCancel = () => {
-    setIsRestockModalVisible(false);
-    setSelectedInventoryItem(null);
-  };
+  
+const handleAddSubmit = async (values: any) => {
+  setIsSubmitting(true);
+  try {
+   
+    const { isNewSupplier, ...itemData } = values;
+    const payload = {
+      ...itemData,
+      PurchaseDate: values.PurchaseDate.format('YYYY-MM-DD'),
+      AmountPaid: values.AmountPaid,
+    };
 
-  const handleRestockSubmit = async (values: any) => {
-    setIsSubmitting(true);
-    try {
-      // Here you would typically make an API call to update the inventory
-      console.log('Restocking item:', selectedInventoryItem?.key, values);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      message.success('Item restocked successfully!');
-      setIsRestockModalVisible(false);
-      
-      // Refresh inventory data
-      // fetchInventoryData();
-    } catch (error) {
-      console.error('Error restocking item:', error);
-      message.error('Failed to restock item. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    if (isNewSupplier) {
+
+      payload.NewSupplierName = values.NewSupplierName || null;
+      payload.ContactPerson = values.ContactPerson || null;
+      payload.PhoneNumber = values.PhoneNumber || null;
+      payload.Email = values.Email || null;
+      payload.Address = values.Address || null;
+      payload.Notes = values.Notes || null;
+    } else {
+      payload.ExistingSupplierID = values.ExistingSupplierID;
     }
-  };
-
-  const handleDelete = (itemId: string) => {
-    console.log("Delete item:", itemId);
-    // Confirm delete can be added here (Modal.confirm)
-  };
-
-  const handleAddClick = () => {
-    setIsAddModalVisible(true);
-  };
-
-  const handleAddCancel = () => {
+    
+    await api.post('/api/stock-items', payload);
+    message.success('New item and its first stock have been added!');
     setIsAddModalVisible(false);
-  };
+    await fetchStockLevels(); // Refresh the list with the new item
+  } catch (error) {
+    console.error('Error adding new stock item:', error);
+    message.error('Failed to add new item.');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
+  
+  const handleRestockSubmit = async (values: any) => {
+  if (!selectedInventoryItem) {
+    message.error("No item selected for restocking.");
+    return;
+  }
+  setIsSubmitting(true);
+  try {
+   
+    const payload = {
+      ItemID: selectedInventoryItem.ItemID,
+      SupplierID: values.SupplierID,
+      PurchaseDate: values.PurchaseDate.format('YYYY-MM-DD'),
+      QuantityPurchased: values.QuantityPurchased,
+      UnitCost: values.TotalCost,
+    };
 
-  const handleAddSubmit = async (values: any) => {
-    setIsSubmitting(true);
-    try {
-      // Here you would typically make an API call to save the new item
-      console.log('Adding new item:', values);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      message.success('Item added successfully!');
-      setIsAddModalVisible(false);
-      
-      // Refresh inventory data
-      // fetchInventoryData();
-    } catch (error) {
-      console.error('Error adding item:', error);
-      message.error('Failed to add item. Please try again.');
-    } finally {
-      setIsSubmitting(false);
+    await api.post('/api/purchases', payload);
+    
+    message.success(`${selectedInventoryItem.ItemName} restocked successfully!`);
+    setIsRestockModalVisible(false);
+    
+    await fetchStockLevels();
+    if (selectedInventoryId) {
+      await fetchPurchaseHistory(selectedInventoryId);
     }
-  };
+  } catch (error) {
+    console.error('Error restocking item:', error);
+    message.error('Failed to restock item. Please try again.');
+  } finally {
+    setIsSubmitting(false);
+  }
+};
 
-  // Handle add new item
-  const handleAddNewItem = async (values: any) => {
-    setAddFormLoading(true);
-    try {
-      // Here you would typically call your API to add the new item
-      console.log('Adding new item:', values);
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Add the new item to your inventory state
-      // This is just a mock implementation - replace with your actual state update logic
-      const newItem = {
-        key: Date.now().toString(),
-        itemName: values.item,
-        totalQuantity: values.quantity,
-        unit: values.unit,
-        lowStock: false,
-      };
-      
-      setInventory(prev => [...prev, newItem]);
-      
-      // Add to purchase history
-      const newPurchase = {
-        key: Date.now().toString(),
-        purchaseDate: values.purchaseDate.format('YYYY-MM-DD'),
-        quantity: values.quantity,
-        remaining: values.quantity, // Initially remaining is same as quantity
-        cost: values.amountPaid,
-        supplier: values.supplier,
-        unit: values.unit
-      };
-      
-      setPurchaseHistory(prev => [...prev, newPurchase]);
-      
-      message.success('Item added successfully!');
-      setShowAddForm(false);
-    } catch (error) {
-      console.error('Error adding item:', error);
-      message.error('Failed to add item. Please try again.');
-    } finally {
-      setAddFormLoading(false);
-    }
-  };
-
-  // Table columns for inventory
+  // In StockLevels.tsx
   const inventoryColumns = [
     {
       title: 'Item Name',
-      dataIndex: 'itemName',
-      key: 'itemName',
-      sorter: (a: InventoryItem, b: InventoryItem) => a.itemName.localeCompare(b.itemName),
+      dataIndex: 'ItemName',
+      key: 'ItemName',
     },
     {
       title: 'Total Quantity Remaining',
-      dataIndex: 'totalQuantity',
-      key: 'totalQuantity',
-      sorter: (a: InventoryItem, b: InventoryItem) => a.totalQuantity - b.totalQuantity,
-      render: (quantity: number, record: InventoryItem) => (
-        <span className={record.lowStock ? 'text-red-500 font-medium' : ''}>
-          {quantity} {record.unit}
-        </span>
+      dataIndex: 'TotalQuantityRemaining',
+      key: 'TotalQuantityRemaining',
+      // CHANGED: This now displays the quantity along with its unit
+      render: (quantity: number, record: StockLevelSummary) => (
+        <span>{`${quantity.toFixed(2)} ${record.Unit}`}</span>
       ),
     },
     {
       title: 'Actions',
       key: 'actions',
-      render: (_: any, record: InventoryItem) => (
-        <Space>
-          <Button 
-            onClick={() => handleRestock(record)}
-            className="bg-white hover:bg-gray-100 text-gray-800 border-gray-300"
-          >
-            Restock
-          </Button>
-        </Space>
+      render: (_: any, record: StockLevelSummary) => (
+        <Button onClick={() => handleRestock(record)}>Restock</Button>
       ),
     },
   ];
 
-  // Table columns for purchase history
+  //Table columns for purchase history
   const purchaseHistoryColumns = [
     {
       title: 'Purchase Date',
-      dataIndex: 'purchaseDate',
-      key: 'purchaseDate',
-      sorter: (a: PurchaseRecord, b: PurchaseRecord) => 
-        new Date(a.purchaseDate).getTime() - new Date(b.purchaseDate).getTime(),
+      dataIndex: 'PurchaseDate',
+      key: 'PurchaseDate',
       render: (date: string) => new Date(date).toLocaleDateString(),
+    },
+    // ADDED: New column to show the original purchased quantity
+    {
+      title: 'Qty Purchased',
+      dataIndex: 'QuantityPurchased',
+      key: 'QuantityPurchased',
+      render: (qty: number) => `${qty.toFixed(2)}`,
     },
     {
       title: 'Remaining',
-      dataIndex: 'remaining',
-      key: 'remaining',
-      render: (remaining: number, record: PurchaseRecord) => (
-        <span className={remaining <= 0 ? 'text-gray-400' : ''}>
-          {remaining} {record.unit}
-        </span>
-      ),
+      dataIndex: 'QuantityRemaining',
+      key: 'QuantityRemaining',
+      render: (remaining: number) => `${remaining.toFixed(2)}`,
     },
     {
       title: 'Cost',
-      dataIndex: 'cost',
-      key: 'cost',
+      dataIndex: 'UnitCost',
+      key: 'Cost',
       render: (cost: number) => `₱${cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
-      sorter: (a: PurchaseRecord, b: PurchaseRecord) => a.cost - b.cost,
     },
     {
       title: 'Supplier',
-      dataIndex: 'supplier',
-      key: 'supplier',
-      sorter: (a: PurchaseRecord, b: PurchaseRecord) => a.supplier.localeCompare(b.supplier),
+      dataIndex: 'SupplierName',
+      key: 'SupplierName',
     },
   ];
-
-  // Add responsive configuration for the table
-  const tableProps = {
-    scroll: { x: true },
-    responsive: true,
-    size: 'small' as const,
-  };
 
   return (
     <div className="p-4">
@@ -282,16 +258,7 @@ const StockLevels: React.FC = () => {
           type="default"
           icon={<PlusOutlined />} 
           onClick={() => setIsAddModalVisible(true)}
-          className="absolute top-0 right-0 bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-800"
-          style={{
-            boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-            border: '1px solid #d1d5db',
-            borderRadius: '0.375rem',
-            padding: '0.5rem 1rem',
-            height: 'auto',
-            display: 'inline-flex',
-            alignItems: 'center'
-          }}
+          className="absolute top-0 right-0"
         >
           Add New Item
         </Button>
@@ -300,122 +267,76 @@ const StockLevels: React.FC = () => {
       <Row gutter={[16, 16]} className="mb-4" align="middle">
         <Col xs={24} sm={16} md={16} lg={12} xl={8}>
           <Input
-            size="middle"
             placeholder="Search items..."
-            prefix={<SearchOutlined className="text-gray-400" />}
+            prefix={<SearchOutlined />}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
-            allowClear
-            className="w-full"
           />
         </Col>
         <Col xs={24} sm={8} md={8} lg={6} xl={4}>
           <Select
-            size="middle"
             className="w-full"
-            value={selectedItem}
-            onChange={setSelectedItem}
-            options={[
-              { value: 'all', label: 'All Items' },
-              { value: 'low', label: 'Low Stock' },
-              { value: 'normal', label: 'Normal Stock' },
-            ]}
-            suffixIcon={<FilterOutlined className="text-gray-400" />}
+            value={selectedItemFilter}
+            onChange={setSelectedItemFilter}
+            options={[{ value: 'all', label: 'All Items' }]}
           />
         </Col>
       </Row>
 
-      {/* Main Content Area with Side-by-Side Tables */}
       <Row gutter={[24, 24]} className="mt-6">
-        {/* Inventory Table */}
         <Col xs={24} xl={12}>
-          <Card 
-            title="Inventory Items" 
-            className="h-full flex flex-col"
-            bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-          >
-            <div className="flex-1 overflow-hidden">
-              <Table
-                {...tableProps}
-                columns={inventoryColumns}
-                dataSource={filteredInventory}
-                rowKey="key"
-                pagination={{ 
-                  pageSize: 10,
-                  showSizeChanger: true,
-                  showTotal: (total) => `${total} items`,
-                  className: 'mb-0',
-                  responsive: true,
-                }}
-                className="h-full"
-                scroll={{ y: 400 }}
-                onRow={(record) => ({
-                  onClick: () => setSelectedInventory(record.key === selectedInventory ? null : record.key),
-                  className: record.key === selectedInventory ? 'bg-blue-50' : '',
-                })}
-                rowClassName="cursor-pointer hover:bg-gray-50"
-              />
-            </div>
+          <Card title="Inventory Items">
+            <Table
+              columns={inventoryColumns}
+              dataSource={filteredInventory}
+              rowKey="ItemID"
+              loading={isLoadingInventory}
+              pagination={{ pageSize: 10 }}
+              onRow={(record) => ({
+                onClick: () => fetchPurchaseHistory(record.ItemID),
+                className: `cursor-pointer hover:bg-gray-50 ${record.ItemID === selectedInventoryId ? 'bg-blue-50' : ''}`,
+              })}
+            />
           </Card>
         </Col>
 
-        {/* Purchase History Table */}
         <Col xs={24} xl={12}>
-          <Card 
-            title="Purchase History" 
-            className="h-full flex flex-col"
-            bodyStyle={{ flex: 1, display: 'flex', flexDirection: 'column' }}
-          >
-            <div className="flex-1 overflow-hidden">
-              <Table
-                {...tableProps}
-                columns={purchaseHistoryColumns}
-                dataSource={filteredPurchaseHistory}
-                rowKey="key"
-                pagination={{ 
-                  pageSize: 10,
-                  showSizeChanger: true,
-                  showTotal: (total) => `${total} records`,
-                  className: 'mb-0',
-                  responsive: true,
-                }}
-                className="h-full"
-                scroll={{ y: 400 }}
-                locale={{
-                  emptyText: selectedInventory 
-                    ? 'No purchase history for selected item' 
-                    : 'Select an item to view purchase history',
-                }}
-              />
-            </div>
+          <Card title="Purchase History">
+            <Table
+              columns={purchaseHistoryColumns}
+              dataSource={purchaseHistory}
+              rowKey={(record) => `${record.PurchaseDate}-${record.SupplierName}`}
+              loading={isLoadingHistory}
+              pagination={{ pageSize: 10 }}
+              locale={{
+                emptyText: selectedInventoryId 
+                  ? 'No purchase history for this item.' 
+                  : 'Select an item to view its purchase history.',
+              }}
+            />
           </Card>
         </Col>
       </Row>
 
-      {/* Add Stock Modal */}
       <AddStockForm
         visible={isAddModalVisible}
-        onCancel={handleAddCancel}
+        onCancel={() => setIsAddModalVisible(false)}
         onAdd={handleAddSubmit}
         loading={isSubmitting}
+        suppliers={suppliers} // Pass the list of suppliers
+        categories={categories} // Pass the list of categories
+        units={units} // Pass the list of units
       />
-
-      {/* Add Stock Form Modal */}
-      <AddStockForm
-        visible={showAddForm}
-        onCancel={() => setShowAddForm(false)}
-        onAdd={handleAddNewItem}
-        loading={addFormLoading}
-      />
-
-      {/* Restock Form Modal */}
+      
+      {/* CHANGED: Pass the dynamic suppliers list as a prop to the RestockForm */}
       {selectedInventoryItem && (
         <RestockForm
           visible={isRestockModalVisible}
-          onCancel={handleRestockCancel}
+          onCancel={() => setIsRestockModalVisible(false)}
           onRestock={handleRestockSubmit}
           loading={isSubmitting}
           selectedItem={selectedInventoryItem}
+          suppliers={suppliers}
         />
       )}
     </div>
