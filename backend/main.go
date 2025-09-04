@@ -126,6 +126,7 @@ type InventoryItem struct {
 	ItemName string `json:"ItemName"`
 	Category string `json:"Category"`
 	Unit     string `json:"Unit"`
+	TotalQuantityRemaining float64 `json:"TotalQuantityRemaining"`
 }
 
 // for inventory stock levels
@@ -135,9 +136,12 @@ type StockLevelSummary struct {
 	ItemName               string  `json:"ItemName"`
 	TotalQuantityRemaining float64 `json:"TotalQuantityRemaining"`
 	Unit                   string  `json:"Unit"`
+	IsActive               bool    `json:"IsActive"`
+	Category			   string  `json:"Category"`
 }
 
 type PurchaseHistoryDetail struct {
+	PurchaseID                int     `json:"PurchaseID"`
 	PurchaseDate      string  `json:"PurchaseDate"`
 	QuantityRemaining float64 `json:"QuantityRemaining"`
 	QuantityPurchased float64 `json:"QuantityPurchased"`
@@ -481,29 +485,20 @@ func updateSupplier(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
-// In the "Handlers" section of main.go
 func deleteSupplier(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		handleError(w, http.StatusBadRequest, "Missing supplier ID", nil)
-		return
-	}
-
-	// ADDED: Convert the string ID from the URL to an integer
-	supplierID, err := strconv.Atoi(idStr)
+	supplierID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		handleError(w, http.StatusBadRequest, "Invalid supplier ID", err)
 		return
 	}
-
+	
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	query := "DELETE FROM cm_suppliers WHERE SupplierID = ?"
-	// CHANGED: Pass the integer supplierID to the query
+	query := "UPDATE cm_suppliers SET IsActive = 0 WHERE SupplierID = ?"
 	res, err := db.ExecContext(ctx, query, supplierID)
 	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to delete supplier", err)
+		handleError(w, http.StatusInternalServerError, "Failed to deactivate supplier", err)
 		return
 	}
 	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
@@ -511,7 +506,7 @@ func deleteSupplier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
-}
+} 
 
 func getSimpleSales(w http.ResponseWriter, r *http.Request) {
 	// Placeholder query kept in code intentionally (can move to .env later)
@@ -1123,12 +1118,24 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 //For inventory items
 
-// getInventoryItems handles GET /items
 func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	rows, err := db.QueryContext(ctx, "SELECT ItemID, ItemName, Category, Unit FROM cm_items ORDER BY ItemName")
+	query := `
+		SELECT
+			i.ItemID,
+			i.ItemName,
+			i.Category,
+			i.Unit,
+			COALESCE(SUM(p.QuantityRemaining), 0) as TotalQuantityRemaining
+		FROM cm_items i
+		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID
+		WHERE i.IsActive = 1
+		GROUP BY i.ItemID, i.ItemName, i.Category, i.Unit
+		ORDER BY i.ItemName;`
+
+	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch inventory items", err)
 		return
@@ -1138,7 +1145,8 @@ func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 	var items []InventoryItem
 	for rows.Next() {
 		var item InventoryItem
-		if err := rows.Scan(&item.ItemID, &item.ItemName, &item.Category, &item.Unit); err != nil {
+		// Add &item.TotalQuantityRemaining to the Scan
+		if err := rows.Scan(&item.ItemID, &item.ItemName, &item.Category, &item.Unit, &item.TotalQuantityRemaining); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan inventory item", err)
 			return
 		}
@@ -1147,11 +1155,10 @@ func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, items)
 }
 
-// createInventoryItem handles POST /items
 func createInventoryItem(w http.ResponseWriter, r *http.Request) {
 	var item InventoryItem
 	if !decodeJSONBody(w, r, &item) {
-		return // Error is handled by decodeJSONBody
+		return
 	}
 
 	ctx, cancel := withTimeout(r.Context())
@@ -1166,7 +1173,6 @@ func createInventoryItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "insertedId": lastID})
 }
 
-// updateInventoryItem handles PUT /items/{id}
 func updateInventoryItem(w http.ResponseWriter, r *http.Request) {
 	itemID := chi.URLParam(r, "id")
 	if itemID == "" {
@@ -1191,29 +1197,32 @@ func updateInventoryItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
-// deleteInventoryItem handles DELETE /items/{id}
 func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
-	idStr := chi.URLParam(r, "id")
-	if idStr == "" {
-		handleError(w, http.StatusBadRequest, "Missing item ID", nil)
-		return
-	}
-
-	// ADDED: Convert the string ID from the URL to an integer
-	itemID, err := strconv.Atoi(idStr)
+	itemID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		handleError(w, http.StatusBadRequest, "Invalid item ID", err)
 		return
 	}
-
+	
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
+	var totalStock float64
+	stockQuery := "SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_inventory_purchases WHERE ItemID = ?"
+	if err := db.QueryRowContext(ctx, stockQuery, itemID).Scan(&totalStock); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to check item stock", err)
+		return
+	}
 
-	query := "DELETE FROM cm_items WHERE ItemID = ?"
-	// CHANGED: Pass the integer itemID to the query
+	
+	if totalStock > 0 {
+		handleError(w, http.StatusBadRequest, "Cannot archive an item that still has stock. Please deplete the inventory first.", nil)
+		return
+	}
+
+	query := "UPDATE cm_items SET IsActive = 0 WHERE ItemID = ?"
 	res, err := db.ExecContext(ctx, query, itemID)
 	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to delete item", err)
+		handleError(w, http.StatusInternalServerError, "Failed to deactivate item", err)
 		return
 	}
 	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
@@ -1232,10 +1241,12 @@ func getStockLevels(w http.ResponseWriter, r *http.Request) {
 			i.ItemID,
 			i.ItemName,
 			COALESCE(SUM(p.QuantityRemaining), 0) as TotalQuantityRemaining,
-			i.Unit
+			i.Unit,
+			i.IsActive
 		FROM cm_items i
-		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID
-		GROUP BY i.ItemID, i.ItemName, i.Unit
+		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID AND p.IsActive = 1
+		WHERE i.IsActive = 1
+		GROUP BY i.ItemID, i.ItemName, i.Unit, i.IsActive
 		ORDER BY i.ItemName;`
 
 	rows, err := db.QueryContext(ctx, query)
@@ -1248,7 +1259,7 @@ func getStockLevels(w http.ResponseWriter, r *http.Request) {
 	var summaries []StockLevelSummary
 	for rows.Next() {
 		var s StockLevelSummary
-		if err := rows.Scan(&s.ItemID, &s.ItemName, &s.TotalQuantityRemaining, &s.Unit); err != nil {
+		if err := rows.Scan(&s.ItemID, &s.ItemName, &s.TotalQuantityRemaining, &s.Unit, &s.IsActive); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan stock level", err)
 			return
 		}
@@ -1257,19 +1268,18 @@ func getStockLevels(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, summaries)
 }
 
+// for purchase history details in inventory stock levels
 // getPurchaseHistory handles GET /api/purchase-history/{id} (for the right panel)
 func getPurchaseHistory(w http.ResponseWriter, r *http.Request) {
 	itemID := chi.URLParam(r, "id")
-	if itemID == "" {
-		handleError(w, http.StatusBadRequest, "Missing item ID", nil)
-		return
-	}
+	if itemID == "" { /* ... */ }
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
-
+	
 	query := `
 		SELECT
+			p.PurchaseID, -- ADDED
 			p.PurchaseDate,
 			p.QuantityPurchased, 
 			p.QuantityRemaining,
@@ -1277,21 +1287,17 @@ func getPurchaseHistory(w http.ResponseWriter, r *http.Request) {
 			s.SupplierName
 		FROM cm_inventory_purchases p
 		JOIN cm_suppliers s ON p.SupplierID = s.SupplierID
-		WHERE p.ItemID = ? AND p.QuantityRemaining >= 0 
+		WHERE p.ItemID = ? AND p.IsActive = 1 -- CHANGED
 		ORDER BY p.PurchaseDate DESC;`
 
 	rows, err := db.QueryContext(ctx, query, itemID)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to fetch purchase history", err)
-		return
-	}
+	if err != nil { /* ... */ }
 	defer rows.Close()
 
 	var details []PurchaseHistoryDetail
 	for rows.Next() {
 		var d PurchaseHistoryDetail
-
-		if err := rows.Scan(&d.PurchaseDate, &d.QuantityPurchased, &d.QuantityRemaining, &d.UnitCost, &d.SupplierName); err != nil {
+		if err := rows.Scan(&d.PurchaseID, &d.PurchaseDate, &d.QuantityPurchased, &d.QuantityRemaining, &d.UnitCost, &d.SupplierName); err != nil { // CHANGED
 			handleError(w, http.StatusInternalServerError, "Failed to scan purchase history", err)
 			return
 		}
@@ -1309,20 +1315,107 @@ func createPurchase(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	// When creating a new purchase, QuantityRemaining is the same as QuantityPurchased.
-	query := `
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback() 
+
+	reactivateQuery := "UPDATE cm_items SET IsActive = 1 WHERE ItemID = ?"
+	if _, err := tx.ExecContext(ctx, reactivateQuery, p.ItemID); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to reactivate item", err)
+		return
+	}
+
+	
+	purchaseQuery := `
 		INSERT INTO cm_inventory_purchases 
 		(ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining) 
 		VALUES (?, ?, ?, ?, ?, ?)`
-
-	res, err := db.ExecContext(ctx, query, p.ItemID, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased)
+	
+	res, err := tx.ExecContext(ctx, purchaseQuery, p.ItemID, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to insert purchase", err)
+		return
+	}
+	
+	
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
 		return
 	}
 
 	lastID, _ := res.LastInsertId()
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "insertedId": lastID})
+}
+
+// updatePurchase handles PUT /api/purchases/{id}
+func updatePurchase(w http.ResponseWriter, r *http.Request) {
+	purchaseID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid purchase ID", err)
+		return
+	}
+
+	var p PurchasePayload 
+	if !decodeJSONBody(w, r, &p) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+	
+	var qtyPurchased, qtyRemaining float64
+	checkQuery := "SELECT QuantityPurchased, QuantityRemaining FROM cm_inventory_purchases WHERE PurchaseID = ?"
+	if err := db.QueryRowContext(ctx, checkQuery, purchaseID).Scan(&qtyPurchased, &qtyRemaining); err != nil {
+		handleError(w, http.StatusNotFound, "Purchase record not found", err)
+		return
+	}
+
+	if qtyPurchased != qtyRemaining {
+		handleError(w, http.StatusBadRequest, "Cannot edit a purchase that has been partially used. Please create a stock adjustment instead.", nil)
+		return
+	}
+
+	updateQuery := "UPDATE cm_inventory_purchases SET SupplierID = ?, PurchaseDate = ?, QuantityPurchased = ?, UnitCost = ?, QuantityRemaining = ? WHERE PurchaseID = ?"
+	_, err = db.ExecContext(ctx, updateQuery, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased, purchaseID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update purchase", err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+// deletePurchase handles DELETE /api/purchases/{id} (soft delete)
+func deletePurchase(w http.ResponseWriter, r *http.Request) {
+	purchaseID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid purchase ID", err)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	var qtyPurchased, qtyRemaining float64
+	checkQuery := "SELECT QuantityPurchased, QuantityRemaining FROM cm_inventory_purchases WHERE PurchaseID = ?"
+	if err := db.QueryRowContext(ctx, checkQuery, purchaseID).Scan(&qtyPurchased, &qtyRemaining); err != nil {
+		handleError(w, http.StatusNotFound, "Purchase record not found", err)
+		return
+	}
+	if qtyPurchased != qtyRemaining {
+		handleError(w, http.StatusBadRequest, "Cannot delete a purchase that has been partially used. Please create a stock adjustment instead.", nil)
+		return
+	}
+
+	updateQuery := "UPDATE cm_inventory_purchases SET IsActive = 0 WHERE PurchaseID = ?"
+	_, err = db.ExecContext(ctx, updateQuery, purchaseID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to deactivate purchase", err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
 func createStockItem(w http.ResponseWriter, r *http.Request) {
@@ -1397,21 +1490,14 @@ func buildRouter() http.Handler {
 
 	// Routes
 	r.Get("/getUsers", getUsers)
-	//r.Get("/getAllItems", getAllItems)
 	r.Post("/getItemByType", getItemByType)
-
 	r.Get("/getBatches", getBatches)
 	r.Get("/getHarvests", getHarvests)
-	//r.Get("/getSupplier", getSupplier)
-
 	r.Post("/getSales", getSales)
 	r.Get("/getSimpleSales", getSimpleSales) // placeholder kept in-code intentionally
 	r.Get("/getProducts", getProducts)
 	r.Post("/getProductInfo", getProductById)
-
 	r.Post("/api/dht22-data", handleDhtData)
-	//r.Post("/addItem", addItem)
-	//r.Delete("/deleteItem/{id}", deleteItem)
 	r.Post("/api/login", loginHandler)
 
 	// /batches/{id}/...
@@ -1443,6 +1529,14 @@ func buildRouter() http.Handler {
 			r.Put("/{id}", updateSupplier)
 			r.Delete("/{id}", deleteSupplier)
 		})
+
+		// Purchases routes (stock levels in inventory)
+		r.Route("/purchases", func(r chi.Router) {
+			r.Post("/", createPurchase)          // The Restock function
+			r.Put("/{id}", updatePurchase)    // The new Edit function
+			r.Delete("/{id}", deletePurchase) // The new Delete function
+		})
+
 		// Stock Levels routes
 		r.Get("/stock-levels", getStockLevels)
 		r.Get("/purchase-history/{id}", getPurchaseHistory)

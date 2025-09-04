@@ -60,7 +60,7 @@ const EditSupplier: React.FC<EditSupplierProps> = ({
         className="mt-6"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* CHANGED: name props are now PascalCase to match the data */}
+        
           <Form.Item
             name="SupplierName"
             label="Supplier Name"
