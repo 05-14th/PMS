@@ -4,6 +4,7 @@ import axios from 'axios';
 
 // CHANGED: The interface now expects ItemName
 interface SaleDetailItem {
+    SaleDetailID: number;
     ItemName: string;
     QuantitySold: number;
     TotalWeightKg: number;
@@ -76,7 +77,7 @@ const DetailsSaleHistory: React.FC<DetailsProps> = ({
                 <Table
                     columns={columns}
                     dataSource={details}
-                    rowKey='ItemName'
+                    rowKey='SaleDetailID'
                     pagination={false}
                 />
             </Spin>

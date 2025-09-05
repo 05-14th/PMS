@@ -27,7 +27,6 @@ import EditPurchaseForm from '../Forms_StockLevels/EditPurchaseForm';
 
 const { Title } = Typography;
 
-// --- Interfaces for our data types ---
 interface StockLevelSummary {
     ItemID: number;
     ItemName: string;
@@ -51,7 +50,6 @@ interface Supplier {
     SupplierName: string;
 }
 
-// --- Axios instance for API calls ---
 const api = axios.create({
     baseURL: import.meta.env.VITE_APP_SERVERHOST,
     timeout: 10000,
@@ -59,7 +57,6 @@ const api = axios.create({
 
 const StockLevels: React.FC = () => {
     const [searchText, setSearchText] = useState('');
-    const [selectedItemFilter, setSelectedItemFilter] = useState<string>('all');
     const [isAddModalVisible, setIsAddModalVisible] = useState(false);
     const [isRestockModalVisible, setIsRestockModalVisible] = useState(false);
     const [selectedInventoryItem, setSelectedInventoryItem] =
@@ -89,7 +86,6 @@ const StockLevels: React.FC = () => {
         null
     );
 
-    // ADDED: State to hold the list of suppliers for the form dropdown
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
     const fetchStockLevels = async () => {
@@ -164,6 +160,7 @@ const StockLevels: React.FC = () => {
             categoryFilter === 'all' || item.Category === categoryFilter;
         return matchesSearch && matchesCategory;
     });
+
     const handleRestock = (item: StockLevelSummary) => {
         setSelectedInventoryItem(item);
         setIsRestockModalVisible(true);
