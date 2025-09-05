@@ -1,402 +1,522 @@
-import React, { useState } from 'react';
-import { Table, Space, Button, Modal, message, Row, Col, Form, Select, DatePicker, InputNumber, Typography, Card } from 'antd';
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+    Table,
+    Space,
+    Button,
+    Modal,
+    message,
+    Row,
+    Col,
+    Form,
+    Select,
+    DatePicker,
+    InputNumber,
+    Typography,
+    Card,
+    App,
+} from 'antd';
 import { EditOutlined, DeleteOutlined, PlusOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
+import axios from 'axios';
 import AddCustomerForm from '../Forms_Sales/AddCustomerForm';
 
 const { Title, Text } = Typography;
 const { Option } = Select;
 
-// Sample product data - replace with actual API call in production
-const productData = [
-  { id: '1', name: 'Live Chicken', price: 150, available: 100, unit: 'heads' },
-  { id: '2', name: 'Dressed Chicken', price: 200, available: 50, unit: 'kgs' },
-];
-
-interface SaleItem {
-  key: string;
-  product: string;
-  quantity: number;
-  weight: number;
-  pricePerUnit: number;
-  paymentMethod: string;
-  customer: string;
-  saleDate: string;
+// --- Interfaces to match data from your API ---
+interface Customer {
+    CustomerID: number;
+    Name: string;
 }
 
+interface SaleProduct {
+    HarvestProductID: number;
+    ProductType: string;
+    QuantityRemaining: number;
+    WeightRemainingKg: number;
+}
+
+// --- Interface for items added to the current order ---
+interface SaleItem {
+    key: string;
+    HarvestProductID: number;
+    CustomerID: number;
+    ProductName: string;
+    CustomerName: string;
+    QuantitySold: number;
+    TotalWeightKg: number;
+    PricePerKg: number;
+    PaymentMethod: string;
+    SaleDate: string;
+}
+
+const api = axios.create({
+    baseURL: import.meta.env.VITE_APP_SERVERHOST,
+    timeout: 10000,
+});
+
 const NewSale: React.FC = () => {
-  const [form] = Form.useForm();
-  const [salesItems, setSalesItems] = useState<SaleItem[]>([]);
-  const [editingItem, setEditingItem] = useState<SaleItem | null>(null);
-  const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-  const [deletingKey, setDeletingKey] = useState<string | null>(null);
-  const [selectedProduct, setSelectedProduct] = useState<string>('');
-  const [availableQty, setAvailableQty] = useState<number>(0);
-  const [unit, setUnit] = useState<string>('');
-  const [isCustomerModalVisible, setIsCustomerModalVisible] = useState(false);
+    const [form] = Form.useForm();
+    const [salesItems, setSalesItems] = useState<SaleItem[]>([]);
+    const [isCustomerModalVisible, setIsCustomerModalVisible] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [selectedProduct, setSelectedProduct] = useState<SaleProduct | null>(
+        null
+    );
+    const { modal } = App.useApp();
 
-  // Set default sale date to today
-  React.useEffect(() => {
-    form.setFieldsValue({
-      saleDate: dayjs(),
-      paymentMethod: 'cash',
-      quantity: 1,
-      weight: 0,
-    });
-  }, [form]);
+    // --- State for dynamic dropdowns ---
+    const [customers, setCustomers] = useState<Customer[]>([]);
+    const [products, setProducts] = useState<SaleProduct[]>([]);
+    const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
 
-  const handleProductChange = (value: string) => {
-    setSelectedProduct(value);
-    const product = productData.find(p => p.id === value);
-    if (product) {
-      setAvailableQty(product.available);
-      setUnit(product.unit);
-      form.setFieldsValue({
-        pricePerUnit: product.price,
-        weight: 0,
-        quantity: 1
-      });
-    }
-  };
-
-  const onFinish = (values: any) => {
-    const product = productData.find(p => p.id === values.product);
-    if (product) {
-      const newSale: SaleItem = {
-        key: Date.now().toString(),
-        product: product.name,
-        quantity: values.quantity,
-        weight: values.weight,
-        pricePerUnit: values.pricePerUnit,
-        customer: values.customer,
-        saleDate: values.saleDate.format('YYYY-MM-DD'),
-        paymentMethod: values.paymentMethod
-      };
-      
-      setSalesItems(prev => [...prev, newSale]);
-      form.resetFields();
-      message.success('Sale added successfully');
-    }
-  };
-
-  const handleAddCustomer = (values: any) => {
-    console.log('New customer:', values);
-    message.success('Customer added successfully');
-    setIsCustomerModalVisible(false);
-    // Here you would typically add the customer to your state or API
-  };
-
-  const columns = [
-    {
-      title: 'Product',
-      dataIndex: 'product',
-      key: 'product',
-    },
-    {
-      title: 'Customer',
-      dataIndex: 'customer',
-      key: 'customer',
-    },
-    {
-      title: 'Sale Date',
-      dataIndex: 'saleDate',
-      key: 'saleDate',
-    },
-    {
-      title: 'Quantity',
-      dataIndex: 'quantity',
-      key: 'quantity',
-    },
-    {
-      title: 'Weight (kg)',
-      dataIndex: 'weight',
-      key: 'weight',
-      render: (weight: number) => weight.toFixed(2),
-    },
-    {
-      title: 'PriceUnit (₱)',
-      dataIndex: 'pricePerUnit',
-      key: 'pricePerUnit',
-      render: (price: number) => `₱${price.toFixed(2)}`,
-    },
-    {
-      title: 'Payment Method',
-      dataIndex: 'paymentMethod',
-      key: 'paymentMethod',
-      render: (method: string) => {
-        const methodNames: {[key: string]: string} = {
-          'cash': 'Cash',
-          'gcash': 'GCash',
-          'bank_transfer': 'Bank Transfer'
-        };
-        return methodNames[method] || method;
-      },
-    },
-    {
-      title: 'Subtotal (₱)',
-      key: 'subtotal',
-      render: (_: any, record: SaleItem) => {
-        const subtotal = record.quantity * record.pricePerUnit;
-        return `₱${subtotal.toFixed(2)}`;
-      },
-    },
-    {
-      title: 'Actions',
-      key: 'actions',
-      width: 120,
-      render: (_: any, record: SaleItem) => (
-        <Space size="middle">
-          <Button 
-            type="text" 
-            icon={<EditOutlined />} 
-            onClick={() => setEditingItem(record)}
-          />
-          <Button 
-            type="text" 
-            danger 
-            icon={<DeleteOutlined />} 
-            onClick={() => handleDelete(record.key)}
-          />
-        </Space>
-      ),
-    },
-  ];
-
-  const handleDelete = (key: string) => {
-    setDeletingKey(key);
-    setIsDeleteModalVisible(true);
-  };
-
-  const confirmDelete = () => {
-    if (!deletingKey) return;
-    setSalesItems(prev => prev.filter(item => item.key !== deletingKey));
-    setIsDeleteModalVisible(false);
-    message.success('Item deleted successfully');
-  };
-
-  const calculateTotal = () => {
-    return salesItems.reduce((sum, item) => {
-      return sum + (item.quantity * item.pricePerUnit);
-    }, 0);
-  };
-
-  return (
-    <div>
-      <Row justify="space-between" align="middle" style={{ marginBottom: 16 }}>
-        <Col>
-          <h2>New Sale</h2>
-        </Col>
-      </Row>
-
-      {/* Add Customer Modal */}
-      <AddCustomerForm
-        visible={isCustomerModalVisible}
-        onCreate={handleAddCustomer}
-        onCancel={() => setIsCustomerModalVisible(false)}
-      />
-
-      {/* Add Sales Form */}
-      <Card 
-        title={
-          <Title level={4} style={{ margin: 0 }}>Order Information</Title>
-        }
-        style={{ marginBottom: 24 }}
-      >
-        <Form
-          form={form}
-          layout="vertical"
-          onFinish={onFinish}
-          initialValues={{
-            quantity: 1,
-            weight: 0,
-          }}
-        >
-          <Row gutter={16}>
-            <Col span={12}>
-              <Form.Item
-                label="Customer"
-                name="customer"
-                rules={[{ required: true, message: 'Please select a customer' }]}
-              >
-                <Select placeholder="Select customer" showSearch>
-                  <Option value="customer1">John Doe</Option>
-                  <Option value="customer2">Jane Smith</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                label="Sale Date"
-                name="saleDate"
-                rules={[{ required: true, message: 'Please select sale date' }]}
-              >
-                <DatePicker style={{ width: '100%' }} format="YYYY-MM-DD" />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                label="Payment Method"
-                name="paymentMethod"
-                rules={[{ required: true, message: 'Please select payment method' }]}
-              >
-                <Select placeholder="Select payment method">
-                  <Option value="cash">Cash</Option>
-                  <Option value="gcash">GCash</Option>
-                  <Option value="bank_transfer">Bank Transfer</Option>
-                </Select>
-              </Form.Item>
-            </Col>
-          </Row>
-
-          <div style={{ margin: '24px 0' }}>
-            <Text strong>Product Details</Text>
-          </div>
-
-          <Row gutter={16}>
-            <Col span={8}>
-              <Form.Item
-                label="Product"
-                name="product"
-                rules={[{ required: true, message: 'Please select a product' }]}
-              >
-                <Select 
-                  placeholder="Select product"
-                  onChange={handleProductChange}
-                  showSearch
-                  optionFilterProp="children"
-                >
-                  {productData.map(product => (
-                    <Option key={product.id} value={product.id}>
-                      {product.name}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </Col>
-            <Col span={4}>
-              <Form.Item
-                label="Quantity"
-                name="quantity"
-                rules={[
-                  { required: true, message: 'Please enter quantity' },
-                  {
-                    validator: (_, value) => {
-                      if (value > availableQty) {
-                        return Promise.reject(`Only ${availableQty} available`);
-                      }
-                      return Promise.resolve();
-                    },
-                  },
-                ]}
-              >
-                <InputNumber min={1} max={availableQty} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={4}>
-              <Form.Item
-                label="Weight (kg)"
-                name="weight"
-                rules={[{ required: true, message: 'Please enter weight' }]}
-              >
-                <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col span={6}>
-              <Form.Item
-                label="Price per Unit (₱)"
-                name="pricePerUnit"
-                rules={[{ required: true, message: 'Please enter price per unit' }]}
-              >
-                <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-          </Row>
-        </Form>
-      </Card>
-
-      {/* Sales Items Table */}
-      <div style={{ marginBottom: 16 }}>
-        <Title level={5} style={{ marginBottom: 16 }}>Order Items</Title>
-        <Table 
-          columns={columns} 
-          dataSource={salesItems}
-          pagination={false}
-          rowKey="key"
-          footer={() => (
-            <div className="text-right pr-4 font-semibold">
-              Total: ₱{calculateTotal().toFixed(2)}
-            </div>
-          )}
-        />
-      </div>
-
-      <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '16px', marginTop: '16px' }}>
-        <Button 
-          type="default"
-          icon={<PlusOutlined />}
-          onClick={() => setIsCustomerModalVisible(true)}
-          style={{ 
-            whiteSpace: 'nowrap',
-            background: '#fff',
-            borderColor: '#d9d9d9',
-            height: '40px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center'
-          }}
-        >
-          New Customer
-        </Button>
-        
-        <Form.Item style={{ margin: 0 }}>
-          <Button 
-            type="primary" 
-            htmlType="submit"
-            icon={<PlusOutlined />}
-            onClick={(e) => {
-              e.preventDefault();
-              form.submit();
-            }}
-            style={{ 
-              background: '#fff',
-              color: '#000',
-              borderColor: '#d9d9d9',
-              height: '40px'
-            }}
-          >
-            Add to Order
-          </Button>
-        </Form.Item>
-        
-        <Button 
-          type="primary"
-          size="large"
-          onClick={() => {
-            if (salesItems.length === 0) {
-              message.warning('Please add at least one item to save');
-              return;
+    useEffect(() => {
+        const fetchFormData = async () => {
+            try {
+                const [customersRes, productsRes, paymentsRes] =
+                    await Promise.all([
+                        api.get('/api/customers'),
+                        api.get('/api/sale-products'),
+                        api.get('/api/payment-methods'),
+                    ]);
+                setCustomers(customersRes.data || []);
+                setProducts(productsRes.data || []);
+                setPaymentMethods(paymentsRes.data || []);
+            } catch (error) {
+                message.error(
+                    'Failed to load required data for the sales form.'
+                );
             }
-            console.log('Saving sale items:', salesItems);
-            message.success('Sale saved successfully');
-          }}
-          disabled={salesItems.length === 0}
-        >
-          Save Sale
-        </Button>
-      </div>
+        };
+        fetchFormData();
+        form.setFieldsValue({ SaleDate: dayjs() });
+    }, [form]);
 
-      <Modal
-        title="Confirm Delete"
-        open={isDeleteModalVisible}
-        onOk={confirmDelete}
-        onCancel={() => setIsDeleteModalVisible(false)}
-        okText="Delete"
-        okButtonProps={{ danger: true }}
-      >
-        <p>Are you sure you want to delete this item?</p>
-      </Modal>
-    </div>
-  );
+    const productOptions = useMemo(() => {
+        return products.map((p) => {
+            const quantityInCart = salesItems
+                .filter((item) => item.HarvestProductID === p.HarvestProductID)
+                .reduce((sum, item) => sum + item.QuantitySold, 0);
+            const availableNow = p.QuantityRemaining - quantityInCart;
+            return {
+                value: p.HarvestProductID,
+                label: `${p.ProductType} (${availableNow.toFixed(2)})`,
+                disabled: availableNow <= 0,
+            };
+        });
+    }, [products, salesItems]);
+
+    const onFinish = (values: any) => {
+        const product = products.find(
+            (p) => p.HarvestProductID === values.HarvestProductID
+        );
+        const customer = customers.find(
+            (c) => c.CustomerID === values.CustomerID
+        );
+
+        if (!product || !customer) {
+            message.error('Invalid product or customer selected.');
+            return;
+        }
+
+        const addItemToOrder = () => {
+            const newSaleItem: SaleItem = {
+                key: Date.now().toString(),
+                HarvestProductID: product.HarvestProductID,
+                CustomerID: customer.CustomerID,
+                ProductName: product.ProductType,
+                CustomerName: customer.Name,
+                QuantitySold: values.QuantitySold,
+                TotalWeightKg: values.TotalWeightKg,
+                PricePerKg: values.PricePerKg,
+                SaleDate: values.SaleDate.format('YYYY-MM-DD'),
+                PaymentMethod: values.PaymentMethod,
+            };
+            setSalesItems((prev) => [...prev, newSaleItem]);
+            form.resetFields([
+                'HarvestProductID',
+                'QuantitySold',
+                'TotalWeightKg',
+                'PricePerKg',
+            ]);
+        };
+
+        const quantityInCart = salesItems
+            .filter(
+                (item) => item.HarvestProductID === product.HarvestProductID
+            )
+            .reduce((sum, item) => sum + item.QuantitySold, 0);
+
+        const availableNow = product.QuantityRemaining - quantityInCart;
+
+        if (values.QuantitySold > availableNow) {
+            message.error(
+                `Only ${availableNow.toFixed(2)} of ${product.ProductType} is available.`
+            );
+            return;
+        }
+
+        const isFinalSaleOfBatch = values.QuantitySold === availableNow;
+        const weightIsDiscrepant =
+            values.TotalWeightKg !== product.WeightRemainingKg;
+
+        if (isFinalSaleOfBatch && weightIsDiscrepant) {
+            // CHANGED: Use the 'modal' instance from the hook
+            modal.confirm({
+                title: 'Weight Discrepancy Alert',
+                content: `The weight you entered (${values.TotalWeightKg} kg) is different from the expected remaining weight (${product.WeightRemainingKg.toFixed(2)} kg). This will zero out the stock for this product. Do you want to proceed?`,
+                onOk() {
+                    addItemToOrder();
+                },
+            });
+        } else {
+            addItemToOrder();
+        }
+    };
+
+    const handleSaveSale = async () => {
+        if (salesItems.length === 0) {
+            /* ... */ return;
+        }
+        setIsSaving(true);
+        const firstItem = salesItems[0];
+        const payload = {
+            CustomerID: firstItem.CustomerID,
+            SaleDate: firstItem.SaleDate,
+            PaymentMethod: firstItem.PaymentMethod,
+            Notes: '',
+            items: salesItems.map((item) => ({
+                HarvestProductID: item.HarvestProductID,
+                QuantitySold: item.QuantitySold,
+                TotalWeightKg: item.TotalWeightKg,
+                PricePerKg: item.PricePerKg,
+            })),
+        };
+        try {
+            await api.post('/api/sales', payload);
+            message.success('Sale saved successfully!');
+            setSalesItems([]);
+            form.resetFields();
+            // Refetch products to get updated quantities
+            const productsRes = await api.get('/api/sale-products');
+            setProducts(productsRes.data || []);
+        } catch (error) {
+            console.error('Error saving sale:', error);
+            message.error('An error occurred while saving the sale.');
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleAddCustomer = async (values: any) => {
+        try {
+            const payload = {
+                Name: values.Name,
+                BusinessName: values.BusinessName || '',
+                ContactNumber: values.ContactNumber || '',
+                Email: values.Email || '',
+                Address: values.Address || '',
+            };
+
+            await api.post('/api/customers', payload);
+            setIsCustomerModalVisible(false);
+            message.success(
+                'Customer added successfully! You can now select them from the list.'
+            );
+
+            // Refresh the customer dropdown to include the new customer
+            const response = await api.get('/api/customers');
+            setCustomers(response.data || []);
+        } catch (error) {
+            message.error('Failed to add customer.');
+            console.error('Error adding customer:', error);
+        }
+    };
+
+    const quantityValidator = (_: any, value: number) => {
+        if (!selectedProduct || !value) return Promise.resolve();
+        const quantityInCart = salesItems
+            .filter(
+                (item) =>
+                    item.HarvestProductID === selectedProduct.HarvestProductID
+            )
+            .reduce((sum, item) => sum + item.QuantitySold, 0);
+        const availableNow = selectedProduct.QuantityRemaining - quantityInCart;
+        if (value > availableNow)
+            return Promise.reject(
+                new Error(`Max available is ${availableNow.toFixed(2)}`)
+            );
+        return Promise.resolve();
+    };
+
+    const handleProductChange = (value: number) => {
+        const product = products.find((p) => p.HarvestProductID === value);
+        setSelectedProduct(product || null);
+        if (form.getFieldValue('QuantitySold'))
+            form.validateFields(['QuantitySold']);
+    };
+
+    const orderItemColumns = [
+        { title: 'Product', dataIndex: 'ProductName', key: 'ProductName' },
+        { title: 'Quantity', dataIndex: 'QuantitySold', key: 'QuantitySold' },
+        {
+            title: 'Weight (kg)',
+            dataIndex: 'TotalWeightKg',
+            key: 'TotalWeightKg',
+        },
+        { title: 'Price/Kg (₱)', dataIndex: 'PricePerKg', key: 'PricePerKg' },
+        {
+            title: 'Subtotal (₱)',
+            key: 'subtotal',
+            render: (_: any, record: SaleItem) =>
+                `₱${(record.TotalWeightKg * record.PricePerKg).toFixed(2)}`,
+        },
+        {
+            title: 'Actions',
+            key: 'actions',
+            render: (_: any, record: SaleItem) => (
+                <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() =>
+                        setSalesItems((prev) =>
+                            prev.filter((item) => item.key !== record.key)
+                        )
+                    }
+                />
+            ),
+        },
+    ];
+
+    const calculateTotal = () =>
+        salesItems.reduce(
+            (sum, item) => sum + item.TotalWeightKg * item.PricePerKg,
+            0
+        );
+
+    return (
+        <div className='p-4'>
+            <Card
+                title={
+                    <Title
+                        level={4}
+                        style={{ margin: 0 }}
+                    >
+                        Order Information
+                    </Title>
+                }
+                style={{ marginBottom: 24 }}
+            >
+                <Form
+                    form={form}
+                    layout='vertical'
+                    onFinish={onFinish}
+                >
+                    <Row gutter={16}>
+                        <Col span={8}>
+                            <Form.Item
+                                label='Customer'
+                                name='CustomerID'
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Customer is required',
+                                    },
+                                ]}
+                            >
+                                <Select
+                                    placeholder='Select customer'
+                                    showSearch
+                                    optionFilterProp='label'
+                                    disabled={salesItems.length > 0}
+                                    options={customers.map((c) => ({
+                                        value: c.CustomerID,
+                                        label: c.Name,
+                                    }))}
+                                />
+                            </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                            <Form.Item
+                                label='Sale Date'
+                                name='SaleDate'
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Sale Date is required',
+                                    },
+                                ]}
+                            >
+                                <DatePicker
+                                    style={{ width: '100%' }}
+                                    format='YYYY-MM-DD'
+                                    disabled={salesItems.length > 0}
+                                />
+                            </Form.Item>
+                        </Col>
+                        <Col span={8}>
+                            <Form.Item
+                                label='Payment Method'
+                                name='PaymentMethod'
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Payment Method is required',
+                                    },
+                                ]}
+                            >
+                                <Select
+                                    placeholder='Select method'
+                                    disabled={salesItems.length > 0}
+                                >
+                                    {paymentMethods.map((m) => (
+                                        <Option
+                                            key={m}
+                                            value={m}
+                                        >
+                                            {m}
+                                        </Option>
+                                    ))}
+                                </Select>
+                            </Form.Item>
+                        </Col>
+                    </Row>
+                    <Text strong>Product Details</Text>
+                    <Row
+                        gutter={16}
+                        className='mt-4'
+                    >
+                        <Col span={8}>
+                            <Form.Item
+                                label='Product'
+                                name='HarvestProductID'
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Product is required',
+                                    },
+                                ]}
+                            >
+                                <Select
+                                    placeholder='Select product'
+                                    onChange={handleProductChange}
+                                    showSearch
+                                    optionFilterProp='label'
+                                    options={productOptions}
+                                />
+                            </Form.Item>
+                        </Col>
+                        <Col span={4}>
+                            <Form.Item
+                                label='Quantity'
+                                name='QuantitySold'
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Quantity is required',
+                                    },
+                                    { validator: quantityValidator },
+                                ]}
+                            >
+                                <InputNumber
+                                    min={1}
+                                    style={{ width: '100%' }}
+                                />
+                            </Form.Item>
+                        </Col>
+                        <Col span={6}>
+                            <Form.Item
+                                label='Weight (kg)'
+                                name='TotalWeightKg'
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Weight is required',
+                                    },
+                                ]}
+                            >
+                                <InputNumber
+                                    min={0}
+                                    step={0.1}
+                                    style={{ width: '100%' }}
+                                />
+                            </Form.Item>
+                        </Col>
+                        <Col span={6}>
+                            <Form.Item
+                                label='Price per Kg (₱)'
+                                name='PricePerKg'
+                                rules={[
+                                    {
+                                        required: true,
+                                        message: 'Price is required',
+                                    },
+                                ]}
+                            >
+                                <InputNumber
+                                    min={0}
+                                    step={0.01}
+                                    style={{ width: '100%' }}
+                                />
+                            </Form.Item>
+                        </Col>
+                    </Row>
+                </Form>
+            </Card>
+
+            <Card
+                title={<Title level={5}>Order Items</Title>}
+                style={{ marginBottom: 16 }}
+            >
+                <Table
+                    columns={orderItemColumns}
+                    dataSource={salesItems}
+                    rowKey='key'
+                    pagination={false}
+                    footer={() => (
+                        <div className='text-right pr-4 font-semibold'>
+                            Total: ₱{calculateTotal().toFixed(2)}
+                        </div>
+                    )}
+                />
+            </Card>
+
+            <div
+                style={{
+                    display: 'flex',
+                    justifyContent: 'flex-end',
+                    gap: '8px',
+                    marginTop: '16px',
+                }}
+            >
+                <Button onClick={() => setIsCustomerModalVisible(true)}>
+                    New Customer
+                </Button>
+                <Button
+                    type='primary'
+                    onClick={() => form.submit()}
+                    icon={<PlusOutlined />}
+                >
+                    Add to Order
+                </Button>
+                <Button
+                    type='primary'
+                    size='large'
+                    onClick={handleSaveSale}
+                    disabled={salesItems.length === 0}
+                    loading={isSaving}
+                >
+                    Save Sale
+                </Button>
+            </div>
+
+            <AddCustomerForm
+                visible={isCustomerModalVisible}
+                onCreate={handleAddCustomer}
+                onCancel={() => setIsCustomerModalVisible(false)}
+            />
+        </div>
+    );
 };
 
 export default NewSale;

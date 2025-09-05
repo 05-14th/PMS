@@ -56,7 +56,6 @@ const ItemList: React.FC = () => {
         timeout: 10000,
     });
 
-    // In ItemList.tsx
 
     const fetchData = async () => {
         try {

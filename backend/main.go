@@ -200,13 +200,41 @@ type SaleHistoryRecord struct {
 	TotalAmount  float64 `json:"TotalAmount"`
 }
 
+// for details of a single sale record
 type SaleDetailItem struct {
+	SaleDetailID  int     `json:"SaleDetailID"`
 	ItemName      string  `json:"ItemName"`
 	QuantitySold  float64 `json:"QuantitySold"`
 	TotalWeightKg float64 `json:"TotalWeightKg"`
 	PricePerKg    float64 `json:"PricePerKg"`
 }
 
+// for creating new sales
+type SaleProduct struct {
+	HarvestProductID  int     `json:"HarvestProductID"`
+	ProductType       string  `json:"ProductType"`
+	QuantityRemaining float64 `json:"QuantityRemaining"`
+	WeightRemainingKg float64 `json:"WeightRemainingKg"`
+}
+
+
+
+// for a single item within a new sale payload
+type SaleDetailItemPayload struct {
+	HarvestProductID int     `json:"HarvestProductID"`
+	QuantitySold     float64 `json:"QuantitySold"`
+	TotalWeightKg    float64 `json:"TotalWeightKg"`
+	PricePerKg       float64 `json:"PricePerKg"`
+}
+
+// for entire payload for creating a new sale
+type SalePayload struct {
+	CustomerID    int                     `json:"CustomerID"`
+	SaleDate      string                  `json:"SaleDate"`
+	PaymentMethod string                  `json:"PaymentMethod"`
+	Notes         string                  `json:"Notes"`
+	Items         []SaleDetailItemPayload `json:"items"`
+}
 
 
 /* ===========================
@@ -1577,7 +1605,7 @@ func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	// Note: A more advanced system might also reverse the inventory usage associated with this sale.
+
 	query := "UPDATE cm_sales_orders SET IsActive = 0 WHERE SaleID = ?"
 	_, err = db.ExecContext(ctx, query, saleID)
 	if err != nil {
@@ -1599,6 +1627,7 @@ func getSaleDetails(w http.ResponseWriter, r *http.Request) {
 
 	query := `
 		SELECT 
+			sd.SaleDetailID,
 			hp.ProductType, 
 			sd.QuantitySold, 
 			sd.TotalWeightKg, 
@@ -1617,7 +1646,8 @@ func getSaleDetails(w http.ResponseWriter, r *http.Request) {
 	var details []SaleDetailItem
 	for rows.Next() {
 		var d SaleDetailItem
-		if err := rows.Scan(&d.ItemName, &d.QuantitySold, &d.TotalWeightKg, &d.PricePerKg); err != nil {
+		// Scan hp.ProductType into the d.ItemName field
+		if err := rows.Scan(&d.SaleDetailID, &d.ItemName, &d.QuantitySold, &d.TotalWeightKg, &d.PricePerKg); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan sale detail", err)
 			return
 		}
@@ -1626,6 +1656,130 @@ func getSaleDetails(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, details)
 }
 
+// for getting products available for sale in sales tab
+
+func getSaleProducts(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := "SELECT HarvestProductID, ProductType, QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE IsActive = 1 AND QuantityRemaining > 0"
+	
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch sale products", err)
+		return
+	}
+	defer rows.Close()
+
+	var products []SaleProduct
+	for rows.Next() {
+		var p SaleProduct
+		if err := rows.Scan(&p.HarvestProductID, &p.ProductType, &p.QuantityRemaining, &p.WeightRemainingKg); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan sale product", err)
+			return
+		}
+		products = append(products, p)
+	}
+	
+	respondJSON(w, http.StatusOK, products)
+}
+
+// for getting payment methods (enum) in sales tab
+func getPaymentMethods(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := `
+		SELECT SUBSTRING(COLUMN_TYPE, 6, LENGTH(COLUMN_TYPE) - 6)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cm_sales_orders' AND COLUMN_NAME = 'PaymentMethod'
+	`
+	var enumStr string
+	if err := db.QueryRowContext(ctx, query).Scan(&enumStr); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to query payment methods", err)
+		return
+	}
+
+	cleanedStr := strings.ReplaceAll(enumStr, "'", "")
+	methods := strings.Split(cleanedStr, ",")
+	respondJSON(w, http.StatusOK, methods)
+}
+
+// for creating a new sale record in sales tab when pressing add sale button
+func createSaleHandler(w http.ResponseWriter, r *http.Request) {
+	var payload SalePayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	var totalAmount float64
+	for _, item := range payload.Items {
+		totalAmount += item.TotalWeightKg * item.PricePerKg
+	}
+	saleQuery := "INSERT INTO cm_sales_orders (CustomerID, SaleDate, TotalAmount, PaymentMethod, Notes, IsActive) VALUES (?, ?, ?, ?, ?, 1)"
+	res, err := tx.ExecContext(ctx, saleQuery, payload.CustomerID, payload.SaleDate, totalAmount, payload.PaymentMethod, payload.Notes)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to insert into cm_sales_orders", err)
+		return
+	}
+	saleID, _ := res.LastInsertId()
+
+	for _, item := range payload.Items {
+		var currentQty, currentWeight float64
+		checkQuery := "SELECT QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE HarvestProductID = ? FOR UPDATE"
+		if err := tx.QueryRowContext(ctx, checkQuery, item.HarvestProductID).Scan(&currentQty, &currentWeight); err != nil {
+			handleError(w, http.StatusNotFound, "Product stock not found", err)
+			return
+		}
+
+
+		if item.QuantitySold > currentQty {
+			handleError(w, http.StatusBadRequest, "Not enough quantity in stock.", nil)
+			return
+		}
+	
+		if item.TotalWeightKg > currentWeight && item.QuantitySold != currentQty {
+			handleError(w, http.StatusBadRequest, "Weight sold cannot exceed weight remaining in stock.", nil)
+			return
+		}
+		
+		var newWeightRemaining float64
+		if item.QuantitySold == currentQty {
+			newWeightRemaining = 0
+		} else {
+			newWeightRemaining = currentWeight - item.TotalWeightKg
+		}
+
+		updateStockQuery := "UPDATE cm_harvest_products SET QuantityRemaining = QuantityRemaining - ?, WeightRemainingKg = ? WHERE HarvestProductID = ?"
+		_, err = tx.ExecContext(ctx, updateStockQuery, item.QuantitySold, newWeightRemaining, item.HarvestProductID)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to update product stock", err)
+			return
+		}
+
+		detailQuery := "INSERT INTO cm_sales_details (SaleID, HarvestProductID, QuantitySold, TotalWeightKg, PricePerKg) VALUES (?, ?, ?, ?, ?)"
+		if _, err := tx.ExecContext(ctx, detailQuery, saleID, item.HarvestProductID, item.QuantitySold, item.TotalWeightKg, item.PricePerKg); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to insert into cm_sales_details", err)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "saleID": saleID})
+}
 
 
 /* ===========================
@@ -1709,8 +1863,12 @@ func buildRouter() http.Handler {
 		r.Route("/sales", func(r chi.Router) {
 			r.Get("/", getSalesHistory)
 			r.Get("/{id}", getSaleDetails) 
+			r.Post("/", createSaleHandler)
 			r.Delete("/{id}", deleteSaleHistory)
 		})
+		// Products available for sale routes
+		r.Get("/sale-products", getSaleProducts)
+		r.Get("/payment-methods", getPaymentMethods)
 	})
 
 	return r
