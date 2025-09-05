@@ -178,6 +178,37 @@ type NewStockItemPayload struct {
 	Notes              *string `json:"Notes,omitempty"`
 }
 
+//for sales tab customer info
+
+type Customer struct {
+	CustomerID    int     `json:"CustomerID"`
+	Name          string  `json:"Name"`
+	BusinessName  string  `json:"BusinessName"`
+	ContactNumber string  `json:"ContactNumber"`
+	Email         string  `json:"Email"`
+	Address       string  `json:"Address"`
+	DateAdded     string  `json:"DateAdded"`
+	IsActive      bool    `json:"IsActive"`
+}
+
+// for history log in sales tab
+
+type SaleHistoryRecord struct {
+	SaleID       int     `json:"SaleID"`
+	SaleDate     string  `json:"SaleDate"`
+	CustomerName string  `json:"CustomerName"`
+	TotalAmount  float64 `json:"TotalAmount"`
+}
+
+type SaleDetailItem struct {
+	ItemName      string  `json:"ItemName"`
+	QuantitySold  float64 `json:"QuantitySold"`
+	TotalWeightKg float64 `json:"TotalWeightKg"`
+	PricePerKg    float64 `json:"PricePerKg"`
+}
+
+
+
 /* ===========================
    Models for IoT
 =========================== */
@@ -970,66 +1001,6 @@ func deleteBatchEvent(w http.ResponseWriter, r *http.Request) {
 	handleError(w, http.StatusNotFound, "Event not found for delete", nil)
 }
 
-// POST /addItem
-func addItem(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		handleError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
-		return
-	}
-
-	var payload struct {
-		ItemName string `json:"ItemName"`
-		Category string `json:"Category"`
-		Unit     string `json:"Unit"`
-	}
-	if !decodeJSONBody(w, r, &payload) {
-		return
-	}
-	if payload.ItemName == "" || payload.Category == "" || payload.Unit == "" {
-		handleError(w, http.StatusBadRequest, "ItemName, Category and Unit are required", nil)
-		return
-	}
-
-	ctx, cancel := withTimeout(r.Context())
-	defer cancel()
-
-	query := `INSERT INTO cm_items (ItemName, Category, Unit) VALUES (?, ?, ?)`
-	res, err := db.ExecContext(ctx, query, payload.ItemName, payload.Category, payload.Unit)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to insert item", err)
-		return
-	}
-	lastID, _ := res.LastInsertId()
-	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "insertedId": lastID})
-}
-
-// DELETE /deleteItem/{id}
-func deleteItem(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		handleError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
-		return
-	}
-	itemID := chi.URLParam(r, "id")
-	if itemID == "" {
-		handleError(w, http.StatusBadRequest, "Missing item ID", nil)
-		return
-	}
-
-	ctx, cancel := withTimeout(r.Context())
-	defer cancel()
-
-	query := `DELETE FROM cm_items WHERE ItemID = ?`
-	res, err := db.ExecContext(ctx, query, itemID)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to delete item", err)
-		return
-	}
-	if rowsAffected, _ := res.RowsAffected(); rowsAffected == 0 {
-		handleError(w, http.StatusNotFound, "Item not found", nil)
-		return
-	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "deletedId": itemID})
-}
 
 // for cm_items adding new category
 func getCategories(w http.ResponseWriter, r *http.Request) {
@@ -1474,6 +1445,189 @@ func createStockItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "insertedItemId": itemID})
 }
 
+//for sales tab customer CRUD
+
+func getCustomers(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	
+	rows, err := db.QueryContext(ctx, "SELECT CustomerID, Name, BusinessName, ContactNumber, Email, Address, DateAdded FROM cm_customers WHERE IsActive = 1 ORDER BY Name")
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch customers", err)
+		return
+	}
+	defer rows.Close()
+
+	var customers []Customer
+	for rows.Next() {
+		var c Customer
+		if err := rows.Scan(&c.CustomerID, &c.Name, &c.BusinessName, &c.ContactNumber, &c.Email, &c.Address, &c.DateAdded); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan customer", err)
+			return
+		}
+		customers = append(customers, c)
+	}
+	respondJSON(w, http.StatusOK, customers)
+}
+
+func createCustomer(w http.ResponseWriter, r *http.Request) {
+	var c Customer
+	if !decodeJSONBody(w, r, &c) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := "INSERT INTO cm_customers (Name, BusinessName, ContactNumber, Email, Address) VALUES (?, ?, ?, ?, ?)"
+	res, err := db.ExecContext(ctx, query, c.Name, c.BusinessName, c.ContactNumber, c.Email, c.Address)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to insert customer", err)
+		return
+	}
+	lastID, _ := res.LastInsertId()
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "insertedId": lastID})
+}
+
+func updateCustomer(w http.ResponseWriter, r *http.Request) {
+	customerID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid customer ID", err)
+		return
+	}
+	
+	var c Customer
+	if !decodeJSONBody(w, r, &c) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := "UPDATE cm_customers SET Name = ?, BusinessName = ?, ContactNumber = ?, Email = ?, Address = ? WHERE CustomerID = ?"
+	_, err = db.ExecContext(ctx, query, c.Name, c.BusinessName, c.ContactNumber, c.Email, c.Address, customerID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update customer", err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func deleteCustomer(w http.ResponseWriter, r *http.Request) {
+	customerID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid customer ID", err)
+		return
+	}
+	
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	// Note: You could add a check here to prevent deleting customers with existing sales.
+	query := "UPDATE cm_customers SET IsActive = 0 WHERE CustomerID = ?"
+	_, err = db.ExecContext(ctx, query, customerID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to deactivate customer", err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+// for history sales tab
+
+func getSalesHistory(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := `
+		SELECT s.SaleID, s.SaleDate, c.Name, s.TotalAmount 
+		FROM cm_sales_orders s
+		JOIN cm_customers c ON s.CustomerID = c.CustomerID
+		WHERE s.IsActive = 1
+		ORDER BY s.SaleDate DESC;`
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch sales history", err)
+		return
+	}
+	defer rows.Close()
+
+	var records []SaleHistoryRecord
+	for rows.Next() {
+		var rec SaleHistoryRecord
+		if err := rows.Scan(&rec.SaleID, &rec.SaleDate, &rec.CustomerName, &rec.TotalAmount); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan sale history record", err)
+			return
+		}
+		records = append(records, rec)
+	}
+	respondJSON(w, http.StatusOK, records)
+}
+
+// for deleting a sale record (soft delete)
+func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
+	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid sale ID", err)
+		return
+	}
+	
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	// Note: A more advanced system might also reverse the inventory usage associated with this sale.
+	query := "UPDATE cm_sales_orders SET IsActive = 0 WHERE SaleID = ?"
+	_, err = db.ExecContext(ctx, query, saleID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to deactivate sale", err)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+//for getting sale details by sale ID in sales history tab
+func getSaleDetails(w http.ResponseWriter, r *http.Request) {
+	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid sale ID", err)
+		return
+	}
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := `
+		SELECT 
+			hp.ProductType, 
+			sd.QuantitySold, 
+			sd.TotalWeightKg, 
+			sd.PricePerKg
+		FROM cm_sales_details sd
+		JOIN cm_harvest_products hp ON sd.HarvestProductID = hp.HarvestProductID
+		WHERE sd.SaleID = ?;`
+
+	rows, err := db.QueryContext(ctx, query, saleID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch sale details", err)
+		return
+	}
+	defer rows.Close()
+
+	var details []SaleDetailItem
+	for rows.Next() {
+		var d SaleDetailItem
+		if err := rows.Scan(&d.ItemName, &d.QuantitySold, &d.TotalWeightKg, &d.PricePerKg); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan sale detail", err)
+			return
+		}
+		details = append(details, d)
+	}
+	respondJSON(w, http.StatusOK, details)
+}
+
+
+
 /* ===========================
    Router / Server
 =========================== */
@@ -1543,6 +1697,20 @@ func buildRouter() http.Handler {
 		r.Post("/purchases", createPurchase)
 		r.Post("/stock-items", createStockItem)
 
+		// Customers routes (for sales tab)
+		r.Route("/customers", func(r chi.Router) {
+			r.Get("/", getCustomers)
+			r.Post("/", createCustomer)
+			r.Put("/{id}", updateCustomer)
+			r.Delete("/{id}", deleteCustomer)
+   		 })
+		
+		// Sales History routes
+		r.Route("/sales", func(r chi.Router) {
+			r.Get("/", getSalesHistory)
+			r.Get("/{id}", getSaleDetails) 
+			r.Delete("/{id}", deleteSaleHistory)
+		})
 	})
 
 	return r
