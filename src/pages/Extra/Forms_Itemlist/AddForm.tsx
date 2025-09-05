@@ -1,123 +1,155 @@
 import React from 'react';
-import { Form, Input, Select, Modal, Button } from 'antd';
+import { Form, Input, Select, Modal, Button, message } from 'antd';
 import axios from 'axios';
 
 const { Option } = Select;
 
 interface AddFormProps {
-  visible: boolean;
-  onCreate: (values: any) => void;
-  onCancel: () => void;
-  categories: Array<{ value: string; label: string }>;
+    visible: boolean;
+    onSuccess: () => void;
+    onCancel: () => void;
+    categories: Array<{ value: string; label: string }>;
+    units: Array<{ value: string; label: string }>;
 }
 
-const AddForm: React.FC<AddFormProps> = ({ visible, onCreate, onCancel, categories }) => {
-  const [form] = Form.useForm();
+const AddForm: React.FC<AddFormProps> = ({
+    visible,
+    onSuccess,
+    onCancel,
+    categories,
+    units,
+}) => {
+    const [form] = Form.useForm();
 
-  // Add item handler
-  const handleAddItem = async (values: any) => {
-    try {
-      const api = axios.create({
-        baseURL: import.meta.env.VITE_APP_SERVERHOST,
-        timeout: 10000,
-      });
-      // POST to /addItem endpoint
-      await api.post('/addItem', {
-        ItemName: values.ItemName,
-        Category: values.Category,
-        Unit: values.Unit,
-      });
-      onCreate(values); // call parent handler
-    } catch (err) {
-      // Optionally show error message
-      console.error('Failed to add item', err);
-    }
-  };
+    const handleAddItem = async (values: any) => {
+        try {
+            const api = axios.create({
+                baseURL: import.meta.env.VITE_APP_SERVERHOST,
+                timeout: 10000,
+            });
 
-  return (
-    <Modal
-      title="Add New Item"
-      open={visible}
-      onCancel={onCancel}
-      closable={false}
-      footer={[
-        <Button 
-          key="cancel" 
-          onClick={onCancel} 
-          style={{ 
-            background: '#fff', 
-            border: '1px solid #d9d9d9',
-            transition: 'all 0.3s'
-          }}
-          className="hover:bg-gray-100"
-        >
-          Cancel
-        </Button>,
-        <Button 
-          key="submit" 
-          type="default" 
-          style={{ 
-            background: '#fff', 
-            border: '1px solid #d9d9d9',
-            transition: 'all 0.3s'
-          }}
-          className="hover:bg-green-500 hover:text-white hover:border-green-500"
-          onClick={() => {
-            form
-              .validateFields()
-              .then((values) => {
-                form.resetFields();
-                handleAddItem(values);
-              })
-              .catch((info) => {
-                console.log('Validate Failed:', info);
-              });
-          }}
-        >
-          Add Item
-        </Button>,
-      ]}
-    >
-      <Form
-        form={form}
-        layout="vertical"
-        name="add_item_form"
-        initialValues={{ modifier: 'public' }}
-      >
-        <Form.Item
-          name="ItemName"
-          label="Item Name"
-          rules={[{ required: true, message: 'Please input the item name!' }]}
-        >
-          <Input placeholder="Enter item name" />
-        </Form.Item>
+            // Step 3: Use the correct RESTful endpoint for creating an item
+            const response = await api.post('/api/items', {
+                ItemName: values.ItemName,
+                Category: values.Category,
+                Unit: values.Unit,
+            });
 
-        <Form.Item
-          name="Category"
-          label="Category"
-          rules={[{ required: true, message: 'Please select a category!' }]}
-        >
-          <Select placeholder="Select a category">
-            {categories
-              .filter(cat => cat.value !== 'all')
-              .map(category => (
-                <Option key={category.value} value={category.value}>
-                  {category.label}
-                </Option>
-              ))}
-          </Select>
-        </Form.Item>
+            // After a successful API call, call the onSuccess prop to trigger a refresh
+            if (response.data.success) {
+                onSuccess();
+            } else {
+                message.error(
+                    'An unknown error occurred while adding the item.'
+                );
+            }
+        } catch (err) {
+            message.error('Failed to add item. Please try again.');
+            console.error('Failed to add item', err);
+        }
+    };
 
-        <Form.Item
-          name="Unit"
-          label="Unit"
-          rules={[{ required: true, message: 'Please input the unit!' }]}
+    return (
+        <Modal
+            title='Add New Item'
+            open={visible}
+            onCancel={onCancel}
+            closable={false}
+            footer={[
+                <Button
+                    key='cancel'
+                    onClick={onCancel}
+                    style={{
+                        background: '#fff',
+                        border: '1px solid #d9d9d9',
+                        transition: 'all 0.3s',
+                    }}
+                    className='hover:bg-gray-100'
+                >
+                    Cancel
+                </Button>,
+                <Button
+                    key='submit'
+                    type='primary' // Changed to primary for better UI convention
+                    onClick={() => {
+                        form.validateFields()
+                            .then((values) => {
+                                // We no longer reset fields here, the parent will close the modal
+                                handleAddItem(values);
+                            })
+                            .catch((info) => {
+                                console.log('Validate Failed:', info);
+                            });
+                    }}
+                >
+                    Add Item
+                </Button>,
+            ]}
         >
-          <Input placeholder="e.g., kg, pcs, liter" />
-        </Form.Item>
-      </Form>
-    </Modal>
-  );
+            <Form
+                form={form}
+                layout='vertical'
+                name='add_item_form'
+                initialValues={{ modifier: 'public' }}
+            >
+                <Form.Item
+                    name='ItemName'
+                    label='Item Name'
+                    rules={[
+                        {
+                            required: true,
+                            message: 'Please input the item name!',
+                        },
+                    ]}
+                >
+                    <Input placeholder='Enter item name' />
+                </Form.Item>
+
+                <Form.Item
+                    name='Category'
+                    label='Category'
+                    rules={[
+                        {
+                            required: true,
+                            message: 'Please select a category!',
+                        },
+                    ]}
+                >
+                    <Select placeholder='Select a category'>
+                        {categories
+                            .filter((cat) => cat.value !== 'all')
+                            .map((category) => (
+                                <Option
+                                    key={category.value}
+                                    value={category.value}
+                                >
+                                    {category.label}
+                                </Option>
+                            ))}
+                    </Select>
+                </Form.Item>
+
+                <Form.Item
+                    name='Unit'
+                    label='Unit'
+                    rules={[
+                        { required: true, message: 'Please select the unit!' },
+                    ]}
+                >
+                    <Select placeholder='Select a unit'>
+                        {units.map((unit) => (
+                            <Option
+                                key={unit.value}
+                                value={unit.value}
+                            >
+                                {unit.label}
+                            </Option>
+                        ))}
+                    </Select>
+                </Form.Item>
+            </Form>
+        </Modal>
+    );
 };
 
 export default AddForm;
