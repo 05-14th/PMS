@@ -209,7 +209,28 @@ const NewSale: React.FC = () => {
     };
 
     const handleAddCustomer = async (values: any) => {
-        /* ... same as before ... */
+        try {
+            const payload = {
+                Name: values.Name,
+                BusinessName: values.BusinessName || '',
+                ContactNumber: values.ContactNumber || '',
+                Email: values.Email || '',
+                Address: values.Address || '',
+            };
+
+            await api.post('/api/customers', payload);
+            setIsCustomerModalVisible(false);
+            message.success(
+                'Customer added successfully! You can now select them from the list.'
+            );
+
+            // Refresh the customer dropdown to include the new customer
+            const response = await api.get('/api/customers');
+            setCustomers(response.data || []);
+        } catch (error) {
+            message.error('Failed to add customer.');
+            console.error('Error adding customer:', error);
+        }
     };
 
     const quantityValidator = (_: any, value: number) => {
