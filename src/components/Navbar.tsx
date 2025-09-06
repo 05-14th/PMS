@@ -34,210 +34,126 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   const userRole = localStorage.getItem("userRole") || "";
 
   return (
-    <nav className="p-4 shadow-md bg-green-800 text-white">
-      <div className="container mx-auto flex items-center justify-between w-full px-2 sm:px-0">
-        {/* Left: Logo */}
-        <Link to="/homepage" className="flex items-center text-white hover:text-green-300">
-          <img src="/Extras/logo.png" alt="Logo" className="h-8 w-auto" />
+    <>
+      {/* Mobile Header */}
+      <div className="sm:hidden fixed top-0 left-0 right-0 bg-green-800 text-white px-4 py-2 flex items-center justify-between z-50 border-b border-green-700">
+        <Link to="/homepage" className="flex items-center">
+          <span className="font-bold text-white text-lg">Chickmate</span>
+        </Link>
+        <div className="flex items-center space-x-2">
+          <div className="text-right">
+            <div className="text-xs font-medium truncate max-w-[100px]">{userEmail}</div>
+            <div className="text-[10px] text-green-200 truncate">{userRole}</div>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="p-1 rounded-full hover:bg-green-700 text-white"
+            title="Logout"
+          >
+            <LogOut size={16} />
+          </button>
+        </div>
+      </div>
+
+      {/* Desktop Sidebar */}
+      <div className="hidden sm:flex flex-col h-screen w-64 bg-green-800 text-white fixed left-0 top-0 border-r border-green-700 z-50">
+        {/* Logo */}
+        <Link to="/homepage" className="flex items-center justify-center p-4 border-b border-green-700">
+          <img src="/Extras/logo.png" alt="Logo" className="h-10 w-auto" />
         </Link>
 
-        {/* Center: Navigation links */}
-        <ul className="hidden sm:flex-grow sm:flex sm:justify-center sm:space-x-12 sm:items-center">
-          {!isControl ? (
-            <>
-              <li>
-                <Link
-                  to="/homepage"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <Home size={20} className="text-white" />
-                  <span className="text-white">Home</span>
-                </Link>
-              </li>
-              
-              <li>
-                <Link
-                  to="/inventory"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <Package size={20} className="text-white" />
-                  <span className="text-white">Inventory</span>
-                </Link>
-              </li>
-
-              <li>
-                <Link
-                  to="/batches"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <LayoutList size={20} className="text-white" />
-                  <span className="text-white">Batches</span>
-                </Link>
-              </li>
-
-              <li>
-                <Link
-                  to="/sales"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <ShoppingCart size={20} className="text-white" />
-                  <span className="text-white">Sales</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/reports"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <FileText size={20} className="text-white" />
-                  <span className="text-white">Reports</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/control"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <Settings size={20} className="text-white" />
-                  <span className="text-white">Control</span>
-                </Link>
-              </li>
-            </>
-          ) : (
-            <>
-              <li>
-                <Link
-                  to="/notification"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <Bell size={20} className="text-white" />
-                  <span className="text-white">Notification</span>
-                </Link>
-              </li>
-              <li>
-                <Link
-                  to="/homepage"
-                  className="flex items-center text-white hover:text-green-300 space-x-1"
-                >
-                  <ServerCog size={20} className="text-white" />
-                  <span className="text-white">System</span>
-                </Link>
-              </li>
-            </>
-          )}
-        </ul>
-
-        {/* Right: User Info and Logout */}
-        <div className="flex items-center justify-end space-x-2 w-full sm:w-auto">
-          {/* Mobile Profile and Logout */}
-          <div className="flex sm:hidden items-center space-x-3">
-            {userEmail && (
-              <div className="flex flex-col items-end mr-2">
-                <span className="text-white text-sm font-medium">{userEmail}</span>
-                {userRole && (
-                  <span className="text-green-200 text-xs">
-                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
-                  </span>
-                )}
-              </div>
+        {/* Navigation Links */}
+        <nav className="flex-1 overflow-y-auto py-4">
+          <ul className="space-y-2 px-4">
+            {!isControl ? (
+              <>
+                <NavItem to="/homepage" icon={<Home size={20} />} text="Home" />
+                <NavItem to="/inventory" icon={<Package size={20} />} text="Inventory" />
+                <NavItem to="/batches" icon={<LayoutList size={20} />} text="Batches" />
+                <NavItem to="/sales" icon={<ShoppingCart size={20} />} text="Sales" />
+                <NavItem to="/reports" icon={<FileText size={20} />} text="Reports" />
+                <NavItem to="/control" icon={<Settings size={20} />} text="Control" />
+              </>
+            ) : (
+              <>
+                <NavItem to="/notification" icon={<Bell size={20} />} text="Notification" />
+                <NavItem to="/homepage" icon={<ServerCog size={20} />} text="System" />
+              </>
             )}
+          </ul>
+        </nav>
+
+        {/* User Info and Logout */}
+        <div className="p-4 border-t border-green-700">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-3">
+              <div className="h-8 w-8 rounded-full bg-green-600 flex items-center justify-center">
+                {userEmail.charAt(0).toUpperCase()}
+              </div>
+              <div className="text-sm">
+                <div className="font-medium text-white truncate max-w-[140px]">{userEmail}</div>
+                <div className="text-green-200 text-xs">{userRole}</div>
+              </div>
+            </div>
             <button
               onClick={handleLogout}
-              className="flex items-center text-white hover:text-green-300"
+              className="p-1 rounded-full hover:bg-green-700 text-white"
               title="Logout"
             >
-              <LogOut size={24} />
-            </button>
-          </div>
-
-          {/* Desktop Profile and Logout */}
-          <div className="hidden sm:flex items-center space-x-4">
-            {userEmail && (
-              <div className="hidden sm:flex flex-col items-end">
-                <span className="text-white text-sm font-medium">{userEmail}</span>
-                {userRole && (
-                  <span className="text-green-200 text-xs">
-                    {userRole.charAt(0).toUpperCase() + userRole.slice(1)}
-                  </span>
-                )}
-              </div>
-            )}
-            <button
-              onClick={handleLogout}
-              className="flex items-center text-white hover:bg-green-700 hover:text-green-300 px-3 py-1 rounded-md text-sm font-medium"
-            >
-              <LogOut size={18} className="mr-2" />
-              <span>Logout</span>
+              <LogOut size={18} />
             </button>
           </div>
         </div>
       </div>
 
-      {/* Bottom Mobile Navigation */}
-      <div className="fixed bottom-0 left-0 right-0 sm:hidden bg-green-800 shadow-inner z-50">
-        <ul className="flex justify-around items-center py-2 text-xs">
-          {!isControl && (
+      {/* Mobile Bottom Navigation */}
+      <div className="sm:hidden fixed bottom-0 left-0 right-0 bg-green-800 text-white shadow-lg z-40 pt-1">
+        <ul className="flex justify-around">
+          {!isControl ? (
             <>
-              <li className="w-1/6 text-center">
-                <Link
-                  to="/homepage"
-                  className="flex flex-col items-center text-white hover:text-green-300"
-                >
-                  <Home size={20} className="text-white" />
-                  <span className="text-white text-[11px] leading-tight whitespace-normal">Home</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
-                  to="/inventory"
-                  className="flex flex-col items-center text-white hover:text-green-300"
-                >
-                  <Package size={20} className="text-white" />
-                  <span className="text-white text-[11px] leading-tight whitespace-normal">Inventory</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
-                  to="/batches"
-                  className="flex flex-col items-center text-white hover:text-green-300"
-                >
-                  <LayoutList size={20} className="text-white" />
-                  <span className="text-white text-[11px] leading-tight whitespace-normal">Batches</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
-                  to="/sales"
-                  className="flex flex-col items-center text-white hover:text-green-300"
-                >
-                  <ShoppingCart size={20} className="text-white" />
-                  <span className="text-white text-[11px] leading-tight whitespace-normal">Sales</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
-                  to="/reports"
-                  className="flex flex-col items-center text-white hover:text-green-300"
-                >
-                  <FileText size={20} className="text-white" />
-                  <span className="text-white text-[11px] leading-tight whitespace-normal">Reports</span>
-                </Link>
-              </li>
-              <li className="w-1/6 text-center">
-                <Link
-                  to="/control"
-                  className="flex flex-col items-center text-white hover:text-green-300"
-                >
-                  <Settings size={20} className="text-white" />
-                  <span className="text-white text-[11px] leading-tight whitespace-normal">Control</span>
-                </Link>
-              </li>
+              <MobileNavItem to="/homepage" icon={<Home size={20} />} text="Home" />
+              <MobileNavItem to="/inventory" icon={<Package size={20} />} text="Inventory" />
+              <MobileNavItem to="/batches" icon={<LayoutList size={20} />} text="Batches" />
+              <MobileNavItem to="/sales" icon={<ShoppingCart size={20} />} text="Sales" />
+              <MobileNavItem to="/reports" icon={<FileText size={20} />} text="Reports" />
+              <MobileNavItem to="/control" icon={<Settings size={20} />} text="Control" />
+            </>
+          ) : (
+            <>
+              <MobileNavItem to="/notification" icon={<Bell size={20} />} text="Notification" />
+              <MobileNavItem to="/homepage" icon={<ServerCog size={20} />} text="System" />
             </>
           )}
         </ul>
       </div>
-    </nav>
+    </>
   );
 };
+
+// Desktop Nav Item Component
+const NavItem = ({ to, icon, text }: { to: string; icon: React.ReactNode; text: string }) => (
+  <li>
+    <Link
+      to={to}
+      className="flex items-center space-x-3 p-3 rounded-lg hover:bg-green-700 text-white transition-colors"
+    >
+      <span className="text-white">{icon}</span>
+      <span className="text-white text-sm">{text}</span>
+    </Link>
+  </li>
+);
+
+// Mobile Nav Item Component
+const MobileNavItem = ({ to, icon, text }: { to: string; icon: React.ReactNode; text: string }) => (
+  <li className="w-1/6 text-center">
+    <Link
+      to={to}
+      className="flex flex-col items-center justify-center py-2 text-white hover:text-white text-xs"
+    >
+      <div className="mb-1 text-white">{icon}</div>
+      <span className="text-white text-[11px] leading-tight">{text}</span>
+    </Link>
+  </li>
+);
 
 export default Navbar;

@@ -9,11 +9,10 @@ import {
     message,
     Space,
     Modal,
+    Grid,
 } from 'antd';
 import {
     SearchOutlined,
-    CalendarOutlined,
-    FilterOutlined,
 } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
@@ -22,6 +21,7 @@ import DetailsSaleHistory from '../Forms_Sales/DetailsSaleHistory';
 
 const { RangePicker } = DatePicker;
 const { Title } = Typography;
+const { useBreakpoint } = Grid;
 
 interface SaleRecord {
     SaleID: number;
@@ -37,17 +37,15 @@ const api = axios.create({
 
 const SaleHistory: React.FC = () => {
     const [searchText, setSearchText] = useState('');
-    const [dates, setDates] = useState<
-        [dayjs.Dayjs | null, dayjs.Dayjs | null]
-    >([null, null]);
+    const [dates, setDates] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
     const [isLoading, setIsLoading] = useState(false);
-
-    // CHANGED: Initialized with an empty array
     const [data, setData] = useState<SaleRecord[]>([]);
     const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
     const [deletingSaleId, setDeletingSaleId] = useState<number | null>(null);
     const [isDetailsModalVisible, setIsDetailsModalVisible] = useState(false);
     const [viewingSaleId, setViewingSaleId] = useState<number | null>(null);
+
+    const screens = useBreakpoint(); // ✅ detect screen size
 
     const fetchData = async () => {
         setIsLoading(true);
@@ -69,7 +67,7 @@ const SaleHistory: React.FC = () => {
         setSearchText(value);
     };
 
-    const handleDateChange = (dates: any, dateStrings: [string, string]) => {
+    const handleDateChange = (dates: any) => {
         setDates(dates);
     };
 
@@ -78,7 +76,6 @@ const SaleHistory: React.FC = () => {
         setDates([null, null]);
     };
 
-    // for sales history deletion (soft delete)
     const handleDelete = (saleId: number) => {
         setDeletingSaleId(saleId);
         setIsDeleteModalVisible(true);
@@ -89,7 +86,7 @@ const SaleHistory: React.FC = () => {
         try {
             await api.delete(`/api/sales/${deletingSaleId}`);
             message.success('Sale record archived successfully');
-            await fetchData(); // Refresh the list
+            await fetchData();
         } catch (error) {
             message.error('Failed to archive sale record.');
         } finally {
@@ -97,7 +94,6 @@ const SaleHistory: React.FC = () => {
         }
     };
 
-    //for viewing sale details in history sales
     const handleViewDetails = (record: SaleRecord) => {
         setViewingSaleId(record.SaleID);
         setIsDetailsModalVisible(true);
@@ -150,15 +146,17 @@ const SaleHistory: React.FC = () => {
             title: 'Actions',
             key: 'actions',
             render: (_, record: SaleRecord) => (
-                <Space>
+                <Space size={screens.xs ? 4 : 8}>
                     <Button
-                        type='link'
+                        type="link"
+                        size={screens.xs ? 'small' : 'middle'}
                         onClick={() => handleViewDetails(record)}
                     >
                         Details
                     </Button>
                     <Button
-                        type='link'
+                        type="link"
+                        size={screens.xs ? 'small' : 'middle'}
                         danger
                         onClick={() => handleDelete(record.SaleID)}
                     >
@@ -170,40 +168,44 @@ const SaleHistory: React.FC = () => {
     ];
 
     return (
-        <div className='p-4'>
-            <Card className='mb-6'>
-                <div className='flex justify-between items-center mb-6'>
-                    <Title
-                        level={4}
-                        className='m-0'
-                    >
+        <div className="p-2 sm:p-4">
+            <Card className="mb-6">
+                <div className="flex justify-between items-center mb-6">
+                    <Title level={4} className="m-0">
                         Sales History
                     </Title>
                 </div>
 
-                <div className='flex flex-col md:flex-row gap-4 mb-6'>
+                {/* Filters - stack on mobile, row on desktop */}
+                <div
+                    className={`flex ${screens.xs ? 'flex-col gap-2' : 'flex-row gap-4'} mb-6`}
+                >
                     <Input
-                        placeholder='Search by customer name'
+                        placeholder="Search by customer name"
                         prefix={<SearchOutlined />}
                         value={searchText}
                         onChange={(e) => handleSearch(e.target.value)}
-                        className='w-full md:w-96'
+                        className={screens.xs ? 'w-full' : 'w-96'}
                     />
-                    <div className='flex gap-2'>
+                    <div className={`flex ${screens.xs ? 'flex-col gap-2' : 'flex-row gap-2'}`}>
                         <RangePicker
                             onChange={handleDateChange}
                             value={dates}
+                            style={{ width: screens.xs ? '100%' : undefined }}
                         />
-                        <Button onClick={handleClearFilters}>Clear</Button>
+                        <Button onClick={handleClearFilters} block={screens.xs}>
+                            Clear
+                        </Button>
                     </div>
                 </div>
 
+                {/* Delete Modal */}
                 <Modal
-                    title='Confirm Delete Sale'
+                    title="Confirm Delete Sale"
                     open={isDeleteModalVisible}
                     onOk={confirmDelete}
                     onCancel={() => setIsDeleteModalVisible(false)}
-                    okText='Delete'
+                    okText="Delete"
                     okButtonProps={{ danger: true }}
                 >
                     <p>
@@ -212,18 +214,22 @@ const SaleHistory: React.FC = () => {
                     </p>
                 </Modal>
 
+                {/* Details Modal */}
                 <DetailsSaleHistory
                     visible={isDetailsModalVisible}
                     onCancel={() => setIsDetailsModalVisible(false)}
                     saleId={viewingSaleId}
                 />
 
+                {/* Table - scrollable on mobile */}
                 <Table
                     columns={columns}
                     dataSource={filteredData}
-                    rowKey='SaleID'
+                    rowKey="SaleID"
                     loading={isLoading}
                     pagination={{ pageSize: 10 }}
+                    size={screens.xs ? 'small' : 'middle'}
+                    scroll={screens.xs ? { x: true } : undefined}
                 />
             </Card>
         </div>

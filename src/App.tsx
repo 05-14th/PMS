@@ -15,23 +15,25 @@ import Batches from './pages/Batches'
 
 function App() {
   return (
-    <div className="min-h-screen bg-black">
-      <div>
+    <div className="min-h-screen bg-black flex flex-col">
+      <div className="flex-1 flex flex-col">
         <Router>
-          <Routes>
-            <Route path="/" element={<LoginModal />} />
-            <Route path="/login" element={<LoginModal />} />
-            <Route path="/signup" element={<SignUpPage />} />
-            <Route path="/homepage" element={<HomePage />} />
-            <Route path="/inventory" element={<Inventory />} />
-            <Route path="/batches" element={<Batches />} />
-            <Route path="/batches/:id" element={<Batches />} />
-            <Route path="/products" element={<Products />}/>
-            <Route path="/sales" element={<Sales />} />
-            <Route path="/reports" element={<Reports />} />
-            <Route path="/control" element={<Control />} />
-            <Route path="/notification" element={<Notification />} />
-          </Routes>
+          <main className="mobile-scrollable">
+            <Routes>
+              <Route path="/" element={<LoginModal />} />
+              <Route path="/login" element={<LoginModal />} />
+              <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/homepage" element={<HomePage />} />
+              <Route path="/inventory" element={<Inventory />} />
+              <Route path="/batches" element={<Batches />} />
+              <Route path="/batches/:id" element={<Batches />} />
+              <Route path="/products" element={<Products />}/>
+              <Route path="/sales" element={<Sales />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/control" element={<Control />} />
+              <Route path="/notification" element={<Notification />} />
+            </Routes>
+          </main>
         </Router>
       </div>
     </div>

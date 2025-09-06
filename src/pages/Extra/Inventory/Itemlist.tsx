@@ -56,12 +56,10 @@ const ItemList: React.FC = () => {
         timeout: 10000,
     });
 
-
     const fetchData = async () => {
         try {
             setIsLoading(true);
             const response = await api.get('/api/items');
-            console.log('Items response:', response);
             setItems(response.data);
         } catch (error) {
             console.error('Error fetching items:', error);
@@ -99,10 +97,7 @@ const ItemList: React.FC = () => {
     }, []);
 
     const filteredItems = React.useMemo(() => {
-        if (!Array.isArray(items)) {
-            console.error('Items is not an array:', items);
-            return [];
-        }
+        if (!Array.isArray(items)) return [];
 
         return items
             .filter((item) => {
@@ -148,7 +143,6 @@ const ItemList: React.FC = () => {
 
         try {
             await api.put(`/api/items/${updatedItem.ItemID}`, payload);
-
             message.success('Item updated successfully');
             setIsEditModalVisible(false);
             setEditingItem(null);
@@ -168,7 +162,6 @@ const ItemList: React.FC = () => {
         if (!deletingKey) return;
         try {
             setIsLoading(true);
-
             await api.delete(`/api/items/${deletingKey}`);
             message.success('Item deleted successfully');
             await fetchData();
@@ -216,7 +209,6 @@ const ItemList: React.FC = () => {
                         }}
                         icon={<EditOutlined />}
                     />
-                    {/* The Tooltip explains why the button is disabled */}
                     <Tooltip
                         title={
                             record.TotalQuantityRemaining > 0
@@ -226,7 +218,6 @@ const ItemList: React.FC = () => {
                     >
                         <Button
                             danger
-                            // The button is disabled if stock is greater than 0
                             disabled={record.TotalQuantityRemaining > 0}
                             onClick={() => handleDelete(record.key)}
                             icon={<DeleteOutlined />}
@@ -239,58 +230,50 @@ const ItemList: React.FC = () => {
 
     return (
         <div className='p-4'>
-            <div className='relative mb-6'>
-                <Title
-                    level={3}
-                    className='text-gray-800'
-                >
-                    Item Management
-                </Title>
-                <Button
-                    type='default'
-                    icon={<PlusOutlined />}
-                    onClick={() => setIsAddModalVisible(true)}
-                    className='absolute top-0 right-0 bg-white border-gray-300 text-gray-700 hover:bg-gray-50 hover:text-gray-800'
-                    style={{
-                        boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
-                        border: '1px solid #d1d5db',
-                        borderRadius: '0.375rem',
-                        padding: '0.5rem 1rem',
-                        height: 'auto',
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                    }}
-                >
-                    Add New Item
-                </Button>
-            </div>
-
-            <div className='bg-white p-6 rounded-lg shadow'>
-                <Row
-                    gutter={16}
-                    className='mb-6'
-                >
-                    <Col
-                        xs={24}
-                        sm={12}
-                        md={8}
-                        lg={6}
-                        className='mb-4 sm:mb-0'
+            {/* Header Section */}
+            <Row
+                justify='space-between'
+                align='middle'
+                className='mb-6'
+                gutter={[16, 16]}
+            >
+                <Col xs={24} sm={12}>
+                    <Title level={4} className='mb-0 text-gray-800'>
+                        Item Management
+                    </Title>
+                </Col>
+                <Col xs={24} sm='auto'>
+                    <Button
+                        type="default"
+                        icon={<PlusOutlined />}
+                        onClick={() => setIsAddModalVisible(true)}
+                        block
+                        style={{
+                            backgroundColor: 'white',
+                            color: '#333',
+                            border: '1px solid #d9d9d9',
+                            boxShadow: 'none',
+                        }}
+                        className="hover:bg-gray-50"
                     >
+                        Add New Item
+                    </Button>
+                </Col>
+            </Row>
+
+            {/* Filters Section */}
+            <div className='bg-white p-4 rounded-lg shadow-sm mb-6'>
+                <Row gutter={[16, 16]}>
+                    <Col xs={24} sm={12} md={8} lg={6}>
                         <Input
                             placeholder='Search items...'
                             prefix={<SearchOutlined />}
                             value={searchText}
                             onChange={handleSearch}
-                            className='w-full'
+                            allowClear
                         />
                     </Col>
-                    <Col
-                        xs={24}
-                        sm={12}
-                        md={8}
-                        lg={6}
-                    >
+                    <Col xs={24} sm={12} md={8} lg={6}>
                         <Select
                             className='w-full'
                             placeholder='Filter by category'
@@ -306,25 +289,30 @@ const ItemList: React.FC = () => {
                         />
                     </Col>
                 </Row>
+            </div>
 
+            {/* Table Section */}
+            <div className='bg-white p-4 rounded-lg shadow-sm'>
                 <Table
                     columns={columns}
                     dataSource={filteredItems}
                     rowKey='key'
                     pagination={{ pageSize: 10 }}
                     loading={isLoading}
+                    scroll={{ x: 'max-content' }} // Makes table scrollable on small screens
                 />
             </div>
 
+            {/* Add Form Modal */}
             <AddForm
                 visible={isAddModalVisible}
                 onSuccess={handleAddSuccess}
                 onCancel={() => setIsAddModalVisible(false)}
-                // CHANGED: Pass the dynamic data to the form
                 categories={categories}
                 units={units}
             />
 
+            {/* Edit Form Modal */}
             {editingItem && (
                 <EditForm
                     visible={isEditModalVisible}
@@ -339,6 +327,7 @@ const ItemList: React.FC = () => {
                 />
             )}
 
+            {/* Delete Confirmation Modal */}
             <Modal
                 title='Confirm Delete'
                 open={isDeleteModalVisible}

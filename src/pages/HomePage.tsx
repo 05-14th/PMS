@@ -137,40 +137,6 @@ const HomePage = () => {
           </div>
         </main>
       </div>
-
-      <div className="bg-green-800 py-4 px-4 flex flex-col items-center justify-center">
-        <div className="w-full max-w-4xl mx-auto">
-          <div className="flex flex-col md:flex-row items-center justify-between">
-            <p className="text-white text-center md:text-left mb-3 md:mb-0">
-              Connect your device via WiFi to get started!
-            </p>
-            <button
-              onClick={() => setIsConnectModalOpen(true)}
-              className="bg-white text-green-700 hover:bg-green-50 px-6 py-2 rounded-md font-medium transition-colors duration-200 flex items-center"
-            >
-              <svg
-                className="w-5 h-5 mr-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6h2m7-6h8m0 0h-2m2 4v2m0 4v2M4 6h16M4 10h16M4 14h16M4 18h16"
-                />
-              </svg>
-              Connect Device
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <ConnectModal
-        isOpen={isConnectModalOpen}
-        onClose={() => setIsConnectModalOpen(false)}
-      />
     </MainBody>
   );
 };
