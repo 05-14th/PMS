@@ -203,13 +203,13 @@ const NewSale: React.FC = () => {
       setIsCustomerModalVisible(false);
       message.success('Customer added successfully! You can now select them.');
 
-      const response = await api.get('/api/customers');
-      setCustomers(response.data || []);
-    } catch (error) {
-      message.error('Failed to add customer.');
-      console.error('Error adding customer:', error);
-    }
-  };
+            const response = await api.get('/api/customers');
+            setCustomers(response.data || []);
+        } catch (error) {
+            message.error('Failed to add customer.');
+            console.error('Error adding customer:', error);
+        }
+    };
 
   const quantityValidator = (_: any, value: number) => {
     if (!selectedProduct || !value) return Promise.resolve();

@@ -236,6 +236,15 @@ type SalePayload struct {
 	Items         []SaleDetailItemPayload `json:"items"`
 }
 
+//for inventory usage log (Batch Monitoring)
+
+type InventoryUsagePayload struct {
+	BatchID      int     `json:"BatchID"`
+	ItemID       int     `json:"ItemID"`
+	QuantityUsed float64 `json:"QuantityUsed"`
+	Date         string  `json:"Date"`
+}
+
 
 /* ===========================
    Models for IoT
@@ -1781,6 +1790,113 @@ func createSaleHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "saleID": saleID})
 }
 
+// for inventory usage when creating a usage record in Batch Monitoring
+func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
+	var payload InventoryUsagePayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback() 
+
+	stockQuery := `
+		SELECT PurchaseID, QuantityRemaining, WeightRemainingKg 
+		FROM cm_inventory_purchases 
+		WHERE ItemID = ? AND IsActive = 1 AND QuantityRemaining > 0 
+		ORDER BY PurchaseDate ASC 
+		FOR UPDATE`
+	
+	rows, err := tx.QueryContext(ctx, stockQuery, payload.ItemID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to query available stock", err)
+		return
+	}
+	
+	type purchaseStock struct {
+		ID 				int
+		QtyRemaining 	float64
+		WeightRemaining float64
+	}
+	var availablePurchases []purchaseStock
+	var totalStockAvailable float64
+	for rows.Next() {
+		var ps purchaseStock
+		if err := rows.Scan(&ps.ID, &ps.QtyRemaining, &ps.WeightRemaining); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan stock", err)
+			return
+		}
+		totalStockAvailable += ps.QtyRemaining
+		availablePurchases = append(availablePurchases, ps)
+	}
+	rows.Close()
+
+	if payload.QuantityUsed > totalStockAvailable {
+		handleError(w, http.StatusBadRequest, "Not enough total stock available to complete this action.", nil)
+		return
+	}
+
+	usageQuery := "INSERT INTO cm_inventory_usage (BatchID, ItemID, Date, QuantityUsed) VALUES (?, ?, ?, ?)"
+	res, err := tx.ExecContext(ctx, usageQuery, payload.BatchID, payload.ItemID, payload.Date, payload.QuantityUsed)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to create usage record", err)
+		return
+	}
+	usageID, _ := res.LastInsertId()
+
+	quantityToDeduct := payload.QuantityUsed
+	for _, purchase := range availablePurchases {
+		if quantityToDeduct <= 0 {
+			break 
+		}
+	
+		quantityDrawn := 0.0
+		if quantityToDeduct >= purchase.QtyRemaining {
+		
+			quantityDrawn = purchase.QtyRemaining
+		} else {
+
+			quantityDrawn = quantityToDeduct
+		}
+
+		avgWeight := 0.0
+		if purchase.QtyRemaining > 0 {
+			avgWeight = purchase.WeightRemaining / purchase.QtyRemaining
+		}
+		weightDrawn := quantityDrawn * avgWeight
+
+		updateQuery := "UPDATE cm_inventory_purchases SET QuantityRemaining = QuantityRemaining - ?, WeightRemainingKg = WeightRemainingKg - ? WHERE PurchaseID = ?"
+		_, err := tx.ExecContext(ctx, updateQuery, quantityDrawn, weightDrawn, purchase.ID)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to update purchase stock", err)
+			return
+		}
+
+		detailQuery := "INSERT INTO cm_inventory_usage_details (UsageID, PurchaseID, QuantityDrawn) VALUES (?, ?, ?)"
+		_, err = tx.ExecContext(ctx, detailQuery, usageID, purchase.ID, quantityDrawn)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to create usage detail record", err)
+			return
+		}
+		
+
+		quantityToDeduct -= quantityDrawn
+	}
+	
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "usageId": usageID})
+}
 
 /* ===========================
    Router / Server
@@ -1866,9 +1982,13 @@ func buildRouter() http.Handler {
 			r.Post("/", createSaleHandler)
 			r.Delete("/{id}", deleteSaleHistory)
 		})
+		
 		// Products available for sale routes
 		r.Get("/sale-products", getSaleProducts)
 		r.Get("/payment-methods", getPaymentMethods)
+
+		// Inventory Usage routes (for batch monitoring)
+		r.Post("/usage", createInventoryUsage)
 	})
 
 	return r
