@@ -245,6 +245,26 @@ type InventoryUsagePayload struct {
 	Date         string  `json:"Date"`
 }
 
+// for batch details table
+type Batch struct {
+	BatchID             int            `json:"batchID"`
+	BatchName           string         `json:"batchName"`
+	StartDate           string         `json:"startDate"`
+	ExpectedHarvestDate string         `json:"expectedHarvestDate"`
+	TotalChicken        int            `json:"totalChicken"`
+	CurrentChicken      int            `json:"currentChicken"`
+	Status              string         `json:"status"`
+	Notes               sql.NullString `json:"notes"`
+}
+
+type BatchVitals struct {
+	BatchName         string `json:"batchName"`
+	StartDate         string `json:"startDate"`
+	EndDate           *string `json:"endDate"`
+	AgeInDays         int    `json:"ageInDays"`
+	CurrentPopulation int    `json:"currentPopulation"`
+	TotalMortality    int    `json:"totalMortality"`
+}
 
 /* ===========================
    Models for IoT
@@ -437,29 +457,6 @@ func getItemByType(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, items)
 }
 
-func getBatches(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := withTimeout(r.Context())
-	defer cancel()
-
-	rows, err := db.QueryContext(ctx, mustGetEnv("GET_BATCHES"))
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to fetch batches", err)
-		return
-	}
-	defer rows.Close()
-
-	var list []Batches
-	for rows.Next() {
-		var b Batches
-		if err := rows.Scan(&b.ID, &b.BatchName, &b.TotalChicken, &b.CurrentChicken, &b.StartDate,
-			&b.ExpectedHarvestDate, &b.Status, &b.Notes, &b.CostType, &b.Amount, &b.Description, &b.BirdsLost); err != nil {
-			handleError(w, http.StatusInternalServerError, "Failed to scan batches", err)
-			return
-		}
-		list = append(list, b)
-	}
-	respondJSON(w, http.StatusOK, list)
-}
 
 func getHarvests(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
@@ -738,45 +735,6 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 		"id":      id,
 		"message": "Data received successfully",
 	})
-}
-
-func getBatchVitals(w http.ResponseWriter, r *http.Request) {
-	batchId := chi.URLParam(r, "id")
-	if batchId == "" {
-		handleError(w, http.StatusBadRequest, "batch id is required", nil)
-		return
-	}
-
-	ctx, cancel := withTimeout(r.Context())
-	defer cancel()
-
-	query := `SELECT a.Notes AS BatchName, StartDate, CurrentChicken AS CurrentPopulation, 
-	         DATEDIFF(NOW(), StartDate) AS AgeInDays, SUM(BirdsLoss)
-	         FROM cm_batches a 
-	         JOIN cm_mortality b ON a.BatchID = b.BatchID 
-	         WHERE a.BatchID = ? LIMIT 1`
-
-	row := db.QueryRowContext(ctx, query, batchId)
-	var name, startDate string
-	var currentPopulation, ageDays, mortalityTotal int
-	if err := row.Scan(&name, &startDate, &currentPopulation, &ageDays, &mortalityTotal); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			handleError(w, http.StatusNotFound, "Batch not found", err)
-			return
-		}
-		handleError(w, http.StatusInternalServerError, "Failed to scan batch vitals", err)
-		return
-	}
-
-	resp := map[string]interface{}{
-		"id":                batchId,
-		"name":              name,
-		"startDate":         startDate,
-		"currentPopulation": currentPopulation,
-		"ageDays":           ageDays,
-		"mortalityTotal":    mortalityTotal,
-	}
-	respondJSON(w, http.StatusOK, map[string]interface{}{"data": resp})
 }
 
 func getBatchCosts(w http.ResponseWriter, r *http.Request) {
@@ -1126,10 +1084,16 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 
 //For inventory items
 
+// In main.go, replace the existing getInventoryItems function with this one
+
 func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
+	// --- NEW: Logic to handle optional category filter ---
+	category := r.URL.Query().Get("category")
+
+	// Base query
 	query := `
 		SELECT
 			i.ItemID,
@@ -1138,12 +1102,23 @@ func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 			i.Unit,
 			COALESCE(SUM(p.QuantityRemaining), 0) as TotalQuantityRemaining
 		FROM cm_items i
-		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID
-		WHERE i.IsActive = 1
+		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID AND p.IsActive = 1
+		WHERE i.IsActive = 1`
+	
+	var args []interface{}
+
+	// If a category is provided in the URL (e.g., /api/items?category=Feed), add it to the query
+	if category != "" {
+		query += " AND i.Category = ?"
+		args = append(args, category)
+	}
+
+	query += `
 		GROUP BY i.ItemID, i.ItemName, i.Category, i.Unit
 		ORDER BY i.ItemName;`
+	// --- End of new logic ---
 
-	rows, err := db.QueryContext(ctx, query)
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch inventory items", err)
 		return
@@ -1153,7 +1128,6 @@ func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 	var items []InventoryItem
 	for rows.Next() {
 		var item InventoryItem
-		// Add &item.TotalQuantityRemaining to the Scan
 		if err := rows.Scan(&item.ItemID, &item.ItemName, &item.Category, &item.Unit, &item.TotalQuantityRemaining); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan inventory item", err)
 			return
@@ -1240,21 +1214,25 @@ func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
+// In main.go, replace your existing getStockLevels function
+
 func getStockLevels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
+	// This query now correctly selects the Category and includes it in the GROUP BY
 	query := `
 		SELECT
 			i.ItemID,
 			i.ItemName,
 			COALESCE(SUM(p.QuantityRemaining), 0) as TotalQuantityRemaining,
 			i.Unit,
-			i.IsActive
+			i.IsActive,
+			i.Category
 		FROM cm_items i
 		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID AND p.IsActive = 1
 		WHERE i.IsActive = 1
-		GROUP BY i.ItemID, i.ItemName, i.Unit, i.IsActive
+		GROUP BY i.ItemID, i.ItemName, i.Unit, i.IsActive, i.Category
 		ORDER BY i.ItemName;`
 
 	rows, err := db.QueryContext(ctx, query)
@@ -1267,7 +1245,7 @@ func getStockLevels(w http.ResponseWriter, r *http.Request) {
 	var summaries []StockLevelSummary
 	for rows.Next() {
 		var s StockLevelSummary
-		if err := rows.Scan(&s.ItemID, &s.ItemName, &s.TotalQuantityRemaining, &s.Unit, &s.IsActive); err != nil {
+		if err := rows.Scan(&s.ItemID, &s.ItemName, &s.TotalQuantityRemaining, &s.Unit, &s.IsActive, &s.Category); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan stock level", err)
 			return
 		}
@@ -1806,7 +1784,7 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback() 
-
+	
 	stockQuery := `
 		SELECT PurchaseID, QuantityRemaining, WeightRemainingKg 
 		FROM cm_inventory_purchases 
@@ -1898,6 +1876,83 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "usageId": usageID})
 }
 
+// for batches tab main table
+
+func getBatches(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := `
+		SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, TotalChicken, CurrentChicken, Status, Notes 
+		FROM cm_batches 
+		ORDER BY StartDate DESC`
+	
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch batches", err)
+		return
+	}
+	defer rows.Close()
+
+	var batches []Batch
+	for rows.Next() {
+		var b Batch
+		if err := rows.Scan(&b.BatchID, &b.BatchName, &b.StartDate, &b.ExpectedHarvestDate, &b.TotalChicken, &b.CurrentChicken, &b.Status, &b.Notes); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan batch", err)
+			return
+		}
+		batches = append(batches, b)
+	}
+	
+	respondJSON(w, http.StatusOK, batches)
+}
+
+
+// Replace your existing getBatchVitals function
+func getBatchVitals(w http.ResponseWriter, r *http.Request) {
+	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil { /* ... */ }
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	var vitals BatchVitals
+	// Fetch basic info
+	query := "SELECT BatchName, StartDate, CurrentChicken FROM cm_batches WHERE BatchID = ?"
+	err = db.QueryRowContext(ctx, query, batchID).Scan(&vitals.BatchName, &vitals.StartDate, &vitals.CurrentPopulation)
+	if err != nil { /* ... */ }
+
+	// Calculate Age or End Date
+	if vitals.CurrentPopulation <= 0 {
+		// If population is zero, find the last event date (harvest or mortality)
+		endDateQuery := `
+			SELECT MAX(event_date) FROM (
+				SELECT MAX(HarvestDate) as event_date FROM cm_harvest WHERE BatchID = ?
+				UNION ALL
+				SELECT MAX(Date) as event_date FROM cm_mortality WHERE BatchID = ?
+			) as all_events`
+		
+		var endDate sql.NullString
+		if err := db.QueryRowContext(ctx, endDateQuery, batchID, batchID).Scan(&endDate); err == nil && endDate.Valid {
+			vitals.EndDate = &endDate.String
+			// Calculate age based on end date
+			endDateParsed, _ := time.Parse("2006-01-02 15:04:05", *vitals.EndDate)
+			startDateParsed, _ := time.Parse("2006-01-02", vitals.StartDate)
+			vitals.AgeInDays = int(endDateParsed.Sub(startDateParsed).Hours() / 24)
+		}
+	} else {
+		// If still active, calculate age based on today's date
+		startDateParsed, _ := time.Parse("2006-01-02", vitals.StartDate)
+		vitals.AgeInDays = int(time.Since(startDateParsed).Hours() / 24)
+	}
+
+	// Fetch total mortality (this query is unchanged)
+	mortalityQuery := "SELECT COALESCE(SUM(BirdsLoss), 0) FROM cm_mortality WHERE BatchID = ?"
+	if err := db.QueryRowContext(ctx, mortalityQuery, batchID).Scan(&vitals.TotalMortality); err != nil { /* ... */ }
+
+	respondJSON(w, http.StatusOK, vitals)
+}
+
 /* ===========================
    Router / Server
 =========================== */
@@ -1909,44 +1964,31 @@ func buildRouter() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second)) // total handler timeout (in addition to per-query timeouts)
+	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(cors)
 
-	// Routes
-	r.Get("/getUsers", getUsers)
-	r.Post("/getItemByType", getItemByType)
-	r.Get("/getBatches", getBatches)
-	r.Get("/getHarvests", getHarvests)
-	r.Post("/getSales", getSales)
-	r.Get("/getSimpleSales", getSimpleSales) // placeholder kept in-code intentionally
-	r.Get("/getProducts", getProducts)
-	r.Post("/getProductInfo", getProductById)
-	r.Post("/api/dht22-data", handleDhtData)
-	r.Post("/api/login", loginHandler)
-
-	// /batches/{id}/...
-	r.Route("/batches/{id}", func(r chi.Router) {
-		r.Get("/vitals", getBatchVitals)
-		r.Get("/costs", getBatchCosts)
-		r.Get("/events", getBatchEvents)
-		r.Post("/events", insertBatchEvent)
-		r.Put("/events", updateBatchEvent)
-		r.Delete("/events", deleteBatchEvent)
-	})
-
-	// Inventory items routes
 	r.Route("/api", func(r chi.Router) {
-		//for cm_items adding new category and unit
+		// --- Standalone routes ---
+		r.Post("/dht22-data", handleDhtData)
+		r.Post("/login", loginHandler)
 		r.Get("/categories", getCategories)
 		r.Get("/units", getUnits)
-		// Inventory Items routes
+		r.Get("/stock-levels", getStockLevels)
+		r.Get("/purchase-history/{id}", getPurchaseHistory)
+		r.Get("/sale-products", getSaleProducts)
+		r.Get("/payment-methods", getPaymentMethods)
+		r.Post("/stock-items", createStockItem)
+		r.Post("/usage", createInventoryUsage)
+
+		// --- RESTful route for Items ---
 		r.Route("/items", func(r chi.Router) {
-			r.Get("/", getInventoryItems)          // Handles GET /api/items
-			r.Post("/", createInventoryItem)       // Handles POST /api/items
-			r.Put("/{id}", updateInventoryItem)    // Handles PUT /api/items/{id}
-			r.Delete("/{id}", deleteInventoryItem) // Handles DELETE /api/items/{id}
+			r.Get("/", getInventoryItems)
+			r.Post("/", createInventoryItem)
+			r.Put("/{id}", updateInventoryItem)
+			r.Delete("/{id}", deleteInventoryItem)
 		})
-		// Suppliers routes
+
+		// --- RESTful route for Suppliers ---
 		r.Route("/suppliers", func(r chi.Router) {
 			r.Get("/", getSuppliers)
 			r.Post("/", createSupplier)
@@ -1954,41 +1996,40 @@ func buildRouter() http.Handler {
 			r.Delete("/{id}", deleteSupplier)
 		})
 
-		// Purchases routes (stock levels in inventory)
-		r.Route("/purchases", func(r chi.Router) {
-			r.Post("/", createPurchase)          // The Restock function
-			r.Put("/{id}", updatePurchase)    // The new Edit function
-			r.Delete("/{id}", deletePurchase) // The new Delete function
-		})
-
-		// Stock Levels routes
-		r.Get("/stock-levels", getStockLevels)
-		r.Get("/purchase-history/{id}", getPurchaseHistory)
-		r.Post("/purchases", createPurchase)
-		r.Post("/stock-items", createStockItem)
-
-		// Customers routes (for sales tab)
+		// --- RESTful route for Customers ---
 		r.Route("/customers", func(r chi.Router) {
 			r.Get("/", getCustomers)
 			r.Post("/", createCustomer)
 			r.Put("/{id}", updateCustomer)
 			r.Delete("/{id}", deleteCustomer)
-   		 })
+		})
 		
-		// Sales History routes
+		// --- RESTful route for Sales ---
 		r.Route("/sales", func(r chi.Router) {
 			r.Get("/", getSalesHistory)
-			r.Get("/{id}", getSaleDetails) 
+			r.Get("/{id}", getSaleDetails)
 			r.Post("/", createSaleHandler)
 			r.Delete("/{id}", deleteSaleHistory)
 		})
-		
-		// Products available for sale routes
-		r.Get("/sale-products", getSaleProducts)
-		r.Get("/payment-methods", getPaymentMethods)
 
-		// Inventory Usage routes (for batch monitoring)
-		r.Post("/usage", createInventoryUsage)
+		// --- RESTful route for Purchases (Inventory Restock) ---
+		r.Route("/purchases", func(r chi.Router) {
+			r.Post("/", createPurchase)
+			r.Put("/{id}", updatePurchase)
+			r.Delete("/{id}", deletePurchase)
+		})
+
+		// --- Routes for Batch Monitoring ---
+		r.Get("/batches", getBatches) // Gets the list of all batches
+		r.Route("/batches/{id}", func(r chi.Router) {
+			r.Get("/vitals", getBatchVitals)
+			r.Get("/events", getBatchEvents)
+			r.Get("/costs", getBatchCosts)
+			// These event-specific routes can be added later if needed
+			// r.Post("/events", insertBatchEvent)
+			// r.Put("/events", updateBatchEvent)
+			// r.Delete("/events", deleteBatchEvent)
+		})
 	})
 
 	return r

@@ -61,18 +61,29 @@ const StockLevels: React.FC = () => {
     const [selectedInventoryItem, setSelectedInventoryItem] =
         useState<StockLevelSummary | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [categories, setCategories] = useState<{ value: string; label: string }[]>([]);
+    const [categories, setCategories] = useState<
+        { value: string; label: string }[]
+    >([]);
     const [categoryFilter, setCategoryFilter] = useState<string>('all');
     const [units, setUnits] = useState<{ value: string; label: string }[]>([]);
     const [inventory, setInventory] = useState<StockLevelSummary[]>([]);
-    const [purchaseHistory, setPurchaseHistory] = useState<PurchaseHistoryDetail[]>([]);
-    const [selectedInventoryId, setSelectedInventoryId] = useState<number | null>(null);
+    const [purchaseHistory, setPurchaseHistory] = useState<
+        PurchaseHistoryDetail[]
+    >([]);
+    const [selectedInventoryId, setSelectedInventoryId] = useState<
+        number | null
+    >(null);
     const [isLoadingInventory, setIsLoadingInventory] = useState(false);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
-    const [isEditPurchaseModalVisible, setIsEditPurchaseModalVisible] = useState(false);
-    const [editingPurchase, setEditingPurchase] = useState<PurchaseHistoryDetail | null>(null);
-    const [isDeletePurchaseModalVisible, setIsDeletePurchaseModalVisible] = useState(false);
-    const [deletingPurchaseId, setDeletingPurchaseId] = useState<number | null>(null);
+    const [isEditPurchaseModalVisible, setIsEditPurchaseModalVisible] =
+        useState(false);
+    const [editingPurchase, setEditingPurchase] =
+        useState<PurchaseHistoryDetail | null>(null);
+    const [isDeletePurchaseModalVisible, setIsDeletePurchaseModalVisible] =
+        useState(false);
+    const [deletingPurchaseId, setDeletingPurchaseId] = useState<number | null>(
+        null
+    );
     const [suppliers, setSuppliers] = useState<Supplier[]>([]);
 
     const fetchStockLevels = async () => {
@@ -112,15 +123,26 @@ const StockLevels: React.FC = () => {
 
         const fetchDropdownData = async () => {
             try {
-                const [suppliersRes, categoriesRes, unitsRes] = await Promise.all([
-                    api.get('/api/suppliers'),
-                    api.get('/api/categories'),
-                    api.get('/api/units'),
-                ]);
+                const [suppliersRes, categoriesRes, unitsRes] =
+                    await Promise.all([
+                        api.get('/api/suppliers'),
+                        api.get('/api/categories'),
+                        api.get('/api/units'),
+                    ]);
 
                 setSuppliers(suppliersRes.data || []);
-                setCategories((categoriesRes.data || []).map((cat: string) => ({ value: cat, label: cat })));
-                setUnits((unitsRes.data || []).map((unit: string) => ({ value: unit, label: unit })));
+                setCategories(
+                    (categoriesRes.data || []).map((cat: string) => ({
+                        value: cat,
+                        label: cat,
+                    }))
+                );
+                setUnits(
+                    (unitsRes.data || []).map((unit: string) => ({
+                        value: unit,
+                        label: unit,
+                    }))
+                );
             } catch (error) {
                 console.error('Failed to load data for forms', error);
                 message.error('Failed to load required data for the forms.');
@@ -131,8 +153,15 @@ const StockLevels: React.FC = () => {
     }, []);
 
     const filteredInventory = inventory.filter((item) => {
-        const matchesSearch = item.ItemName.toLowerCase().includes(searchText.toLowerCase());
-        const matchesCategory = categoryFilter === 'all' || item.Category === categoryFilter;
+        const matchesSearch = item.ItemName.toLowerCase().includes(
+            searchText.toLowerCase()
+        );
+
+        const matchesCategory =
+            categoryFilter === 'all' ||
+            (item.Category &&
+                item.Category.toLowerCase() === categoryFilter.toLowerCase());
+
         return matchesSearch && matchesCategory;
     });
 
@@ -191,7 +220,9 @@ const StockLevels: React.FC = () => {
 
             await api.post('/api/purchases', payload);
 
-            message.success(`${selectedInventoryItem.ItemName} restocked successfully!`);
+            message.success(
+                `${selectedInventoryItem.ItemName} restocked successfully!`
+            );
             setIsRestockModalVisible(false);
 
             await fetchStockLevels();
@@ -223,7 +254,10 @@ const StockLevels: React.FC = () => {
                 UnitCost: values.TotalCost,
             };
 
-            await api.put(`/api/purchases/${editingPurchase.PurchaseID}`, payload);
+            await api.put(
+                `/api/purchases/${editingPurchase.PurchaseID}`,
+                payload
+            );
             message.success('Purchase record updated successfully');
             setIsEditPurchaseModalVisible(false);
 
@@ -317,22 +351,37 @@ const StockLevels: React.FC = () => {
             title: 'Actions',
             key: 'actions',
             render: (_: any, record: PurchaseHistoryDetail) => {
-                const isUntouched = record.QuantityRemaining === record.QuantityPurchased;
+                const isUntouched =
+                    record.QuantityRemaining === record.QuantityPurchased;
                 return (
                     <Space>
-                        <Tooltip title={!isUntouched ? 'Cannot edit a used purchase' : 'Edit Purchase'}>
+                        <Tooltip
+                            title={
+                                !isUntouched
+                                    ? 'Cannot edit a used purchase'
+                                    : 'Edit Purchase'
+                            }
+                        >
                             <Button
                                 icon={<EditOutlined />}
                                 disabled={!isUntouched}
                                 onClick={() => handleEditPurchase(record)}
                             />
                         </Tooltip>
-                        <Tooltip title={!isUntouched ? 'Cannot delete a used purchase' : 'Delete Purchase'}>
+                        <Tooltip
+                            title={
+                                !isUntouched
+                                    ? 'Cannot delete a used purchase'
+                                    : 'Delete Purchase'
+                            }
+                        >
                             <Button
                                 danger
                                 icon={<DeleteOutlined />}
                                 disabled={!isUntouched}
-                                onClick={() => handleDeletePurchase(record.PurchaseID)}
+                                onClick={() =>
+                                    handleDeletePurchase(record.PurchaseID)
+                                }
                             />
                         </Tooltip>
                     </Space>
@@ -344,7 +393,10 @@ const StockLevels: React.FC = () => {
     return (
         <div className='p-4'>
             <div className='relative mb-6'>
-                <Title level={4} className='text-gray-800 text-lg sm:text-xl'>
+                <Title
+                    level={4}
+                    className='text-gray-800 text-lg sm:text-xl'
+                >
                     Stock Levels
                 </Title>
                 <Button
@@ -357,8 +409,18 @@ const StockLevels: React.FC = () => {
                 </Button>
             </div>
 
-            <Row gutter={[16, 16]} className='mb-4' align='middle'>
-                <Col xs={24} sm={16} md={16} lg={12} xl={8}>
+            <Row
+                gutter={[16, 16]}
+                className='mb-4'
+                align='middle'
+            >
+                <Col
+                    xs={24}
+                    sm={16}
+                    md={16}
+                    lg={12}
+                    xl={8}
+                >
                     <Input
                         placeholder='Search items...'
                         prefix={<SearchOutlined />}
@@ -366,15 +428,26 @@ const StockLevels: React.FC = () => {
                         onChange={(e) => setSearchText(e.target.value)}
                     />
                 </Col>
-                <Col xs={24} sm={8} md={8} lg={6} xl={4}>
+                <Col
+                    xs={24}
+                    sm={8}
+                    md={8}
+                    lg={6}
+                    xl={4}
+                >
                     <Select
                         className='w-full'
                         value={categoryFilter}
                         onChange={setCategoryFilter}
                     >
-                        <Select.Option value='all'>All Categories</Select.Option>
+                        <Select.Option value='all'>
+                            All Categories
+                        </Select.Option>
                         {categories.map((cat) => (
-                            <Select.Option key={cat.value} value={cat.value}>
+                            <Select.Option
+                                key={cat.value}
+                                value={cat.value}
+                            >
                                 {cat.label}
                             </Select.Option>
                         ))}
@@ -382,8 +455,14 @@ const StockLevels: React.FC = () => {
                 </Col>
             </Row>
 
-            <Row gutter={[24, 24]} className='mt-6'>
-                <Col xs={24} xl={12}>
+            <Row
+                gutter={[24, 24]}
+                className='mt-6'
+            >
+                <Col
+                    xs={24}
+                    xl={12}
+                >
                     <Card title='Inventory Items'>
                         <Table
                             columns={inventoryColumns}
@@ -392,16 +471,22 @@ const StockLevels: React.FC = () => {
                             loading={isLoadingInventory}
                             pagination={{ pageSize: 10 }}
                             onRow={(record) => ({
-                                onClick: () => fetchPurchaseHistory(record.ItemID),
+                                onClick: () =>
+                                    fetchPurchaseHistory(record.ItemID),
                                 className: `cursor-pointer hover:bg-gray-50 ${
-                                    record.ItemID === selectedInventoryId ? 'bg-blue-50' : ''
+                                    record.ItemID === selectedInventoryId
+                                        ? 'bg-blue-50'
+                                        : ''
                                 }`,
                             })}
                         />
                     </Card>
                 </Col>
 
-                <Col xs={24} xl={12}>
+                <Col
+                    xs={24}
+                    xl={12}
+                >
                     <Card title='Purchase History'>
                         <Table
                             columns={purchaseHistoryColumns}
@@ -462,7 +547,10 @@ const StockLevels: React.FC = () => {
                 okText='Delete'
                 okButtonProps={{ danger: true }}
             >
-                <p>Are you sure you want to delete this purchase record? This action cannot be undone.</p>
+                <p>
+                    Are you sure you want to delete this purchase record? This
+                    action cannot be undone.
+                </p>
             </Modal>
         </div>
     );

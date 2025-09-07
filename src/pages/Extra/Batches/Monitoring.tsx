@@ -1,281 +1,357 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
+import { message } from 'antd';
+import dayjs from 'dayjs';
+import ConsumptionForm from './ConsumptionForm'; // We will use this new form component
 
+// --- Interfaces to match API data ---
 interface Batch {
-  id: string;
-  name: string;
-  startDate?: Date | string;
-  currentPopulation?: number;
+    batchID: number;
+    batchName: string;
+    startDate: string;
+    expectedHarvestDate: string;
+    totalChicken: number;
+    currentChicken: number;
+    status: string;
+    notes?: {
+        String: string;
+        Valid: boolean;
+    };
+}
+
+interface BatchVitals {
+    batchName: string;
+    startDate: string;
+    endDate?: string | null; // ADDED
+    ageInDays: number;
+    currentPopulation: number;
+    totalMortality: number;
+}
+
+interface BatchEvent {
+    id: string;
+    date: string;
+    event: string;
+    details: string;
+    qty: string;
+}
+
+interface BatchCost {
+    id: string;
+    date: string;
+    type: string;
+    description: string;
+    amount: number;
 }
 
 interface MonitoringProps {
-  batch: Batch;
+    batch: Batch;
 }
 
+const api = axios.create({
+    baseURL: import.meta.env.VITE_APP_SERVERHOST,
+    timeout: 10000,
+});
+
+// ADDED: This constant was missing, causing the error.
 const eventTypes = [
-  'Feeding',
-  'Watering',
-  'Health Check',
-  'Temperature Check',
-  'Weight Measurement',
-  'Vaccination',
-  'Mortality',
-  'Other'
+    'Feeding',
+    'Medication',
+    'Mortality',
+    'Health Check',
+    'Other',
 ];
 
-const formatDate = (date: Date | string): string => {
-  return new Intl.DateTimeFormat('en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: '2-digit'
-  }).format(new Date(date));
-};
-
 const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
-  const [selectedEventType, setSelectedEventType] = useState<string>('');
+    const [selectedEventType, setSelectedEventType] = useState<string>('');
 
-  // Use provided start date or default to current date
-  const startDate = batch.startDate || new Date();
-  // Calculate age in days
-  const ageInDays = Math.floor((new Date().getTime() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24));
+    // --- State for fetched data ---
+    const [vitals, setVitals] = useState<BatchVitals | null>(null);
+    const [events, setEvents] = useState<BatchEvent[]>([]);
+    const [costs, setCosts] = useState<BatchCost[]>([]);
+    const [loading, setLoading] = useState(true);
 
-  const handleRecordConsumption = () => {
-    if (!selectedEventType) return;
-    // TODO: Implement record consumption logic
-    console.log(`Recording consumption for event: ${selectedEventType}`);
-    // Reset selection after recording
-    setSelectedEventType('');
-  };
+    // State to manage the new consumption modal
+    const [isConsumptionModalVisible, setIsConsumptionModalVisible] =
+        useState(false);
 
-  return (
-    <div className="space-y-6">
-      <h2 className="text-xl font-semibold">Batch Monitoring</h2>
+    // This single useEffect now handles all data fetching for the monitoring tab
+    useEffect(() => {
+        const fetchMonitoringData = async () => {
+            if (!batch?.batchID) return;
+            setLoading(true);
+            try {
+                const [vitalsRes, eventsRes, costsRes] = await Promise.all([
+                    api.get(`/api/batches/${batch.batchID}/vitals`),
+                    api.get(`/api/batches/${batch.batchID}/events`),
+                    api.get(`/api/batches/${batch.batchID}/costs`),
+                ]);
+                setVitals(vitalsRes.data);
+                setEvents(eventsRes.data.data || []);
+                setCosts(costsRes.data.data || []);
+            } catch (error) {
+                message.error('Failed to load monitoring data for this batch.');
+                console.error(error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchMonitoringData();
+    }, [batch?.batchID]);
 
-      {/* Batch Vitals Section */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Batch Vitals</h3>
+    // This function decides what to do when "Add Entry" is clicked
+    const handleAddEntry = () => {
+        if (
+            selectedEventType === 'Feeding' ||
+            selectedEventType === 'Medication'
+        ) {
+            setIsConsumptionModalVisible(true);
+        } else {
+            // Logic for other event types (e.g., mortality) can be added here
+            message.info(
+                `'Add Entry' for ${selectedEventType} will be implemented next.`
+            );
+        }
+    };
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Start Date */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Start Date
-            </label>
-            <div className="mt-1">
-              <input
-                type="text"
-                readOnly
-                value={formatDate(startDate)}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm bg-gray-50"
-              />
+    // This is called after the consumption form is successfully submitted
+    const handleConsumptionSubmit = () => {
+        setIsConsumptionModalVisible(false);
+        // Refresh all data on the page to show the new consumption record and updated stock
+        const fetchAllData = async () => {
+            if (!batch?.batchID) return;
+            const [vitalsRes, eventsRes, costsRes] = await Promise.all([
+                api.get(`/api/batches/${batch.batchID}/vitals`),
+                api.get(`/api/batches/${batch.batchID}/events`),
+                api.get(`/api/batches/${batch.batchID}/costs`),
+            ]);
+            setVitals(vitalsRes.data);
+            setEvents(eventsRes.data.data || []);
+            setCosts(costsRes.data.data || []);
+        };
+        fetchAllData();
+    };
+
+    const formatDate = (date: Date | string): string => {
+        return dayjs(date).format('MMM D, YYYY');
+    };
+
+    if (loading) {
+        return <div className='p-4'>Loading monitoring data...</div>;
+    }
+
+    return (
+        <div className='space-y-6'>
+            <h2 className='text-xl font-semibold'>Batch Monitoring</h2>
+
+            {/* Batch Vitals Section */}
+            <div className='grid grid-cols-1 md:grid-cols-3 gap-6'>
+                <div>
+                    <label className='block text-sm font-medium text-gray-700 mb-1'>
+                        Start Date
+                    </label>
+                    <input
+                        type='text'
+                        readOnly
+                        value={vitals ? formatDate(vitals.startDate) : 'N/A'}
+                        className='...'
+                    />
+                </div>
+                <div>
+                    <label className='block text-sm font-medium text-gray-700 mb-1'>
+                        {/* Display 'End Date' if the batch is finished */}
+                        {vitals?.endDate ? 'End Date' : 'Age'}
+                    </label>
+                    <input
+                        type='text'
+                        readOnly
+                        value={
+                            vitals
+                                ? vitals.endDate
+                                    ? formatDate(vitals.endDate)
+                                    : `${vitals.ageInDays} days`
+                                : 'N/A'
+                        }
+                        className='...'
+                    />
+                </div>
+                <div>
+                    <label className='block text-sm font-medium text-gray-700 mb-1'>
+                        Current Population
+                    </label>
+                    <input
+                        type='text'
+                        readOnly
+                        value={vitals ? vitals.currentPopulation : 'N/A'}
+                        className='...'
+                    />
+                </div>
             </div>
-          </div>
 
-          {/* Age */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Age
-            </label>
-            <div className="mt-1">
-              <input
-                type="text"
-                readOnly
-                value={`${ageInDays} days`}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm bg-gray-50"
-              />
+            {/* Record Daily Event Section */}
+            <div className='bg-white p-6 rounded-lg shadow'>
+                <h3 className='text-lg font-medium text-gray-900 mb-4'>
+                    Record a daily event
+                </h3>
+                <div className='flex flex-col sm:flex-row gap-4'>
+                    <div className='flex-grow'>
+                        <label
+                            htmlFor='event-type'
+                            className='block text-sm font-medium text-gray-700 mb-1'
+                        >
+                            Event Type
+                        </label>
+                        <select
+                            id='event-type'
+                            value={selectedEventType}
+                            onChange={(e) =>
+                                setSelectedEventType(e.target.value)
+                            }
+                            className='block w-full rounded-md border-gray-300'
+                        >
+                            <option value=''>Select an event type</option>
+                            {eventTypes.map((type) => (
+                                <option
+                                    key={type}
+                                    value={type}
+                                >
+                                    {type}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className='flex items-end'>
+                        <button
+                            type='button'
+                            onClick={handleAddEntry}
+                            disabled={!selectedEventType}
+                            className={`px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${selectedEventType ? 'bg-green-600 hover:bg-green-700' : 'bg-gray-300 cursor-not-allowed'}`}
+                        >
+                            Add Entry
+                        </button>
+                    </div>
+                </div>
             </div>
-          </div>
 
-          {/* Current Population */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Current Population
-            </label>
-            <div className="mt-1">
-              <input
-                type="text"
-                readOnly
-                value={batch.currentPopulation || 'N/A'}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-blue-500 focus:ring-blue-500 sm:text-sm bg-gray-50"
-              />
+            {/* Event History Table */}
+            <div className='bg-white p-6 rounded-lg shadow'>
+                <h3 className='text-lg font-medium text-gray-900 mb-4'>
+                    Daily Events Log
+                </h3>
+                <div className='overflow-x-auto'>
+                    <table className='min-w-full divide-y divide-gray-200'>
+                        <thead className='bg-gray-50'>
+                            <tr>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Date
+                                </th>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Event
+                                </th>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Details
+                                </th>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Qty/Count
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className='bg-white divide-y divide-gray-200'>
+                            {events.map((event) => (
+                                <tr key={event.id}>
+                                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                                        {formatDate(event.date)}
+                                    </td>
+                                    <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
+                                        {event.event}
+                                    </td>
+                                    <td className='px-6 py-4 text-sm text-gray-500'>
+                                        {event.details}
+                                    </td>
+                                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                                        {event.qty}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
             </div>
-          </div>
+
+            {/* Costs Table */}
+            <div className='bg-white p-6 rounded-lg shadow mt-6'>
+                <h3 className='text-lg font-medium text-gray-900 mb-4'>
+                    Direct Costs Log
+                </h3>
+                <div className='overflow-x-auto'>
+                    <table className='min-w-full divide-y divide-gray-200'>
+                        <thead className='bg-gray-50'>
+                            <tr>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Date
+                                </th>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Cost Type
+                                </th>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Description
+                                </th>
+                                <th className='px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase'>
+                                    Amount
+                                </th>
+                            </tr>
+                        </thead>
+                        <tbody className='bg-white divide-y divide-gray-200'>
+                            {costs.map((cost) => (
+                                <tr key={cost.id}>
+                                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                                        {formatDate(cost.date)}
+                                    </td>
+                                    <td className='px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900'>
+                                        {cost.type}
+                                    </td>
+                                    <td className='px-6 py-4 text-sm text-gray-500'>
+                                        {cost.description}
+                                    </td>
+                                    <td className='px-6 py-4 whitespace-nowrap text-sm text-gray-500'>
+                                        ₱{cost.amount.toFixed(2)}
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                        <tfoot>
+                            <tr className='bg-gray-50'>
+                                <td
+                                    colSpan={3}
+                                    className='px-6 py-3 text-right text-sm font-medium text-gray-900'
+                                >
+                                    Total:
+                                </td>
+                                <td className='px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900'>
+                                    ₱
+                                    {costs
+                                        .reduce(
+                                            (sum, cost) => sum + cost.amount,
+                                            0
+                                        )
+                                        .toFixed(2)}
+                                </td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>
+            </div>
+
+            {/* ADDED: The new consumption modal is rendered here */}
+            <ConsumptionForm
+                visible={isConsumptionModalVisible}
+                batchID={batch.batchID}
+                eventType={selectedEventType}
+                onCancel={() => setIsConsumptionModalVisible(false)}
+                onSubmit={handleConsumptionSubmit}
+            />
         </div>
-      </div>
-
-      {/* Record Daily Event Section */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Record a daily event</h3>
-
-        <div className="flex flex-col sm:flex-row gap-4">
-          <div className="flex-grow">
-            <label htmlFor="event-type" className="block text-sm font-medium text-gray-700 mb-1">
-              Event Type
-            </label>
-            <select
-              id="event-type"
-              value={selectedEventType}
-              onChange={(e) => setSelectedEventType(e.target.value)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-            >
-              <option value="">Select an event type</option>
-              {eventTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="flex items-end space-x-3">
-            <button
-              type="button"
-              onClick={handleRecordConsumption}
-              disabled={!selectedEventType}
-              className={`px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white ${
-                selectedEventType
-                  ? 'bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'
-                  : 'bg-gray-300 cursor-not-allowed'
-              }`}
-            >
-              Record Consumption
-            </button>
-            <button
-              type="button"
-              onClick={() => {}}
-              className="px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-            >
-              Add Entry
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Event History Table */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Daily Events Log</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Event
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Details
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Qty/Count
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {/* Example row - replace with dynamic data */}
-              <tr>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDate(new Date())}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  Feeding
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  Starter feed
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  100 kg
-                </td>
-              </tr>
-              {/* Add more rows dynamically based on your data */}
-              <tr>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDate(new Date(Date.now() - 86400000))} {/* Yesterday */}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  Health Check
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  Routine checkup
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  50
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Costs Table */}
-      <div className="bg-white p-6 rounded-lg shadow mt-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Direct Costs Log</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Cost Type
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Description
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Amount
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {/* Example row - replace with dynamic data */}
-              <tr>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDate(new Date())}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  Feed
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  Starter feed purchase
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  ₱5,000.00
-                </td>
-              </tr>
-              {/* Add more rows dynamically based on your data */}
-              <tr>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {formatDate(new Date(Date.now() - 86400000))} {/* Yesterday */}
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                  Medication
-                </td>
-                <td className="px-6 py-4 text-sm text-gray-500">
-                  Routine vitamins
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  ₱2,500.00
-                </td>
-              </tr>
-            </tbody>
-            <tfoot>
-              <tr className="bg-gray-50">
-                <td colSpan={3} className="px-6 py-3 text-right text-sm font-medium text-gray-900">
-                  Total:
-                </td>
-                <td className="px-6 py-3 whitespace-nowrap text-sm font-medium text-gray-900">
-                  ₱7,500.00
-                </td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
-
-    </div>
-  );
+    );
 };
 
 export default Monitoring;
