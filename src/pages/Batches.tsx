@@ -7,7 +7,7 @@ import axios from "axios";
 import { message } from "antd";
 import dayjs from "dayjs";
 
-// CORRECTED: Interface now uses camelCase to match the JSON from the API
+// CORRECTED: Interface now uses camelCase to match the API response
 interface Batch {
   batchID: number;
   batchName: string;

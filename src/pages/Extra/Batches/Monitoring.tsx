@@ -6,7 +6,6 @@ import ConsumptionForm from "./ConsumptionForm";
 import HealthCheckForm from "./HealthCheckForm";
 import MortalityForm from "./MortalityForm";
 
-// --- Interfaces to match API data ---
 interface Batch {
   batchID: number;
   batchName: string;

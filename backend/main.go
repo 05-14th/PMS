@@ -27,7 +27,7 @@ import (
 )
 
 /* ===========================
-   Models
+    Models
 =========================== */
 
 type User struct {
@@ -260,13 +260,7 @@ type Batch struct {
 type BatchVitals struct {
 	BatchName         string  `json:"batchName"`
 	StartDate         string  `json:"startDate"`
-<<<<<<< Updated upstream
 	EndDate           *string `json:"endDate"`
-	AgeInDays         int     `json:"ageInDays"`
-	CurrentPopulation int     `json:"currentPopulation"`
-	TotalMortality    int     `json:"totalMortality"`
-=======
-	EndDate           *string `json:"endDate"` 
 	AgeInDays         int     `json:"ageInDays"`
 	CurrentPopulation int     `json:"currentPopulation"`
 	TotalMortality    int     `json:"totalMortality"`
@@ -274,10 +268,10 @@ type BatchVitals struct {
 
 // for adding mortality event
 type MortalityPayload struct {
-	BatchID   int     `json:"BatchID"`
-	Date      string  `json:"Date"`
-	BirdsLoss int     `json:"BirdsLoss"`
-	Notes     string  `json:"Notes"`
+	BatchID   int    `json:"BatchID"`
+	Date      string `json:"Date"`
+	BirdsLoss int    `json:"BirdsLoss"`
+	Notes     string `json:"Notes"`
 }
 
 // for health check event (for future reference when farm is large enough to have veterinary)
@@ -286,11 +280,10 @@ type HealthCheckPayload struct {
 	CheckDate    string `json:"CheckDate"`
 	Observations string `json:"Observations"`
 	CheckedBy    string `json:"CheckedBy"`
->>>>>>> Stashed changes
 }
 
 /* ===========================
-   Models for IoT
+    Models for IoT
 =========================== */
 
 type DhtData struct {
@@ -302,13 +295,13 @@ type DhtData struct {
 }
 
 /* ===========================
-   Globals
+    Globals
 =========================== */
 
 var db *sql.DB
 
 /* ===========================
-   Bootstrapping / DB
+    Bootstrapping / DB
 =========================== */
 
 func initDB() {
@@ -337,7 +330,7 @@ func initDB() {
 }
 
 /* ===========================
-   Utilities (DRY)
+    Utilities (DRY)
 =========================== */
 
 const defaultQueryTimeout = 5 * time.Second
@@ -405,7 +398,7 @@ func cors(next http.Handler) http.Handler {
 }
 
 /* ===========================
-   Handlers
+    Handlers
 =========================== */
 
 func getUsers(w http.ResponseWriter, r *http.Request) {
@@ -779,8 +772,8 @@ func getBatchCosts(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	query := `SELECT Date, CostType, Description, Amount 
-	          FROM cm_production_cost 
-	          WHERE BatchID = ? ORDER BY Date DESC`
+            FROM cm_production_cost 
+            WHERE BatchID = ? ORDER BY Date DESC`
 
 	rows, err := db.QueryContext(ctx, query, batchId)
 	if err != nil {
@@ -1199,7 +1192,7 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Insert user
 	query := `INSERT INTO cm_users (username, first_name, last_name, suffix, email, phone_number, password, role, profile_pic, created_at) 
-	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
 
 	_, err = tx.ExecContext(ctx, query,
 		username,
@@ -1363,8 +1356,6 @@ func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
-// In main.go, replace your existing getStockLevels function
-
 func getStockLevels(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
@@ -1394,6 +1385,7 @@ func getStockLevels(w http.ResponseWriter, r *http.Request) {
 	var summaries []StockLevelSummary
 	for rows.Next() {
 		var s StockLevelSummary
+		// Ensure the Scan includes the new Category field
 		if err := rows.Scan(&s.ItemID, &s.ItemName, &s.TotalQuantityRemaining, &s.Unit, &s.IsActive, &s.Category); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan stock level", err)
 			return
@@ -1914,7 +1906,6 @@ func createSaleHandler(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "saleID": saleID})
 }
 
-// for inventory usage when creating a usage record in Batch Monitoring
 func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 	var payload InventoryUsagePayload
 	if !decodeJSONBody(w, r, &payload) {
@@ -2052,31 +2043,17 @@ func getBatches(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, batches)
 }
 
-<<<<<<< Updated upstream
-// Replace your existing getBatchVitals function
-func getBatchVitals(w http.ResponseWriter, r *http.Request) {
-	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil { /* ... */
-=======
 func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		handleError(w, http.StatusBadRequest, "Invalid batch ID", err)
 		return
->>>>>>> Stashed changes
 	}
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
 	var vitals BatchVitals
-<<<<<<< Updated upstream
-	// Fetch basic info
-	query := "SELECT BatchName, StartDate, CurrentChicken FROM cm_batches WHERE BatchID = ?"
-	err = db.QueryRowContext(ctx, query, batchID).Scan(&vitals.BatchName, &vitals.StartDate, &vitals.CurrentPopulation)
-	if err != nil { /* ... */
-	}
-=======
 	var startDateStr string
 
 	query := "SELECT BatchName, StartDate, CurrentChicken FROM cm_batches WHERE BatchID = ?"
@@ -2092,22 +2069,10 @@ func getBatchVitals(w http.ResponseWriter, r *http.Request) {
         handleError(w, http.StatusInternalServerError, "Failed to parse start date", err)
         return
     }
->>>>>>> Stashed changes
 
 	if vitals.CurrentPopulation <= 0 {
-<<<<<<< Updated upstream
-		// If population is zero, find the last event date (harvest or mortality)
-		endDateQuery := `
-			SELECT MAX(event_date) FROM (
-				SELECT MAX(HarvestDate) as event_date FROM cm_harvest WHERE BatchID = ?
-				UNION ALL
-				SELECT MAX(Date) as event_date FROM cm_mortality WHERE BatchID = ?
-			) as all_events`
-
-=======
 		endDateQuery := `SELECT MAX(HarvestDate) FROM cm_harvest WHERE BatchID = ?`
 		
->>>>>>> Stashed changes
 		var endDate sql.NullString
 		if err := db.QueryRowContext(ctx, endDateQuery, batchID).Scan(&endDate); err == nil && endDate.Valid {
 			vitals.EndDate = &endDate.String
@@ -2119,20 +2084,16 @@ func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 		vitals.AgeInDays = int(time.Since(startDateParsed).Hours() / 24)
 	}
 
+
 	mortalityQuery := "SELECT COALESCE(SUM(BirdsLoss), 0) FROM cm_mortality WHERE BatchID = ?"
-<<<<<<< Updated upstream
-	if err := db.QueryRowContext(ctx, mortalityQuery, batchID).Scan(&vitals.TotalMortality); err != nil { /* ... */
-=======
 	if err := db.QueryRowContext(ctx, mortalityQuery, batchID).Scan(&vitals.TotalMortality); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch mortality data", err)
 		return
->>>>>>> Stashed changes
 	}
 
 	respondJSON(w, http.StatusOK, vitals)
 }
 
-<<<<<<< Updated upstream
 func debugTableSchema(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("DESCRIBE cm_users")
 	if err != nil {
@@ -2157,7 +2118,8 @@ func debugTableSchema(w http.ResponseWriter, r *http.Request) {
 		"table":  "cm_users",
 		"schema": result,
 	})
-=======
+}
+
 func createMortalityRecord(w http.ResponseWriter, r *http.Request) {
 	var payload MortalityPayload
 	if !decodeJSONBody(w, r, &payload) {
@@ -2214,11 +2176,10 @@ func createHealthCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
->>>>>>> Stashed changes
 }
 
 /* ===========================
-   Router / Server
+    Router / Server
 =========================== */
 
 func buildRouter() http.Handler {

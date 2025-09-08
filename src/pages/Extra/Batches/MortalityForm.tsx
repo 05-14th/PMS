@@ -36,6 +36,7 @@ const MortalityForm: React.FC<MortalityFormProps> = ({
     if (visible) {
       form.setFieldsValue({ Date: dayjs() });
     } else {
+      // This line resets the form when the modal is closed
       form.resetFields();
     }
   }, [visible, form]);
