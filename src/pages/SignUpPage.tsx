@@ -54,29 +54,30 @@ const SignUpPage: React.FC = () => {
       formData.append('phoneNumber', phoneNumber);
       formData.append('password', password);
       formData.append('role', role);
-      formData.append('profilePic', profilePic);
+      
+      // Append the file with the correct field name
+      if (profilePic) {
+        formData.append('profilePic', profilePic);
+      }
 
       const response = await fetch('http://localhost:8080/api/register', {
         method: 'POST',
         body: formData,
+        // Don't set Content-Type header, let the browser set it with the correct boundary
+        headers: {
+          'Accept': 'application/json',
+        },
       });
 
-      const contentType = response.headers.get('content-type');
       let data;
-      
-      if (contentType && contentType.includes('application/json')) {
+      try {
         data = await response.json();
-      } else {
-        const text = await response.text();
-        try {
-          data = JSON.parse(text);
-        } catch {
-          throw new Error(text || 'Registration failed');
-        }
+      } catch (error) {
+        throw new Error('Failed to parse server response');
       }
 
       if (!response.ok) {
-        throw new Error(data.message || data.error || 'Registration failed');
+        throw new Error(data.error || data.message || 'Registration failed');
       }
 
       alert('Registration successful! Please login.');
@@ -252,9 +253,8 @@ const SignUpPage: React.FC = () => {
               required
             >
               <option value="">Select a role</option>
-              <option value="User">User</option>
-              <option value="Admin">Admin</option>
-              <option value="Superadmin">Superadmin</option>
+              <option value="user">User</option>
+              <option value="admin">Admin</option>
             </select>
           </div>
         </div>

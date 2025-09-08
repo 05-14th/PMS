@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -122,10 +124,10 @@ type SimpleSales struct {
 
 // for inventory items list
 type InventoryItem struct {
-	ItemID   string `json:"ItemID,omitempty"`
-	ItemName string `json:"ItemName"`
-	Category string `json:"Category"`
-	Unit     string `json:"Unit"`
+	ItemID                 string  `json:"ItemID,omitempty"`
+	ItemName               string  `json:"ItemName"`
+	Category               string  `json:"Category"`
+	Unit                   string  `json:"Unit"`
 	TotalQuantityRemaining float64 `json:"TotalQuantityRemaining"`
 }
 
@@ -137,11 +139,11 @@ type StockLevelSummary struct {
 	TotalQuantityRemaining float64 `json:"TotalQuantityRemaining"`
 	Unit                   string  `json:"Unit"`
 	IsActive               bool    `json:"IsActive"`
-	Category			   string  `json:"Category"`
+	Category               string  `json:"Category"`
 }
 
 type PurchaseHistoryDetail struct {
-	PurchaseID                int     `json:"PurchaseID"`
+	PurchaseID        int     `json:"PurchaseID"`
 	PurchaseDate      string  `json:"PurchaseDate"`
 	QuantityRemaining float64 `json:"QuantityRemaining"`
 	QuantityPurchased float64 `json:"QuantityPurchased"`
@@ -181,14 +183,14 @@ type NewStockItemPayload struct {
 //for sales tab customer info
 
 type Customer struct {
-	CustomerID    int     `json:"CustomerID"`
-	Name          string  `json:"Name"`
-	BusinessName  string  `json:"BusinessName"`
-	ContactNumber string  `json:"ContactNumber"`
-	Email         string  `json:"Email"`
-	Address       string  `json:"Address"`
-	DateAdded     string  `json:"DateAdded"`
-	IsActive      bool    `json:"IsActive"`
+	CustomerID    int    `json:"CustomerID"`
+	Name          string `json:"Name"`
+	BusinessName  string `json:"BusinessName"`
+	ContactNumber string `json:"ContactNumber"`
+	Email         string `json:"Email"`
+	Address       string `json:"Address"`
+	DateAdded     string `json:"DateAdded"`
+	IsActive      bool   `json:"IsActive"`
 }
 
 // for history log in sales tab
@@ -216,8 +218,6 @@ type SaleProduct struct {
 	QuantityRemaining float64 `json:"QuantityRemaining"`
 	WeightRemainingKg float64 `json:"WeightRemainingKg"`
 }
-
-
 
 // for a single item within a new sale payload
 type SaleDetailItemPayload struct {
@@ -258,12 +258,12 @@ type Batch struct {
 }
 
 type BatchVitals struct {
-	BatchName         string `json:"batchName"`
-	StartDate         string `json:"startDate"`
+	BatchName         string  `json:"batchName"`
+	StartDate         string  `json:"startDate"`
 	EndDate           *string `json:"endDate"`
-	AgeInDays         int    `json:"ageInDays"`
-	CurrentPopulation int    `json:"currentPopulation"`
-	TotalMortality    int    `json:"totalMortality"`
+	AgeInDays         int     `json:"ageInDays"`
+	CurrentPopulation int     `json:"currentPopulation"`
+	TotalMortality    int     `json:"totalMortality"`
 }
 
 /* ===========================
@@ -337,7 +337,16 @@ func handleError(w http.ResponseWriter, status int, clientMsg string, err error)
 	} else {
 		log.Printf("[ERROR] %s", clientMsg)
 	}
-	http.Error(w, clientMsg, status)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	errResp := map[string]interface{}{
+		"success": false,
+		"error":   clientMsg,
+	}
+	if err != nil {
+		errResp["details"] = err.Error()
+	}
+	_ = json.NewEncoder(w).Encode(errResp)
 }
 
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {
@@ -457,7 +466,6 @@ func getItemByType(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, items)
 }
 
-
 func getHarvests(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
@@ -556,7 +564,7 @@ func deleteSupplier(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusBadRequest, "Invalid supplier ID", err)
 		return
 	}
-	
+
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
@@ -571,7 +579,7 @@ func deleteSupplier(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
-} 
+}
 
 func getSimpleSales(w http.ResponseWriter, r *http.Request) {
 	// Placeholder query kept in code intentionally (can move to .env later)
@@ -996,7 +1004,6 @@ func deleteBatchEvent(w http.ResponseWriter, r *http.Request) {
 	handleError(w, http.StatusNotFound, "Event not found for delete", nil)
 }
 
-
 // for cm_items adding new category
 func getCategories(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
@@ -1082,7 +1089,127 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-//For inventory items
+// POST /api/register
+func registerHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		handleError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	// Parse multipart form data
+	err := r.ParseMultipartForm(10 << 20) // 10 MB max memory
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Failed to parse form data", err)
+		return
+	}
+
+	// Get form values
+	username := r.FormValue("username")
+	firstName := r.FormValue("firstName")
+	lastName := r.FormValue("lastName")
+	suffix := r.FormValue("suffix")
+	email := r.FormValue("email")
+	phoneNumber := r.FormValue("phoneNumber")
+	password := r.FormValue("password")
+	role := r.FormValue("role")
+
+	// Validate required fields
+	if username == "" || firstName == "" || lastName == "" || email == "" || phoneNumber == "" || password == "" || role == "" {
+		handleError(w, http.StatusBadRequest, "All fields are required", nil)
+		return
+	}
+
+	// Validate role
+	validRoles := map[string]bool{"admin": true, "user": true}
+	if !validRoles[role] {
+		handleError(w, http.StatusBadRequest, "Invalid role. Role must be either 'admin' or 'user'.", nil)
+		return
+	}
+
+	// Hash password
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to hash password", err)
+		return
+	}
+
+	// Handle profile picture
+	var profilePicPath string
+	file, header, err := r.FormFile("profilePic")
+	if err == nil {
+		defer file.Close()
+
+		// Create uploads directory if it doesn't exist
+		if err := os.MkdirAll("uploads/profile_pics", 0755); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to create upload directory", err)
+			return
+		}
+
+		// Generate unique filename
+		ext := filepath.Ext(header.Filename)
+		profilePicPath = filepath.Join("uploads/profile_pics", fmt.Sprintf("%d%s", time.Now().UnixNano(), ext))
+
+		// Save file
+		out, err := os.Create(profilePicPath)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to save profile picture", err)
+			return
+		}
+		defer out.Close()
+
+		if _, err := io.Copy(out, file); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to save profile picture", err)
+			return
+		}
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	// Start transaction
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	// Insert user
+	query := `INSERT INTO cm_users (username, first_name, last_name, suffix, email, phone_number, password, role, profile_pic, created_at) 
+	          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`
+
+	_, err = tx.ExecContext(ctx, query,
+		username,
+		firstName,
+		lastName,
+		suffix,
+		email,
+		phoneNumber,
+		hashedPassword,
+		role,
+		profilePicPath,
+	)
+
+	if err != nil {
+		log.Printf("Database error: %v", err) // Log the exact database error
+		if strings.Contains(err.Error(), "Duplicate entry") {
+			handleError(w, http.StatusBadRequest, "Username or email already exists", nil)
+		} else {
+			handleError(w, http.StatusInternalServerError, "Failed to create user: "+err.Error(), err)
+		}
+		return
+	}
+
+	// Commit transaction
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to complete registration", err)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "message": "User registered successfully"})
+}
+
+// for inventory items
 
 // In main.go, replace the existing getInventoryItems function with this one
 
@@ -1104,7 +1231,7 @@ func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 		FROM cm_items i
 		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID AND p.IsActive = 1
 		WHERE i.IsActive = 1`
-	
+
 	var args []interface{}
 
 	// If a category is provided in the URL (e.g., /api/items?category=Feed), add it to the query
@@ -1185,7 +1312,7 @@ func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusBadRequest, "Invalid item ID", err)
 		return
 	}
-	
+
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 	var totalStock float64
@@ -1195,7 +1322,6 @@ func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
 	if totalStock > 0 {
 		handleError(w, http.StatusBadRequest, "Cannot archive an item that still has stock. Please deplete the inventory first.", nil)
 		return
@@ -1258,11 +1384,12 @@ func getStockLevels(w http.ResponseWriter, r *http.Request) {
 // getPurchaseHistory handles GET /api/purchase-history/{id} (for the right panel)
 func getPurchaseHistory(w http.ResponseWriter, r *http.Request) {
 	itemID := chi.URLParam(r, "id")
-	if itemID == "" { /* ... */ }
+	if itemID == "" { /* ... */
+	}
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
-	
+
 	query := `
 		SELECT
 			p.PurchaseID, -- ADDED
@@ -1277,7 +1404,8 @@ func getPurchaseHistory(w http.ResponseWriter, r *http.Request) {
 		ORDER BY p.PurchaseDate DESC;`
 
 	rows, err := db.QueryContext(ctx, query, itemID)
-	if err != nil { /* ... */ }
+	if err != nil { /* ... */
+	}
 	defer rows.Close()
 
 	var details []PurchaseHistoryDetail
@@ -1306,7 +1434,7 @@ func createPurchase(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
 		return
 	}
-	defer tx.Rollback() 
+	defer tx.Rollback()
 
 	reactivateQuery := "UPDATE cm_items SET IsActive = 1 WHERE ItemID = ?"
 	if _, err := tx.ExecContext(ctx, reactivateQuery, p.ItemID); err != nil {
@@ -1314,19 +1442,17 @@ func createPurchase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	
 	purchaseQuery := `
 		INSERT INTO cm_inventory_purchases 
 		(ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining) 
 		VALUES (?, ?, ?, ?, ?, ?)`
-	
+
 	res, err := tx.ExecContext(ctx, purchaseQuery, p.ItemID, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to insert purchase", err)
 		return
 	}
-	
-	
+
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
 		return
@@ -1344,14 +1470,14 @@ func updatePurchase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var p PurchasePayload 
+	var p PurchasePayload
 	if !decodeJSONBody(w, r, &p) {
 		return
 	}
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
-	
+
 	var qtyPurchased, qtyRemaining float64
 	checkQuery := "SELECT QuantityPurchased, QuantityRemaining FROM cm_inventory_purchases WHERE PurchaseID = ?"
 	if err := db.QueryRowContext(ctx, checkQuery, purchaseID).Scan(&qtyPurchased, &qtyRemaining); err != nil {
@@ -1466,7 +1592,6 @@ func getCustomers(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	
 	rows, err := db.QueryContext(ctx, "SELECT CustomerID, Name, BusinessName, ContactNumber, Email, Address, DateAdded FROM cm_customers WHERE IsActive = 1 ORDER BY Name")
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch customers", err)
@@ -1511,7 +1636,7 @@ func updateCustomer(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusBadRequest, "Invalid customer ID", err)
 		return
 	}
-	
+
 	var c Customer
 	if !decodeJSONBody(w, r, &c) {
 		return
@@ -1535,7 +1660,7 @@ func deleteCustomer(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusBadRequest, "Invalid customer ID", err)
 		return
 	}
-	
+
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
@@ -1588,10 +1713,9 @@ func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusBadRequest, "Invalid sale ID", err)
 		return
 	}
-	
+
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
-
 
 	query := "UPDATE cm_sales_orders SET IsActive = 0 WHERE SaleID = ?"
 	_, err = db.ExecContext(ctx, query, saleID)
@@ -1602,7 +1726,7 @@ func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
-//for getting sale details by sale ID in sales history tab
+// for getting sale details by sale ID in sales history tab
 func getSaleDetails(w http.ResponseWriter, r *http.Request) {
 	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
@@ -1650,7 +1774,7 @@ func getSaleProducts(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	query := "SELECT HarvestProductID, ProductType, QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE IsActive = 1 AND QuantityRemaining > 0"
-	
+
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch sale products", err)
@@ -1667,7 +1791,7 @@ func getSaleProducts(w http.ResponseWriter, r *http.Request) {
 		}
 		products = append(products, p)
 	}
-	
+
 	respondJSON(w, http.StatusOK, products)
 }
 
@@ -1729,17 +1853,16 @@ func createSaleHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-
 		if item.QuantitySold > currentQty {
 			handleError(w, http.StatusBadRequest, "Not enough quantity in stock.", nil)
 			return
 		}
-	
+
 		if item.TotalWeightKg > currentWeight && item.QuantitySold != currentQty {
 			handleError(w, http.StatusBadRequest, "Weight sold cannot exceed weight remaining in stock.", nil)
 			return
 		}
-		
+
 		var newWeightRemaining float64
 		if item.QuantitySold == currentQty {
 			newWeightRemaining = 0
@@ -1783,24 +1906,24 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
 		return
 	}
-	defer tx.Rollback() 
-	
+	defer tx.Rollback()
+
 	stockQuery := `
 		SELECT PurchaseID, QuantityRemaining, WeightRemainingKg 
 		FROM cm_inventory_purchases 
 		WHERE ItemID = ? AND IsActive = 1 AND QuantityRemaining > 0 
 		ORDER BY PurchaseDate ASC 
 		FOR UPDATE`
-	
+
 	rows, err := tx.QueryContext(ctx, stockQuery, payload.ItemID)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to query available stock", err)
 		return
 	}
-	
+
 	type purchaseStock struct {
-		ID 				int
-		QtyRemaining 	float64
+		ID              int
+		QtyRemaining    float64
 		WeightRemaining float64
 	}
 	var availablePurchases []purchaseStock
@@ -1832,12 +1955,12 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 	quantityToDeduct := payload.QuantityUsed
 	for _, purchase := range availablePurchases {
 		if quantityToDeduct <= 0 {
-			break 
+			break
 		}
-	
+
 		quantityDrawn := 0.0
 		if quantityToDeduct >= purchase.QtyRemaining {
-		
+
 			quantityDrawn = purchase.QtyRemaining
 		} else {
 
@@ -1863,11 +1986,10 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 			handleError(w, http.StatusInternalServerError, "Failed to create usage detail record", err)
 			return
 		}
-		
 
 		quantityToDeduct -= quantityDrawn
 	}
-	
+
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
 		return
@@ -1886,7 +2008,7 @@ func getBatches(w http.ResponseWriter, r *http.Request) {
 		SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, TotalChicken, CurrentChicken, Status, Notes 
 		FROM cm_batches 
 		ORDER BY StartDate DESC`
-	
+
 	rows, err := db.QueryContext(ctx, query)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch batches", err)
@@ -1903,15 +2025,15 @@ func getBatches(w http.ResponseWriter, r *http.Request) {
 		}
 		batches = append(batches, b)
 	}
-	
+
 	respondJSON(w, http.StatusOK, batches)
 }
-
 
 // Replace your existing getBatchVitals function
 func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil { /* ... */ }
+	if err != nil { /* ... */
+	}
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
@@ -1920,7 +2042,8 @@ func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 	// Fetch basic info
 	query := "SELECT BatchName, StartDate, CurrentChicken FROM cm_batches WHERE BatchID = ?"
 	err = db.QueryRowContext(ctx, query, batchID).Scan(&vitals.BatchName, &vitals.StartDate, &vitals.CurrentPopulation)
-	if err != nil { /* ... */ }
+	if err != nil { /* ... */
+	}
 
 	// Calculate Age or End Date
 	if vitals.CurrentPopulation <= 0 {
@@ -1931,7 +2054,7 @@ func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 				UNION ALL
 				SELECT MAX(Date) as event_date FROM cm_mortality WHERE BatchID = ?
 			) as all_events`
-		
+
 		var endDate sql.NullString
 		if err := db.QueryRowContext(ctx, endDateQuery, batchID, batchID).Scan(&endDate); err == nil && endDate.Valid {
 			vitals.EndDate = &endDate.String
@@ -1948,9 +2071,36 @@ func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch total mortality (this query is unchanged)
 	mortalityQuery := "SELECT COALESCE(SUM(BirdsLoss), 0) FROM cm_mortality WHERE BatchID = ?"
-	if err := db.QueryRowContext(ctx, mortalityQuery, batchID).Scan(&vitals.TotalMortality); err != nil { /* ... */ }
+	if err := db.QueryRowContext(ctx, mortalityQuery, batchID).Scan(&vitals.TotalMortality); err != nil { /* ... */
+	}
 
 	respondJSON(w, http.StatusOK, vitals)
+}
+
+func debugTableSchema(w http.ResponseWriter, r *http.Request) {
+	rows, err := db.Query("DESCRIBE cm_users")
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to describe table", err)
+		return
+	}
+	defer rows.Close()
+
+	var result []string
+	for rows.Next() {
+		var field, typ, null, key, extra string
+		var def *string
+		err = rows.Scan(&field, &typ, &null, &key, &def, &extra)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan row", err)
+			return
+		}
+		result = append(result, fmt.Sprintf("%s %s %s %s %v %s", field, typ, null, key, def, extra))
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"table":  "cm_users",
+		"schema": result,
+	})
 }
 
 /* ===========================
@@ -1967,10 +2117,14 @@ func buildRouter() http.Handler {
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(cors)
 
+	// Debug endpoint
+	r.Get("/debug/schema", debugTableSchema)
+
 	r.Route("/api", func(r chi.Router) {
 		// --- Standalone routes ---
 		r.Post("/dht22-data", handleDhtData)
 		r.Post("/login", loginHandler)
+		r.Post("/register", registerHandler)
 		r.Get("/categories", getCategories)
 		r.Get("/units", getUnits)
 		r.Get("/stock-levels", getStockLevels)
@@ -2003,7 +2157,7 @@ func buildRouter() http.Handler {
 			r.Put("/{id}", updateCustomer)
 			r.Delete("/{id}", deleteCustomer)
 		})
-		
+
 		// --- RESTful route for Sales ---
 		r.Route("/sales", func(r chi.Router) {
 			r.Get("/", getSalesHistory)
