@@ -5,6 +5,8 @@ import dayjs from "dayjs";
 import ConsumptionForm from "./ConsumptionForm";
 import HealthCheckForm from "./HealthCheckForm";
 import MortalityForm from "./MortalityForm";
+import DirectCostForm from "./DirectCostForm";
+import { FaEdit, FaPlus, FaTrash } from "react-icons/fa";
 
 interface Batch {
   batchID: number;
@@ -21,7 +23,8 @@ interface BatchVitals {
 }
 
 interface BatchEvent {
-  id: string;
+  id: number;
+  type: string;
   date: string;
   event: string;
   details: string;
@@ -29,7 +32,7 @@ interface BatchEvent {
 }
 
 interface BatchCost {
-  id: string;
+  id: number;
   date: string;
   type: string;
   description: string;
@@ -52,6 +55,8 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
   const [costs, setCosts] = useState<BatchCost[]>([]);
   const [loading, setLoading] = useState(true);
   const [eventTypes, setEventTypes] = useState<string[]>([]);
+  const [isCostModalVisible, setIsCostModalVisible] = useState(false);
+  const [editingCost, setEditingCost] = useState<BatchCost | null>(null);
 
   // State for all modals
   const [isConsumptionModalVisible, setIsConsumptionModalVisible] =
@@ -90,25 +95,45 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
     fetchMonitoringData();
   }, [batch?.batchID]);
 
+  // edit by front end to have a UI for window confirm
+  const handleDeleteEvent = async (eventId: number, eventType: string) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this event? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      await api.delete(`/api/events/${eventType}/${eventId}`);
+      message.success("Event deleted and stock has been restored.");
+      fetchMonitoringData(); // Refresh data
+    } catch (error) {
+      message.error("Failed to delete the event.");
+    }
+  };
+
   const handleAddEntry = () => {
     const event = selectedEventType;
-    if (event === "Feed" || event === "Medicine" || event === "Vitamins") {
+    if (
+      event === "Feed" ||
+      event === "Medicine" ||
+      event === "Vitamins" ||
+      event === "Equipment" ||
+      event === "Miscellaneous"
+    ) {
       setIsConsumptionModalVisible(true);
-    } else if (event === "Mortality") {
-      setIsMortalityModalVisible(true);
-    } else if (event === "Health Check") {
-      setIsHealthCheckModalVisible(true);
-    } else {
-      message.info(`'Add Entry' for ${event} can be built next.`);
     }
   };
 
   const handleEntrySubmit = () => {
-    // This generic handler closes all modals and refreshes the data
     setIsConsumptionModalVisible(false);
     setIsMortalityModalVisible(false);
     setIsHealthCheckModalVisible(false);
+    setIsCostModalVisible(false);
     fetchMonitoringData();
+    setEditingCost(null);
   };
 
   const formatDate = (date: Date | string): string => {
@@ -123,6 +148,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Batch Monitoring</h2>
 
+      {/* --- Batch Vitals Section (No Changes) --- */}
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Batch Vitals</h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -168,6 +194,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
         </div>
       </div>
 
+      {/* --- Record a daily event Section (No Changes) --- */}
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium text-gray-900 mb-4">
           Record a daily event
@@ -207,6 +234,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
         </div>
       </div>
 
+      {/* --- Daily Events Log Section (No Changes) --- */}
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium text-gray-900 mb-4">
           Daily Events Log
@@ -227,11 +255,14 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Qty/Count
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {events.map((event) => (
-                <tr key={event.id}>
+                <tr key={`${event.type}-${event.id}`}>
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(event.date)}
                   </td>
@@ -244,6 +275,15 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {event.qty}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <button
+                      onClick={() => handleDeleteEvent(event.id, event.type)}
+                      className="text-red-600 hover:text-red-900"
+                      title="Delete Event"
+                    >
+                      <FaTrash />
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -251,10 +291,20 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
         </div>
       </div>
 
+      {/* --- Direct Costs Log Section (MODIFIED) --- */}
       <div className="bg-white p-6 rounded-lg shadow mt-6">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">
-          Direct Costs Log
-        </h3>
+        <div className="flex justify-between items-center mb-4">
+          <h3 className="text-lg font-medium text-gray-900">
+            Direct Costs Log
+          </h3>
+          <button
+            onClick={() => setIsCostModalVisible(true)}
+            className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700"
+          >
+            <FaPlus className="mr-2 h-4 w-4" />
+            Add Cost
+          </button>
+        </div>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
@@ -271,6 +321,9 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Amount
                 </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                  Actions
+                </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
@@ -279,7 +332,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     {formatDate(cost.date)}
                   </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                  <td className="px-6 py-4 whitespace-nowe text-sm font-medium text-gray-900">
                     {cost.type}
                   </td>
                   <td className="px-6 py-4 text-sm text-gray-500">
@@ -288,13 +341,37 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                     ₱{cost.amount.toFixed(2)}
                   </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                    <div className="flex items-center space-x-4">
+                      {/* MODIFICATION: The onClick for the Edit button is now functional */}
+                      <button
+                        onClick={() => {
+                          setEditingCost(cost);
+                          setIsCostModalVisible(true);
+                        }}
+                        className="text-blue-600 hover:text-blue-900"
+                        title="Edit Cost"
+                      >
+                        <FaEdit />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteEvent(cost.id, "cost")}
+                        className="text-red-600 hover:text-red-900"
+                        title="Delete Cost"
+                      >
+                        <FaTrash />
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="bg-gray-50">
                 <td
-                  colSpan={3}
+                  colSpan={
+                    4
+                  } /* MODIFICATION 3: Changed colSpan to 4 to account for the new column */
                   className="px-6 py-3 text-right text-sm font-medium text-gray-900"
                 >
                   Total:
@@ -328,8 +405,17 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
         onCancel={() => setIsHealthCheckModalVisible(false)}
         onSubmit={handleEntrySubmit}
       />
+      <DirectCostForm
+        visible={isCostModalVisible}
+        batchID={batch.batchID}
+        initialValues={editingCost}
+        onCancel={() => {
+          setIsCostModalVisible(false);
+          setEditingCost(null);
+        }}
+        onSubmit={handleEntrySubmit}
+      />
     </div>
   );
 };
-
 export default Monitoring;
