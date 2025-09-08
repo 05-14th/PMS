@@ -260,10 +260,33 @@ type Batch struct {
 type BatchVitals struct {
 	BatchName         string  `json:"batchName"`
 	StartDate         string  `json:"startDate"`
+<<<<<<< Updated upstream
 	EndDate           *string `json:"endDate"`
 	AgeInDays         int     `json:"ageInDays"`
 	CurrentPopulation int     `json:"currentPopulation"`
 	TotalMortality    int     `json:"totalMortality"`
+=======
+	EndDate           *string `json:"endDate"` 
+	AgeInDays         int     `json:"ageInDays"`
+	CurrentPopulation int     `json:"currentPopulation"`
+	TotalMortality    int     `json:"totalMortality"`
+}
+
+// for adding mortality event
+type MortalityPayload struct {
+	BatchID   int     `json:"BatchID"`
+	Date      string  `json:"Date"`
+	BirdsLoss int     `json:"BirdsLoss"`
+	Notes     string  `json:"Notes"`
+}
+
+// for health check event (for future reference when farm is large enough to have veterinary)
+type HealthCheckPayload struct {
+	BatchID      int    `json:"BatchID"`
+	CheckDate    string `json:"CheckDate"`
+	Observations string `json:"Observations"`
+	CheckedBy    string `json:"CheckedBy"`
+>>>>>>> Stashed changes
 }
 
 /* ===========================
@@ -2029,24 +2052,50 @@ func getBatches(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, batches)
 }
 
+<<<<<<< Updated upstream
 // Replace your existing getBatchVitals function
 func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil { /* ... */
+=======
+func getBatchVitals(w http.ResponseWriter, r *http.Request) {
+	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid batch ID", err)
+		return
+>>>>>>> Stashed changes
 	}
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
 	var vitals BatchVitals
+<<<<<<< Updated upstream
 	// Fetch basic info
 	query := "SELECT BatchName, StartDate, CurrentChicken FROM cm_batches WHERE BatchID = ?"
 	err = db.QueryRowContext(ctx, query, batchID).Scan(&vitals.BatchName, &vitals.StartDate, &vitals.CurrentPopulation)
 	if err != nil { /* ... */
 	}
+=======
+	var startDateStr string
 
-	// Calculate Age or End Date
+	query := "SELECT BatchName, StartDate, CurrentChicken FROM cm_batches WHERE BatchID = ?"
+	err = db.QueryRowContext(ctx, query, batchID).Scan(&vitals.BatchName, &startDateStr, &vitals.CurrentPopulation)
+	if err != nil {
+		handleError(w, http.StatusNotFound, "Batch not found", err)
+		return
+	}
+    vitals.StartDate = startDateStr
+
+	startDateParsed, err := time.Parse("2006-01-02", startDateStr)
+    if err != nil {
+        handleError(w, http.StatusInternalServerError, "Failed to parse start date", err)
+        return
+    }
+>>>>>>> Stashed changes
+
 	if vitals.CurrentPopulation <= 0 {
+<<<<<<< Updated upstream
 		// If population is zero, find the last event date (harvest or mortality)
 		endDateQuery := `
 			SELECT MAX(event_date) FROM (
@@ -2055,28 +2104,35 @@ func getBatchVitals(w http.ResponseWriter, r *http.Request) {
 				SELECT MAX(Date) as event_date FROM cm_mortality WHERE BatchID = ?
 			) as all_events`
 
+=======
+		endDateQuery := `SELECT MAX(HarvestDate) FROM cm_harvest WHERE BatchID = ?`
+		
+>>>>>>> Stashed changes
 		var endDate sql.NullString
-		if err := db.QueryRowContext(ctx, endDateQuery, batchID, batchID).Scan(&endDate); err == nil && endDate.Valid {
+		if err := db.QueryRowContext(ctx, endDateQuery, batchID).Scan(&endDate); err == nil && endDate.Valid {
 			vitals.EndDate = &endDate.String
-			// Calculate age based on end date
-			endDateParsed, _ := time.Parse("2006-01-02 15:04:05", *vitals.EndDate)
-			startDateParsed, _ := time.Parse("2006-01-02", vitals.StartDate)
+			
+			endDateParsed, _ := time.Parse("2006-01-02", endDate.String) 
 			vitals.AgeInDays = int(endDateParsed.Sub(startDateParsed).Hours() / 24)
 		}
 	} else {
-		// If still active, calculate age based on today's date
-		startDateParsed, _ := time.Parse("2006-01-02", vitals.StartDate)
 		vitals.AgeInDays = int(time.Since(startDateParsed).Hours() / 24)
 	}
 
-	// Fetch total mortality (this query is unchanged)
 	mortalityQuery := "SELECT COALESCE(SUM(BirdsLoss), 0) FROM cm_mortality WHERE BatchID = ?"
+<<<<<<< Updated upstream
 	if err := db.QueryRowContext(ctx, mortalityQuery, batchID).Scan(&vitals.TotalMortality); err != nil { /* ... */
+=======
+	if err := db.QueryRowContext(ctx, mortalityQuery, batchID).Scan(&vitals.TotalMortality); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch mortality data", err)
+		return
+>>>>>>> Stashed changes
 	}
 
 	respondJSON(w, http.StatusOK, vitals)
 }
 
+<<<<<<< Updated upstream
 func debugTableSchema(w http.ResponseWriter, r *http.Request) {
 	rows, err := db.Query("DESCRIBE cm_users")
 	if err != nil {
@@ -2101,6 +2157,64 @@ func debugTableSchema(w http.ResponseWriter, r *http.Request) {
 		"table":  "cm_users",
 		"schema": result,
 	})
+=======
+func createMortalityRecord(w http.ResponseWriter, r *http.Request) {
+	var payload MortalityPayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	insertQuery := "INSERT INTO cm_mortality (BatchID, Date, BirdsLoss, Notes) VALUES (?, ?, ?, ?)"
+	_, err = tx.ExecContext(ctx, insertQuery, payload.BatchID, payload.Date, payload.BirdsLoss, payload.Notes)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to insert mortality record", err)
+		return
+	}
+
+	updateQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken - ? WHERE BatchID = ?"
+	_, err = tx.ExecContext(ctx, updateQuery, payload.BirdsLoss, payload.BatchID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update batch population", err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
+}
+
+// for health check records in batches tab
+func createHealthCheck(w http.ResponseWriter, r *http.Request) {
+	var payload HealthCheckPayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := "INSERT INTO cm_health_checks (BatchID, CheckDate, Observations, CheckedBy) VALUES (?, ?, ?, ?)"
+	_, err := db.ExecContext(ctx, query, payload.BatchID, payload.CheckDate, payload.Observations, payload.CheckedBy)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to insert health check record", err)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
+>>>>>>> Stashed changes
 }
 
 /* ===========================
@@ -2184,6 +2298,9 @@ func buildRouter() http.Handler {
 			// r.Put("/events", updateBatchEvent)
 			// r.Delete("/events", deleteBatchEvent)
 		})
+
+		r.Post("/mortality", createMortalityRecord)
+		r.Post("/health-checks", createHealthCheck)
 	})
 
 	return r
