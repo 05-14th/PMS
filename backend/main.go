@@ -326,8 +326,15 @@ type HarvestProductUpdatePayload struct {
 	QuantityHarvested int     `json:"QuantityHarvested"`
 	TotalWeightKg     float64 `json:"TotalWeightKg"`
 }
-
-
+// for logging byproducts from processing
+type ByproductPayload struct {
+	SourceHarvestProductID int     `json:"SourceHarvestProductID"`
+	QuantityToProcess      int     `json:"QuantityToProcess"`
+	ByproductType          string  `json:"ByproductType"`
+	ByproductWeightKg      float64 `json:"ByproductWeightKg"`
+	BatchID                int     `json:"BatchID"`
+	HarvestDate            string  `json:"HarvestDate"`
+}
 
 /* ===========================
     Models for IoT
@@ -1865,14 +1872,22 @@ func getSaleDetails(w http.ResponseWriter, r *http.Request) {
 }
 
 // for getting products available for sale in sales tab
-
 func getSaleProducts(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	query := "SELECT HarvestProductID, ProductType, QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE IsActive = 1 AND QuantityRemaining > 0"
+	// MODIFICATION: Check for an optional 'type' query parameter
+	productTypeFilter := r.URL.Query().Get("type")
 
-	rows, err := db.QueryContext(ctx, query)
+	query := "SELECT HarvestProductID, ProductType, QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE IsActive = 1 AND (QuantityRemaining > 0 OR WeightRemainingKg > 0)"
+	
+	var args []interface{}
+	if productTypeFilter != "" {
+		query += " AND ProductType = ?"
+		args = append(args, productTypeFilter)
+	}
+
+	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch sale products", err)
 		return
@@ -1888,7 +1903,7 @@ func getSaleProducts(w http.ResponseWriter, r *http.Request) {
 		}
 		products = append(products, p)
 	}
-
+ 
 	respondJSON(w, http.StatusOK, products)
 }
 
@@ -1950,28 +1965,40 @@ func createSaleHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if item.QuantitySold > currentQty {
+		isWeightOnlySale := currentQty == 0 && currentWeight > 0
+		
+		if !isWeightOnlySale && item.QuantitySold > currentQty {
 			handleError(w, http.StatusBadRequest, "Not enough quantity in stock.", nil)
 			return
 		}
+		
+		// MODIFICATION: The strict weight check is now removed.
+		// The logic below will handle the variance.
 
-		if item.TotalWeightKg > currentWeight && item.QuantitySold != currentQty {
-			handleError(w, http.StatusBadRequest, "Weight sold cannot exceed weight remaining in stock.", nil)
-			return
-		}
-
+		newQtyRemaining := currentQty - item.QuantitySold
 		var newWeightRemaining float64
-		if item.QuantitySold == currentQty {
+		
+		// MODIFICATION: If sold weight is >= stock OR final quantity is sold, zero out remaining weight.
+		if item.TotalWeightKg >= currentWeight || newQtyRemaining <= 0 {
 			newWeightRemaining = 0
 		} else {
 			newWeightRemaining = currentWeight - item.TotalWeightKg
 		}
 
-		updateStockQuery := "UPDATE cm_harvest_products SET QuantityRemaining = QuantityRemaining - ?, WeightRemainingKg = ? WHERE HarvestProductID = ?"
-		_, err = tx.ExecContext(ctx, updateStockQuery, item.QuantitySold, newWeightRemaining, item.HarvestProductID)
+		updateStockQuery := "UPDATE cm_harvest_products SET QuantityRemaining = ?, WeightRemainingKg = ? WHERE HarvestProductID = ?"
+		_, err = tx.ExecContext(ctx, updateStockQuery, newQtyRemaining, newWeightRemaining, item.HarvestProductID)
 		if err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to update product stock", err)
 			return
+		}
+
+		if newQtyRemaining <= 0 && newWeightRemaining <= 0 {
+			deactivateQuery := "UPDATE cm_harvest_products SET IsActive = 0 WHERE HarvestProductID = ?"
+			_, err = tx.ExecContext(ctx, deactivateQuery, item.HarvestProductID)
+			if err != nil {
+				handleError(w, http.StatusInternalServerError, "Failed to deactivate product stock", err)
+				return
+			}
 		}
 
 		detailQuery := "INSERT INTO cm_sales_details (SaleID, HarvestProductID, QuantitySold, TotalWeightKg, PricePerKg) VALUES (?, ?, ?, ?, ?)"
@@ -2861,6 +2888,69 @@ func updateHarvestProduct(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
+func createByproduct(w http.ResponseWriter, r *http.Request) {
+	var payload ByproductPayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+
+	var qtyRemaining float64
+	checkQuery := "SELECT QuantityRemaining FROM cm_harvest_products WHERE HarvestProductID = ? FOR UPDATE"
+	if err := tx.QueryRowContext(ctx, checkQuery, payload.SourceHarvestProductID).Scan(&qtyRemaining); err != nil {
+		handleError(w, http.StatusNotFound, "Source 'Dressed' chicken inventory not found.", err)
+		return
+	}
+
+	
+	if float64(payload.QuantityToProcess) > qtyRemaining {
+		handleError(w, http.StatusBadRequest, "Not enough 'Dressed' chickens in stock to process.", nil)
+		return
+	}
+
+	updateSourceQuery := "UPDATE cm_harvest_products SET QuantityRemaining = QuantityRemaining - ? WHERE HarvestProductID = ?"
+	if _, err := tx.ExecContext(ctx, updateSourceQuery, payload.QuantityToProcess, payload.SourceHarvestProductID); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update source inventory.", err)
+		return
+	}
+
+	
+	harvestNote := fmt.Sprintf("Processed %d Dressed chickens to create %s", payload.QuantityToProcess, payload.ByproductType)
+	harvestQuery := "INSERT INTO cm_harvest (BatchID, HarvestDate, Notes) VALUES (?, ?, ?)"
+	res, err := tx.ExecContext(ctx, harvestQuery, payload.BatchID, payload.HarvestDate, harvestNote)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to create byproduct harvest event.", err)
+		return
+	}
+	newHarvestID, _ := res.LastInsertId()
+
+	
+	byproductQuery := `
+		INSERT INTO cm_harvest_products 
+		(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg)
+		VALUES (?, ?, 0, ?, 0, ?)`
+	if _, err := tx.ExecContext(ctx, byproductQuery, newHarvestID, payload.ByproductType, payload.ByproductWeightKg, payload.ByproductWeightKg); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to create byproduct inventory.", err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
+}
 /* ===========================
     Router / Server
 =========================== */
@@ -2956,7 +3046,7 @@ func buildRouter() http.Handler {
 		r.Post("/harvests", createHarvest)
 		r.Delete("/harvest-products/{id}", deleteHarvestProduct)
 		r.Put("/harvest-products/{id}", updateHarvestProduct)
-
+		r.Post("/byproducts", createByproduct)
 
 	})
 
