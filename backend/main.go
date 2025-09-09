@@ -144,14 +144,14 @@ type StockLevelSummary struct {
 
 // for harvested inventory items
 type HarvestedInventoryItem struct {
-	HarvestProductID    int     `json:"HarvestProductID"`
-	HarvestDate         string  `json:"HarvestDate"`
-	ProductType         string  `json:"ProductType"`
-	BatchOrigin         string  `json:"BatchOrigin"`
-	QuantityHarvested   int     `json:"QuantityHarvested"`
-	WeightHarvestedKg   float64 `json:"WeightHarvestedKg"`
-	QuantityRemaining   int     `json:"QuantityRemaining"`
-	WeightRemainingKg   float64 `json:"WeightRemainingKg"`
+	HarvestProductID  int     `json:"HarvestProductID"`
+	HarvestDate       string  `json:"HarvestDate"`
+	ProductType       string  `json:"ProductType"`
+	BatchOrigin       string  `json:"BatchOrigin"`
+	QuantityHarvested int     `json:"QuantityHarvested"`
+	WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
+	QuantityRemaining int     `json:"QuantityRemaining"`
+	WeightRemainingKg float64 `json:"WeightRemainingKg"`
 }
 
 type PurchaseHistoryDetail struct {
@@ -280,12 +280,12 @@ type BatchVitals struct {
 
 // for adding new batch
 type NewBatchPayload struct {
-	BatchName           string `json:"BatchName"`
-	StartDate           string `json:"StartDate"`
-	ExpectedHarvestDate string `json:"ExpectedHarvestDate"`
-	TotalChicken        int    `json:"TotalChicken"`
-	Notes               string `json:"Notes"`
-	ChickCost 		float64 `json:"ChickCost"`
+	BatchName           string  `json:"BatchName"`
+	StartDate           string  `json:"StartDate"`
+	ExpectedHarvestDate string  `json:"ExpectedHarvestDate"`
+	TotalChicken        int     `json:"TotalChicken"`
+	Notes               string  `json:"Notes"`
+	ChickCost           float64 `json:"ChickCost"`
 }
 
 // for adding mortality event
@@ -370,7 +370,7 @@ type ProcessPayload struct {
 	QuantityToProcess      int                `json:"QuantityToProcess"`
 	BatchID                int                `json:"BatchID"`
 	ProcessingDate         string             `json:"ProcessingDate"`
-	Yields                 []YieldedByproduct `json:"Yields"` 
+	Yields                 []YieldedByproduct `json:"Yields"`
 }
 
 type UpdateBatchPayload struct {
@@ -2011,13 +2011,13 @@ func createSaleHandler(w http.ResponseWriter, r *http.Request) {
 		isWeightOnlySale := currentQty == 0 && currentWeight > 0
 
 		var newQtyRemaining float64
-	
+
 		if isWeightOnlySale {
 			newQtyRemaining = 0
 		} else {
 			newQtyRemaining = currentQty - item.QuantitySold
 		}
-		
+
 		var newWeightRemaining float64
 		if item.TotalWeightKg >= currentWeight || newQtyRemaining <= 0 {
 			newWeightRemaining = 0
@@ -2025,12 +2025,11 @@ func createSaleHandler(w http.ResponseWriter, r *http.Request) {
 			newWeightRemaining = currentWeight - item.TotalWeightKg
 		}
 
-
 		if !isWeightOnlySale && item.QuantitySold > currentQty {
 			handleError(w, http.StatusBadRequest, "Not enough quantity in stock.", nil)
 			return
 		}
-		
+
 		updateStockQuery := "UPDATE cm_harvest_products SET QuantityRemaining = ?, WeightRemainingKg = ? WHERE HarvestProductID = ?"
 		_, err = tx.ExecContext(ctx, updateStockQuery, newQtyRemaining, newWeightRemaining, item.HarvestProductID)
 		if err != nil {
@@ -2173,7 +2172,7 @@ func getBatches(w http.ResponseWriter, r *http.Request) {
 		SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, TotalChicken, CurrentChicken, Status, Notes 
 		FROM cm_batches 
 		WHERE 1=1` // Start with a true condition to easily append AND clauses
-	
+
 	var args []interface{}
 
 	if searchTerm != "" {
@@ -3005,20 +3004,19 @@ func createBatch(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
 		return
 	}
-	defer tx.Rollback() 
-
+	defer tx.Rollback()
 
 	batchQuery := `
 		INSERT INTO cm_batches 
 		(BatchName, StartDate, ExpectedHarvestDate, TotalChicken, CurrentChicken, Status, Notes) 
 		VALUES (?, ?, ?, ?, ?, 'Active', ?)`
-	
+
 	res, err := tx.ExecContext(ctx, batchQuery,
 		payload.BatchName,
 		payload.StartDate,
 		payload.ExpectedHarvestDate,
 		payload.TotalChicken,
-		payload.TotalChicken, 
+		payload.TotalChicken,
 		payload.Notes,
 	)
 	if err != nil {
@@ -3027,20 +3025,18 @@ func createBatch(w http.ResponseWriter, r *http.Request) {
 	}
 	newBatchID, _ := res.LastInsertId()
 
-	
 	if payload.ChickCost > 0 {
 		costDescription := fmt.Sprintf("Initial purchase of %d chicks.", payload.TotalChicken)
 		costQuery := `
 			INSERT INTO cm_production_cost (BatchID, Date, CostType, Amount, Description)
 			VALUES (?, ?, 'Chick Purchase', ?, ?)`
-		
+
 		if _, err := tx.ExecContext(ctx, costQuery, newBatchID, payload.StartDate, payload.ChickCost, costDescription); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to create initial chick cost", err)
 			return
 		}
 	}
 
-	
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
 		return
@@ -3068,7 +3064,7 @@ func updateBatch(w http.ResponseWriter, r *http.Request) {
 		UPDATE cm_batches 
 		SET BatchName = ?, ExpectedHarvestDate = ?, Notes = ?, Status = ?
 		WHERE BatchID = ?`
-	
+
 	_, err = db.ExecContext(ctx, query, payload.BatchName, payload.ExpectedHarvestDate, payload.Notes, payload.Status, batchID)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to update batch", err)
@@ -3087,7 +3083,7 @@ func deleteBatch(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
-	
+
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
@@ -3146,7 +3142,7 @@ func getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
 		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
 		JOIN cm_batches b ON h.BatchID = b.BatchID
 		WHERE hp.IsActive = 1`
-	
+
 	var args []interface{}
 	if productTypeFilter != "" && productTypeFilter != "All" {
 		query += " AND hp.ProductType = ?"
@@ -3208,7 +3204,7 @@ func getBatchListForFilter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer rows.Close()
-	
+
 	var batchList []map[string]interface{}
 	for rows.Next() {
 		var id int
@@ -3221,7 +3217,6 @@ func getBatchListForFilter(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, batchList)
 }
-
 
 /* ===========================
     Router / Server
