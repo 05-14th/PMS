@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Table,
   Button,
@@ -13,11 +13,12 @@ import {
   Card,
   App,
   Grid,
-} from 'antd';
-import { DeleteOutlined, PlusOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
-import axios from 'axios';
-import AddCustomerForm from '../Forms_Sales/AddCustomerForm';
+  Divider,
+} from "antd";
+import { DeleteOutlined, PlusOutlined } from "@ant-design/icons";
+import dayjs from "dayjs";
+import axios from "axios";
+import AddCustomerForm from "../Forms_Sales/AddCustomerForm";
 
 const { Title, Text } = Typography;
 const { Option } = Select;
@@ -62,28 +63,44 @@ const NewSale: React.FC = () => {
   const [salesItems, setSalesItems] = useState<SaleItem[]>([]);
   const [isCustomerModalVisible, setIsCustomerModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [selectedProduct, setSelectedProduct] = useState<SaleProduct | null>(null);
+  const [selectedProduct, setSelectedProduct] = useState<SaleProduct | null>(
+    null
+  );
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<SaleProduct[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
 
+  const fetchCustomers = async () => {
+    try {
+      const customersRes = await api.get("/api/customers");
+      setCustomers(customersRes.data || []);
+    } catch (error) {
+      console.error("Failed to fetch customers:", error);
+    }
+  };
+
+  const fetchSaleProducts = async () => {
+    try {
+      const productsRes = await api.get("/api/sale-products");
+      setProducts(productsRes.data || []);
+    } catch (error) {
+      console.error("Failed to fetch sale products:", error);
+    }
+  };
+
   useEffect(() => {
-    const fetchFormData = async () => {
+    const fetchInitialData = async () => {
       try {
-        const [customersRes, productsRes, paymentsRes] = await Promise.all([
-          api.get('/api/customers'),
-          api.get('/api/sale-products'),
-          api.get('/api/payment-methods'),
-        ]);
-        setCustomers(customersRes.data || []);
-        setProducts(productsRes.data || []);
+        const paymentsRes = await api.get("/api/payment-methods");
         setPaymentMethods(paymentsRes.data || []);
       } catch (error) {
-        message.error('Failed to load required data for the sales form.');
+        message.error("Failed to load required data for the sales form.");
       }
     };
-    fetchFormData();
+    fetchInitialData();
+    fetchCustomers();
+    fetchSaleProducts();
     form.setFieldsValue({ SaleDate: dayjs() });
   }, [form]);
 
@@ -92,21 +109,53 @@ const NewSale: React.FC = () => {
       const quantityInCart = salesItems
         .filter((item) => item.HarvestProductID === p.HarvestProductID)
         .reduce((sum, item) => sum + item.QuantitySold, 0);
-      const availableNow = p.QuantityRemaining - quantityInCart;
+      const weightInCart = salesItems
+        .filter((item) => item.HarvestProductID === p.HarvestProductID)
+        .reduce((sum, item) => sum + item.TotalWeightKg, 0);
+
+      const availableQty = p.QuantityRemaining - quantityInCart;
+      const availableWeight = p.WeightRemainingKg - weightInCart;
+
+      const isSoldByWeightOnly =
+        p.QuantityRemaining === 0 && p.WeightRemainingKg > 0;
+
       return {
         value: p.HarvestProductID,
-        label: `${p.ProductType} (${availableNow.toFixed(2)})`,
-        disabled: availableNow <= 0,
+        label: isSoldByWeightOnly
+          ? `${p.ProductType} (${availableWeight.toFixed(2)} kg)`
+          : `${p.ProductType} (${availableQty.toFixed(0)} pcs)`,
+        disabled: availableQty <= 0 && availableWeight <= 0,
       };
     });
   }, [products, salesItems]);
 
   const onFinish = (values: any) => {
-    const product = products.find((p) => p.HarvestProductID === values.HarvestProductID);
+    const product = products.find(
+      (p) => p.HarvestProductID === values.HarvestProductID
+    );
     const customer = customers.find((c) => c.CustomerID === values.CustomerID);
 
     if (!product || !customer) {
-      message.error('Invalid product or customer selected.');
+      message.error("Invalid product or customer selected.");
+      return;
+    }
+
+    const quantityInCart = salesItems
+      .filter((item) => item.HarvestProductID === product.HarvestProductID)
+      .reduce((sum, item) => sum + item.QuantitySold, 0);
+    const weightInCart = salesItems
+      .filter((item) => item.HarvestProductID === product.HarvestProductID)
+      .reduce((sum, item) => sum + item.TotalWeightKg, 0);
+
+    const availableQty = product.QuantityRemaining - quantityInCart;
+    const availableWeight = product.WeightRemainingKg - weightInCart;
+    const isWeightOnlyProduct =
+      product.QuantityRemaining === 0 && product.WeightRemainingKg > 0;
+
+    if (!isWeightOnlyProduct && values.QuantitySold > availableQty) {
+      message.error(
+        `Only ${availableQty} pcs of ${product.ProductType} are available.`
+      );
       return;
     }
 
@@ -120,33 +169,38 @@ const NewSale: React.FC = () => {
         QuantitySold: values.QuantitySold,
         TotalWeightKg: values.TotalWeightKg,
         PricePerKg: values.PricePerKg,
-        SaleDate: values.SaleDate.format('YYYY-MM-DD'),
+        SaleDate: values.SaleDate.format("YYYY-MM-DD"),
         PaymentMethod: values.PaymentMethod,
       };
       setSalesItems((prev) => [...prev, newSaleItem]);
-      form.resetFields(['HarvestProductID', 'QuantitySold', 'TotalWeightKg', 'PricePerKg']);
+      form.resetFields([
+        "HarvestProductID",
+        "QuantitySold",
+        "TotalWeightKg",
+        "PricePerKg",
+      ]);
+      setSelectedProduct(null);
     };
 
-    const quantityInCart = salesItems
-      .filter((item) => item.HarvestProductID === product.HarvestProductID)
-      .reduce((sum, item) => sum + item.QuantitySold, 0);
+    const isOversellingWeight = values.TotalWeightKg > availableWeight;
+    const isFinalSaleOfBatch =
+      product.QuantityRemaining > 0 && values.QuantitySold === availableQty;
+    const isDiscrepantOnFinalSale =
+      isFinalSaleOfBatch &&
+      Math.abs(values.TotalWeightKg - availableWeight) > 0.01;
 
-    const availableNow = product.QuantityRemaining - quantityInCart;
-
-    if (values.QuantitySold > availableNow) {
-      message.error(`Only ${availableNow.toFixed(2)} of ${product.ProductType} is available.`);
-      return;
-    }
-
-    const isFinalSaleOfBatch = values.QuantitySold === availableNow;
-    const weightIsDiscrepant = values.TotalWeightKg !== product.WeightRemainingKg;
-
-    if (isFinalSaleOfBatch && weightIsDiscrepant) {
+    if (isOversellingWeight) {
       modal.confirm({
-        title: 'Weight Discrepancy Alert',
-        content: `The weight you entered (${values.TotalWeightKg} kg) is different from the expected remaining weight (${product.WeightRemainingKg.toFixed(
-          2,
-        )} kg). This will zero out the stock for this product. Do you want to proceed?`,
+        title: "Inventory Variance Alert",
+        content: `The weight you entered (${values.TotalWeightKg} kg) is MORE than the available stock (${availableWeight.toFixed(2)} kg). This suggests an inventory error. Do you want to proceed with this sale?`,
+        onOk() {
+          addItemToOrder();
+        },
+      });
+    } else if (isDiscrepantOnFinalSale) {
+      modal.confirm({
+        title: "Weight Discrepancy Alert",
+        content: `The weight you entered (${values.TotalWeightKg} kg) is different from the expected remaining weight (${availableWeight.toFixed(2)} kg). This will zero out the stock. Do you want to proceed?`,
         onOk() {
           addItemToOrder();
         },
@@ -154,6 +208,11 @@ const NewSale: React.FC = () => {
     } else {
       addItemToOrder();
     }
+  };
+
+  const onFinishFailed = (errorInfo: any) => {
+    console.log("Validation Failed:", errorInfo);
+    message.error("Please check the form for errors before submitting.");
   };
 
   const handleSaveSale = async () => {
@@ -165,7 +224,7 @@ const NewSale: React.FC = () => {
       CustomerID: firstItem.CustomerID,
       SaleDate: firstItem.SaleDate,
       PaymentMethod: firstItem.PaymentMethod,
-      Notes: '',
+      Notes: "",
       items: salesItems.map((item) => ({
         HarvestProductID: item.HarvestProductID,
         QuantitySold: item.QuantitySold,
@@ -175,15 +234,18 @@ const NewSale: React.FC = () => {
     };
 
     try {
-      await api.post('/api/sales', payload);
-      message.success('Sale saved successfully!');
+      await api.post("/api/sales", payload);
+      message.success("Sale saved successfully!");
       setSalesItems([]);
       form.resetFields();
-      const productsRes = await api.get('/api/sale-products');
-      setProducts(productsRes.data || []);
-    } catch (error) {
-      console.error('Error saving sale:', error);
-      message.error('An error occurred while saving the sale.');
+      await fetchSaleProducts();
+    } catch (error: any) {
+      console.error("Error saving sale:", error);
+
+      const errorMsg =
+        error.response?.data?.error ||
+        "An error occurred while saving the sale.";
+      message.error(errorMsg);
     } finally {
       setIsSaving(false);
     }
@@ -191,111 +253,207 @@ const NewSale: React.FC = () => {
 
   const handleAddCustomer = async (values: any) => {
     try {
-      const payload = {
-        Name: values.Name,
-        BusinessName: values.BusinessName || '',
-        ContactNumber: values.ContactNumber || '',
-        Email: values.Email || '',
-        Address: values.Address || '',
-      };
-
-      await api.post('/api/customers', payload);
+      const response = await api.post("/api/customers", values);
       setIsCustomerModalVisible(false);
-      message.success('Customer added successfully! You can now select them.');
+      message.success("Customer added successfully! You can now select them.");
 
-            const response = await api.get('/api/customers');
-            setCustomers(response.data || []);
-        } catch (error) {
-            message.error('Failed to add customer.');
-            console.error('Error adding customer:', error);
-        }
-    };
+      const newCustomerId = response.data.insertedId;
+      await fetchCustomers();
+      form.setFieldsValue({ CustomerID: newCustomerId });
+    } catch (error) {
+      message.error("Failed to add customer.");
+      console.error("Error adding customer:", error);
+      throw error;
+    }
+  };
 
-  const quantityValidator = (_: any, value: number) => {
+  const weightValidator = (_: any, value: number) => {
     if (!selectedProduct || !value) return Promise.resolve();
-    const quantityInCart = salesItems
-      .filter((item) => item.HarvestProductID === selectedProduct.HarvestProductID)
-      .reduce((sum, item) => sum + item.QuantitySold, 0);
-    const availableNow = selectedProduct.QuantityRemaining - quantityInCart;
-    if (value > availableNow) return Promise.reject(new Error(`Max available is ${availableNow.toFixed(2)}`));
+    const weightInCart = salesItems
+      .filter(
+        (item) => item.HarvestProductID === selectedProduct.HarvestProductID
+      )
+      .reduce((sum, item) => sum + item.TotalWeightKg, 0);
+    const availableWeight = selectedProduct.WeightRemainingKg - weightInCart;
+    if (value > availableWeight)
+      return Promise.reject(
+        new Error(`Max available is ${availableWeight.toFixed(2)} kg`)
+      );
     return Promise.resolve();
   };
 
+  const quantityValidator = (_: any, value: number) => {
+    if (!selectedProduct || !value) return Promise.resolve();
+
+    if (
+      selectedProduct.QuantityRemaining === 0 &&
+      selectedProduct.WeightRemainingKg > 0
+    ) {
+      return Promise.resolve();
+    }
+
+    const quantityInCart = salesItems
+      .filter(
+        (item) => item.HarvestProductID === selectedProduct.HarvestProductID
+      )
+      .reduce((sum, item) => sum + item.QuantitySold, 0);
+    const availableNow = selectedProduct.QuantityRemaining - quantityInCart;
+    if (value > availableNow)
+      return Promise.reject(
+        new Error(`Max available is ${availableNow.toFixed(0)}`)
+      );
+    return Promise.resolve();
+  };
   const handleProductChange = (value: number) => {
     const product = products.find((p) => p.HarvestProductID === value);
     setSelectedProduct(product || null);
-    if (form.getFieldValue('QuantitySold')) form.validateFields(['QuantitySold']);
+
+    if (
+      product &&
+      product.QuantityRemaining === 0 &&
+      product.WeightRemainingKg > 0
+    ) {
+      form.setFieldsValue({ QuantitySold: 1 });
+    }
+
+    if (form.getFieldValue("QuantitySold"))
+      form.validateFields(["QuantitySold"]);
+    if (form.getFieldValue("TotalWeightKg"))
+      form.validateFields(["TotalWeightKg"]);
   };
 
   const orderItemColumns = [
-    { title: 'Product', dataIndex: 'ProductName', key: 'ProductName' },
-    { title: 'Quantity', dataIndex: 'QuantitySold', key: 'QuantitySold' },
-    { title: 'Weight (kg)', dataIndex: 'TotalWeightKg', key: 'TotalWeightKg' },
-    { title: 'Price/Kg (₱)', dataIndex: 'PricePerKg', key: 'PricePerKg' },
+    { title: "Product", dataIndex: "ProductName", key: "ProductName" },
+    { title: "Quantity", dataIndex: "QuantitySold", key: "QuantitySold" },
+    { title: "Weight (kg)", dataIndex: "TotalWeightKg", key: "TotalWeightKg" },
+    { title: "Price/Kg (₱)", dataIndex: "PricePerKg", key: "PricePerKg" },
     {
-      title: 'Subtotal (₱)',
-      key: 'subtotal',
-      render: (_: any, record: SaleItem) => `₱${(record.TotalWeightKg * record.PricePerKg).toFixed(2)}`,
+      title: "Subtotal (₱)",
+      key: "subtotal",
+      render: (_: any, record: SaleItem) =>
+        `₱${(record.TotalWeightKg * record.PricePerKg).toFixed(2)}`,
     },
     {
-      title: 'Actions',
-      key: 'actions',
+      title: "Actions",
+      key: "actions",
       render: (_: any, record: SaleItem) => (
         <Button
           danger
           icon={<DeleteOutlined />}
-          onClick={() => setSalesItems((prev) => prev.filter((item) => item.key !== record.key))}
+          onClick={() =>
+            setSalesItems((prev) =>
+              prev.filter((item) => item.key !== record.key)
+            )
+          }
         />
       ),
     },
   ];
 
   const calculateTotal = () =>
-    salesItems.reduce((sum, item) => sum + item.TotalWeightKg * item.PricePerKg, 0);
+    salesItems.reduce(
+      (sum, item) => sum + item.TotalWeightKg * item.PricePerKg,
+      0
+    );
+
+  const isWeightOnly =
+    selectedProduct &&
+    selectedProduct.QuantityRemaining === 0 &&
+    selectedProduct.WeightRemainingKg > 0;
 
   return (
     <div className="p-2 sm:p-4">
       <Card
-        title={<Title level={4} style={{ margin: 0 }}>Order Information</Title>}
+        title={
+          <Title level={4} style={{ margin: 0 }}>
+            Order Information
+          </Title>
+        }
         style={{ marginBottom: 24 }}
       >
+        <Form
+          form={form}
+          layout="vertical"
+          onFinish={onFinish}
+          onFinishFailed={onFinishFailed}
+        ></Form>
+
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Row gutter={[16, 16]}>
             <Col xs={24} md={8}>
-              <Form.Item label="Customer" name="CustomerID" rules={[{ required: true }]}>
+              <Form.Item
+                label="Customer"
+                name="CustomerID"
+                rules={[{ required: true }]}
+              >
                 <Select
                   placeholder="Select customer"
                   showSearch
                   optionFilterProp="label"
                   disabled={salesItems.length > 0}
-                  options={customers.map((c) => ({ value: c.CustomerID, label: c.Name }))}
+                  options={customers.map((c) => ({
+                    value: c.CustomerID,
+                    label: c.Name,
+                  }))}
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      <Divider style={{ margin: "8px 0" }} />
+                      <Button
+                        type="text"
+                        icon={<PlusOutlined />}
+                        onClick={() => setIsCustomerModalVisible(true)}
+                        style={{ width: "100%" }}
+                      >
+                        Add New Customer
+                      </Button>
+                    </>
+                  )}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="Sale Date" name="SaleDate" rules={[{ required: true }]}>
+              <Form.Item
+                label="Sale Date"
+                name="SaleDate"
+                rules={[{ required: true }]}
+              >
                 <DatePicker
-                  style={{ width: '100%' }}
+                  style={{ width: "100%" }}
                   format="YYYY-MM-DD"
                   disabled={salesItems.length > 0}
                 />
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
-              <Form.Item label="Payment Method" name="PaymentMethod" rules={[{ required: true }]}>
-                <Select placeholder="Select method" disabled={salesItems.length > 0}>
+              <Form.Item
+                label="Payment Method"
+                name="PaymentMethod"
+                rules={[{ required: true }]}
+              >
+                <Select
+                  placeholder="Select method"
+                  disabled={salesItems.length > 0}
+                >
                   {paymentMethods.map((m) => (
-                    <Option key={m} value={m}>{m}</Option>
+                    <Option key={m} value={m}>
+                      {m}
+                    </Option>
                   ))}
                 </Select>
               </Form.Item>
             </Col>
           </Row>
 
+          {/* --- THIS IS THE CORRECTED PRODUCT DETAILS SECTION --- */}
           <Text strong>Product Details</Text>
           <Row gutter={[16, 16]} className="mt-4">
             <Col xs={24} md={8}>
-              <Form.Item label="Product" name="HarvestProductID" rules={[{ required: true }]}>
+              <Form.Item
+                label="Product"
+                name="HarvestProductID"
+                rules={[{ required: true }]}
+              >
                 <Select
                   placeholder="Select product"
                   onChange={handleProductChange}
@@ -309,19 +467,35 @@ const NewSale: React.FC = () => {
               <Form.Item
                 label="Quantity"
                 name="QuantitySold"
-                rules={[{ required: true }, { validator: quantityValidator }]}
+                rules={[
+                  { required: !isWeightOnly, message: "Quantity is required." },
+                  { validator: quantityValidator },
+                ]}
               >
-                <InputNumber min={1} style={{ width: '100%' }} />
+                <InputNumber
+                  min={1}
+                  style={{ width: "100%" }}
+                  disabled={isWeightOnly}
+                />
+              </Form.Item>
+            </Col>
+
+            <Col xs={24} sm={12} md={6}>
+              <Form.Item
+                label="Weight (kg)"
+                name="TotalWeightKg"
+                rules={[{ required: true, message: "Weight is required." }]}
+              >
+                <InputNumber min={0.01} step={0.1} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
             <Col xs={24} sm={12} md={6}>
-              <Form.Item label="Weight (kg)" name="TotalWeightKg" rules={[{ required: true }]}>
-                <InputNumber min={0} step={0.1} style={{ width: '100%' }} />
-              </Form.Item>
-            </Col>
-            <Col xs={24} sm={12} md={6}>
-              <Form.Item label="Price per Kg (₱)" name="PricePerKg" rules={[{ required: true }]}>
-                <InputNumber min={0} step={0.01} style={{ width: '100%' }} />
+              <Form.Item
+                label="Price per Kg (₱)"
+                name="PricePerKg"
+                rules={[{ required: true }]}
+              >
+                <InputNumber min={0} step={0.01} style={{ width: "100%" }} />
               </Form.Item>
             </Col>
           </Row>
@@ -331,10 +505,10 @@ const NewSale: React.FC = () => {
       <Card
         title={<Title level={5}>Order Items</Title>}
         style={{ marginBottom: 16 }}
-        bodyStyle={{ padding: screens.xs ? '8px' : '16px' }}
+        bodyStyle={{ padding: screens.xs ? "8px" : "16px" }}
       >
         <Table
-          size={screens.xs ? 'small' : 'middle'}
+          size={screens.xs ? "small" : "middle"}
           columns={orderItemColumns}
           dataSource={salesItems}
           rowKey="key"
@@ -350,26 +524,23 @@ const NewSale: React.FC = () => {
 
       <div
         style={{
-          display: 'flex',
-          flexDirection: screens.xs ? 'column' : 'row',
-          justifyContent: screens.xs ? 'stretch' : 'flex-end',
-          gap: '8px',
-          marginTop: '16px',
+          display: "flex",
+          flexDirection: screens.xs ? "column" : "row",
+          justifyContent: screens.xs ? "stretch" : "flex-end",
+          gap: "8px",
+          marginTop: "16px",
         }}
       >
-        <Button onClick={() => setIsCustomerModalVisible(true)} block={screens.xs}>
-          New Customer
-        </Button>
         <Button
           type="default"
           onClick={() => form.submit()}
           icon={<PlusOutlined />}
           block={screens.xs}
           style={{
-            backgroundColor: 'white',
-            color: '#333',
-            border: '1px solid #d9d9d9',
-            boxShadow: 'none',
+            backgroundColor: "white",
+            color: "#333",
+            border: "1px solid #d9d9d9",
+            boxShadow: "none",
           }}
           className="hover:bg-gray-50"
         >
@@ -377,7 +548,7 @@ const NewSale: React.FC = () => {
         </Button>
         <Button
           type="primary"
-          size={screens.xs ? 'middle' : 'large'}
+          size={screens.xs ? "middle" : "large"}
           onClick={handleSaveSale}
           disabled={salesItems.length === 0}
           loading={isSaving}
