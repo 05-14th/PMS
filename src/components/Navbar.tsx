@@ -26,12 +26,12 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
 
   const handleLogout = () => {
     localStorage.removeItem("isAuthenticated");
-    localStorage.removeItem("userEmail");
+    localStorage.removeItem("username");
     localStorage.removeItem("userRole");  
     navigate("/");
   };
 
-  const userEmail = localStorage.getItem("userEmail") || "";
+  const username = localStorage.getItem("username") || "";
   const userRole = localStorage.getItem("userRole") || "";
 
   return (
@@ -43,7 +43,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
         </Link>
         <div className="flex items-center space-x-2">
           <div className="text-right">
-            <div className="text-sm font-medium text-white truncate max-w-[100px]">{userEmail}</div>
+            <div className="text-sm font-medium text-white truncate max-w-[100px]">{username}</div>
             <div className="text-xs text-green-200 truncate">{userRole}</div>
           </div>
           <button
@@ -89,10 +89,10 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-3 nav-item">
               <div className="h-8 w-8 rounded-full bg-green-600 flex items-center justify-center">
-                {userEmail.charAt(0).toUpperCase()}
+                {username.charAt(0).toUpperCase()}
               </div>
               <div className="text-sm">
-                <div className="font-medium text-white truncate max-w-[140px]">{userEmail}</div>
+                <div className="font-medium text-white truncate max-w-[140px]">{username}</div>
                 <div className="text-green-200 text-xs">{userRole}</div>
               </div>
             </div>

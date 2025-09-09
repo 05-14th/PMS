@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 const LoginModal: React.FC = () => {
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -26,7 +26,7 @@ const LoginModal: React.FC = () => {
         headers: {
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await response.json();
@@ -34,11 +34,11 @@ const LoginModal: React.FC = () => {
 
       if (data.success) {
         localStorage.setItem("isAuthenticated", "true");
-        localStorage.setItem("userEmail", email);
+        localStorage.setItem("username", username);
         localStorage.setItem("userRole", data.role);  
         navigate("/homepage");
       } else {
-        setError(data.error || "Invalid email or password");
+        setError(data.error || "Invalid username or password");
       }
     } catch (err) {
       setLoading(false);
@@ -72,13 +72,13 @@ const LoginModal: React.FC = () => {
           <h2 className="text-3xl font-bold text-center mb-8">Login</h2>
           <form className="space-y-6" onSubmit={handleSubmit}>
             <div>
-              <label className="text-sm font-semibold">Email</label>
+              <label className="text-sm font-semibold">Username</label>
               <input
-                type="email"
-                placeholder="Enter your email"
+                type="text"
+                placeholder="Enter your username"
                 className="mt-1 w-full px-6 py-3 border border-gray-300 rounded-full focus:outline-none focus:ring-2 focus:ring-green-500"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
               />
             </div>
             <div>
