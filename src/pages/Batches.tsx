@@ -1,13 +1,22 @@
 import React, { useState, useEffect } from "react";
 import MainBody from "../components/MainBody";
-import { FaEdit, FaTrash, FaStickyNote, FaInfoCircle } from "react-icons/fa";
+import {
+  FaEdit,
+  FaTrash,
+  FaStickyNote,
+  FaInfoCircle,
+  FaSearch,
+  FaPlus,
+} from "react-icons/fa";
 import ModalNotes from "./Extra/Batches/Modal_Notes";
 import Detail from "./Extra/Batches/Detail";
+import AddBatchForm from "./Extra/Batches/AddBatchForm";
+import EditBatchForm from "./Extra/Batches/EditBatchForm";
 import axios from "axios";
-import { message } from "antd";
+import { Button, Col, Input, message, Modal, Row, Select } from "antd";
 import dayjs from "dayjs";
+import useDebounce from "../hooks/useDebounce";
 
-// CORRECTED: Interface now uses camelCase to match the API response
 interface Batch {
   batchID: number;
   batchName: string;
@@ -35,21 +44,102 @@ const Batches: React.FC = () => {
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
   const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
+
+  // --- NEW: State for filters and modal ---
+  const [isAddModalVisible, setIsAddModalVisible] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [searchText, setSearchText] = useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const debouncedSearchText = useDebounce(searchText, 500);
+
+  const fetchBatches = async () => {
+    setLoading(true);
+    try {
+      const response = await api.get("/api/batches", {
+        params: {
+          search: debouncedSearchText,
+          status: statusFilter,
+        },
+      });
+      setBatches(response.data || []);
+    } catch (error) {
+      message.error("Failed to fetch batches.");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    const fetchBatches = async () => {
-      setLoading(true);
-      try {
-        const response = await api.get("/api/batches");
-        setBatches(response.data || []);
-      } catch (error) {
-        message.error("Failed to fetch batches.");
-      } finally {
-        setLoading(false);
-      }
-    };
     fetchBatches();
-  }, []);
+  }, [debouncedSearchText, statusFilter]);
+
+  const handleAddBatch = async (values: any) => {
+    setIsSaving(true);
+    const payload = {
+      ...values,
+      StartDate: dayjs(values.StartDate).format("YYYY-MM-DD"),
+      ExpectedHarvestDate: dayjs(values.ExpectedHarvestDate).format(
+        "YYYY-MM-DD"
+      ),
+      Notes: values.Notes || "",
+    };
+    try {
+      await api.post("/api/batches", payload);
+      message.success("Batch created successfully!");
+      setIsAddModalVisible(false);
+      fetchBatches();
+    } catch (error) {
+      message.error("Failed to create batch.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateBatch = async (values: any) => {
+    if (!editingBatch) return;
+    setIsSaving(true);
+    const payload = {
+      ...values,
+      ExpectedHarvestDate: dayjs(values.expectedHarvestDate).format(
+        "YYYY-MM-DD"
+      ),
+      Notes: values.notes || "",
+    };
+    try {
+      await api.put(`/api/batches/${editingBatch.batchID}`, payload);
+      message.success("Batch updated successfully!");
+      setIsEditModalVisible(false);
+      setEditingBatch(null);
+      fetchBatches();
+    } catch (error) {
+      message.error("Failed to update batch.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteBatch = (batchId: number) => {
+    Modal.confirm({
+      title: "Are you sure you want to delete this batch?",
+      content:
+        "This can only be done if the batch has no recorded activity. This action cannot be undone.",
+      okText: "Yes, Delete",
+      okType: "danger",
+      onOk: async () => {
+        try {
+          await api.delete(`/api/batches/${batchId}`);
+          message.success("Batch deleted successfully.");
+          fetchBatches(); // Refresh list
+        } catch (error: any) {
+          const errorMsg =
+            error.response?.data?.error || "Failed to delete batch.";
+          message.error(errorMsg);
+        }
+      },
+    });
+  };
 
   const formatDate = (dateString: string) => {
     return dayjs(dateString).format("MMM D, YYYY");
@@ -81,6 +171,59 @@ const Batches: React.FC = () => {
         onClose={() => setSelectedBatch(null)}
         batch={selectedBatch}
       />
+
+      <AddBatchForm
+        visible={isAddModalVisible}
+        onCreate={handleAddBatch}
+        onCancel={() => setIsAddModalVisible(false)}
+        loading={isSaving}
+      />
+
+      <EditBatchForm
+        visible={isEditModalVisible}
+        onUpdate={handleUpdateBatch}
+        onCancel={() => setIsEditModalVisible(false)}
+        loading={isSaving}
+        initialValues={editingBatch}
+      />
+
+      <div className="space-y-6">
+        {/* --- NEW: Filters and Add Button Section --- */}
+        <div className="bg-white p-4 rounded-lg shadow-sm">
+          <Row gutter={[16, 16]} justify="space-between" align="middle">
+            <Col xs={24} md={12} lg={8}>
+              <Input
+                placeholder="Search by batch name..."
+                prefix={<FaSearch className="text-gray-400" />}
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                allowClear
+              />
+            </Col>
+            <Col xs={24} md={6} lg={4}>
+              <Select
+                value={statusFilter}
+                onChange={(value) => setStatusFilter(value)}
+                style={{ width: "100%" }}
+              >
+                <Select.Option value="All">All Statuses</Select.Option>
+                <Select.Option value="Active">Active</Select.Option>
+                <Select.Option value="Sold">Sold</Select.Option>
+              </Select>
+            </Col>
+            <Col xs={24} md={6} lg={4}>
+              <Button
+                type="primary"
+                icon={<FaPlus />}
+                onClick={() => setIsAddModalVisible(true)}
+                className="w-full"
+              >
+                Add New Batch
+              </Button>
+            </Col>
+          </Row>
+        </div>
+      </div>
 
       <div className="space-y-6">
         <div className="bg-white rounded-lg border border-gray-200 shadow-sm overflow-hidden">
@@ -120,7 +263,6 @@ const Batches: React.FC = () => {
 
               <tbody className="bg-white divide-y divide-gray-200">
                 {batches.map((batch) => (
-                  // CORRECTED: All property access is now camelCase (e.g., batch.batchID)
                   <tr key={batch.batchID} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                       {batch.batchID}
@@ -175,21 +317,24 @@ const Batches: React.FC = () => {
                           onClick={() => handleViewDetails(batch)}
                         >
                           <FaInfoCircle className="mr-1.5 h-4 w-4" />
-                          Details
+                          Monitoring
                         </button>
+
                         <button
                           className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-                          onClick={() => console.log("Edit", batch.batchID)}
+                          onClick={() => {
+                            setEditingBatch(batch);
+                            setIsEditModalVisible(true);
+                          }}
                         >
-                          <FaEdit className="mr-1.5 h-4 w-4" />
-                          Edit
+                          <FaEdit className="mr-1.5 h-4 w-4" /> Edit
                         </button>
+
                         <button
                           className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-red-600 bg-white hover:bg-red-50"
-                          onClick={() => console.log("Delete", batch.batchID)}
+                          onClick={() => handleDeleteBatch(batch.batchID)}
                         >
-                          <FaTrash className="mr-1.5 h-4 w-4" />
-                          Delete
+                          <FaTrash className="mr-1.5 h-4 w-4" /> Delete
                         </button>
                       </div>
                     </td>

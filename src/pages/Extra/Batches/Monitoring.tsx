@@ -124,6 +124,13 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
       event === "Miscellaneous"
     ) {
       setIsConsumptionModalVisible(true);
+    } else if (event === "Mortality") {
+      setIsMortalityModalVisible(true);
+    } else if (event === "Health Check") {
+      setIsHealthCheckModalVisible(true);
+    } else {
+      // This handles any other types, like "Other"
+      message.info(`'Add Entry' for ${event} can be built next.`);
     }
   };
 
@@ -234,7 +241,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
         </div>
       </div>
 
-      {/* --- Daily Events Log Section (No Changes) --- */}
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium text-gray-900 mb-4">
           Daily Events Log
@@ -291,7 +297,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
         </div>
       </div>
 
-      {/* --- Direct Costs Log Section (MODIFIED) --- */}
       <div className="bg-white p-6 rounded-lg shadow mt-6">
         <div className="flex justify-between items-center mb-4">
           <h3 className="text-lg font-medium text-gray-900">
@@ -343,7 +348,6 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                     <div className="flex items-center space-x-4">
-                      {/* MODIFICATION: The onClick for the Edit button is now functional */}
                       <button
                         onClick={() => {
                           setEditingCost(cost);
@@ -369,9 +373,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
             <tfoot>
               <tr className="bg-gray-50">
                 <td
-                  colSpan={
-                    4
-                  } /* MODIFICATION 3: Changed colSpan to 4 to account for the new column */
+                  colSpan={4}
                   className="px-6 py-3 text-right text-sm font-medium text-gray-900"
                 >
                   Total:

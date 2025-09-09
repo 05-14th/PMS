@@ -13,10 +13,13 @@ import {
   Input,
   Tooltip,
   Card,
+  Modal,
+  Row,
+  Col,
 } from "antd";
 import axios from "axios";
 import dayjs from "dayjs";
-import { FaEdit, FaTrash } from "react-icons/fa";
+import { FaEdit, FaTrash, FaMinusCircle } from "react-icons/fa";
 import { PlusOutlined, SettingOutlined } from "@ant-design/icons";
 import ManageProductTypesModal from "./ManageProductTypesModal";
 import EditHarvestForm from "./EditHarvestForm";
@@ -84,6 +87,9 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
     useState<DressedProduct | null>(null);
   const [harvestForm] = Form.useForm();
   const [byproductForm] = Form.useForm();
+  const [isProcessingModalVisible, setIsProcessingModalVisible] =
+    useState(false);
+  const [processingLoading, setProcessingLoading] = useState(false);
 
   const fetchHarvestedProducts = async () => {
     try {
@@ -154,7 +160,6 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
       }
     };
     fetchInitialData();
-    fetchDressedInventory();
     fetchHarvestedProducts();
   }, [batch.batchID]);
 
@@ -164,21 +169,30 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
       BatchID: batch.batchID,
       HarvestDate: values.HarvestDate.format("YYYY-MM-DD"),
       ProductType: values.ProductType,
-      QuantityHarvested: values.QuantityHarvested || 0,
+      QuantityHarvested: values.QuantityHarvested,
       TotalWeightKg: values.TotalWeightKg,
       SaleDetails: createInstantSale
         ? {
-            /* ... */
+            CustomerID: values.CustomerID,
+            PricePerKg: values.PricePerKg,
+            PaymentMethod: values.PaymentMethod,
           }
         : null,
     };
+
     try {
       await api.post("/api/harvests", payload);
       message.success("Harvest recorded successfully!");
+
+      // MODIFICATION: Correctly reset the form and then set the date.
       harvestForm.resetFields();
+      harvestForm.setFieldsValue({ HarvestDate: dayjs() });
+
       setProductType(null);
       setCreateInstantSale(false);
+
       fetchHarvestedProducts();
+      fetchDressedInventory();
     } catch (error) {
       message.error("Failed to record harvest.");
     } finally {
@@ -250,7 +264,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
     setProductType(value);
     if (value !== "Live") {
       setCreateInstantSale(false);
-      form.setFieldsValue({ createSale: false });
+      harvestForm.setFieldsValue({ createSale: false });
     }
   };
 
@@ -263,34 +277,33 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
     }
   };
 
-  const handleFinish = async (values: any) => {
-    setLoading(true);
+  const handleProcessFinish = async (values: any) => {
+    if (!values.yields || values.yields.length === 0) {
+      message.error("Please add at least one byproduct yield.");
+      return;
+    }
+    setProcessingLoading(true);
     const payload = {
+      SourceHarvestProductID: values.SourceHarvestProductID,
+      QuantityToProcess: values.QuantityToProcess,
       BatchID: batch.batchID,
-      HarvestDate: values.HarvestDate.format("YYYY-MM-DD"),
-      ProductType: values.ProductType,
-      QuantityHarvested: values.QuantityHarvested || 0,
-      TotalWeightKg: values.TotalWeightKg,
-      SaleDetails: createInstantSale
-        ? {
-            CustomerID: values.CustomerID,
-            PricePerKg: values.PricePerKg,
-            PaymentMethod: values.PaymentMethod,
-          }
-        : null,
+      ProcessingDate: values.ProcessingDate.format("YYYY-MM-DD"),
+      Yields: values.yields,
     };
-
     try {
-      await api.post("/api/harvests", payload);
-      message.success("Harvest recorded successfully!");
-      form.resetFields();
-      setProductType(null);
-      setCreateInstantSale(false);
+      await api.post("/api/byproducts", payload);
+      message.success("Byproducts created successfully!");
+      setIsProcessingModalVisible(false);
+      byproductForm.resetFields();
+
       fetchHarvestedProducts();
-    } catch (error) {
-      message.error("Failed to record harvest.");
+      fetchDressedInventory();
+    } catch (error: any) {
+      message.error(
+        error.response?.data?.error || "Failed to create byproducts."
+      );
     } finally {
-      setLoading(false);
+      setProcessingLoading(false);
     }
   };
 
@@ -307,7 +320,6 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
       dataIndex: "QuantityHarvested",
       key: "QuantityHarvested",
     },
-    // NEW COLUMN
     {
       title: "Weight Harvested (kg)",
       dataIndex: "WeightHarvestedKg",
@@ -319,7 +331,6 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
       dataIndex: "QuantityRemaining",
       key: "QuantityRemaining",
     },
-    // NEW COLUMN
     {
       title: "Weight Remaining (kg)",
       dataIndex: "WeightRemainingKg",
@@ -330,7 +341,10 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
       title: "Actions",
       key: "actions",
       render: (_: any, record: HarvestedProduct) => {
-        const isSold = record.QuantityRemaining < record.QuantityHarvested;
+        const isSold =
+          record.QuantityRemaining < record.QuantityHarvested ||
+          record.WeightRemainingKg < record.WeightHarvestedKg;
+
         return (
           <div className="flex items-center space-x-4">
             <button
@@ -427,8 +441,6 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
               <InputNumber style={{ width: "100%" }} placeholder="0.00" />
             </Form.Item>
           </div>
-
-          {/* --- Conditional Checkbox for Live Harvest --- */}
           {productType === "Live" && (
             <Form.Item
               name="createSale"
@@ -442,8 +454,6 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
               </Checkbox>
             </Form.Item>
           )}
-
-          {/* --- Conditional Section for Instant Sale Details --- */}
           {createInstantSale && (
             <>
               <Divider>Instant Sale Details</Divider>
@@ -502,7 +512,6 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
               </div>
             </>
           )}
-
           <Form.Item className="mt-6">
             <Button
               type="primary"
@@ -518,154 +527,194 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
         </Form>
       </Card>
 
-      <Card
-        title={
-          <h2 className="text-xl font-semibold m-0">
-            2. Create Byproducts (from Dressed Inventory)
-          </h2>
-        }
+      <div className="text-center">
+        <Button onClick={() => setIsProcessingModalVisible(true)} size="large">
+          + Process Dressed Inventory to Create Byproducts
+        </Button>
+      </div>
+
+      <Modal
+        title="Create Byproducts from Dressed Inventory"
+        open={isProcessingModalVisible}
+        onCancel={() => setIsProcessingModalVisible(false)}
+        width={800}
+        destroyOnClose
+        footer={[
+          <Button key="back" onClick={() => setIsProcessingModalVisible(false)}>
+            Cancel
+          </Button>,
+          <Button
+            key="submit"
+            type="primary"
+            loading={processingLoading}
+            onClick={() => byproductForm.submit()}
+          >
+            Confirm Processing
+          </Button>,
+        ]}
       >
         <Form
           form={byproductForm}
           layout="vertical"
-          onFinish={handleByproductFinish}
-          initialValues={{ HarvestDate: dayjs() }}
+          onFinish={handleProcessFinish}
+          initialValues={{ ProcessingDate: dayjs() }}
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
-            <Form.Item
-              name="SourceHarvestProductID"
-              label="Source Dressed Chicken"
-              rules={[{ required: true }]}
-            >
-              <Select
-                placeholder="Select a batch of Dressed chicken"
-                onChange={(value) =>
-                  setSelectedDressedProduct(
-                    dressedInventory.find(
-                      (p) => p.HarvestProductID === value
-                    ) || null
-                  )
-                }
-              >
-                {dressedInventory.map((p) => (
-                  <Option key={p.HarvestProductID} value={p.HarvestProductID}>
-                    Harvested on {dayjs(p.HarvestDate).format("MMM D")} (
-                    {p.QuantityRemaining} pcs remaining)
-                  </Option>
-                ))}
-              </Select>
-            </Form.Item>
-            <Form.Item
-              name="QuantityToProcess"
-              label="Quantity to Process"
-              rules={[
-                { required: true },
-                ({ getFieldValue }) => ({
-                  validator(_, value) {
-                    if (
-                      !value ||
-                      !selectedDressedProduct ||
-                      value <= selectedDressedProduct.QuantityRemaining
-                    ) {
-                      return Promise.resolve();
-                    }
-                    return Promise.reject(
-                      new Error(
-                        `Max available is ${selectedDressedProduct.QuantityRemaining} pcs`
-                      )
-                    );
-                  },
-                }),
-              ]}
-            >
-              <InputNumber style={{ width: "100%" }} placeholder="0" min={1} />
-            </Form.Item>
-            <div className="flex flex-col">
-              <div className="flex items-center justify-between mb-1">
-                <label className="text-sm font-medium text-gray-700">
-                  Byproduct Type
-                </label>
-                <Tooltip title="Manage Product Types">
-                  <Button
-                    type="text"
-                    shape="circle"
-                    icon={<SettingOutlined />}
-                    onClick={() => setIsManageTypesModalVisible(true)}
-                  />
-                </Tooltip>
-              </div>
-              <Form.Item
-                name="ByproductType"
-                noStyle
-                rules={[{ required: true }]}
-              >
-                <Select
-                  placeholder="Select byproduct type"
-                  dropdownRender={(menu) => (
-                    <>
-                      {" "}
-                      {menu} <Divider style={{ margin: "8px 0" }} />{" "}
-                      <Space style={{ padding: "0 8px 4px" }}>
-                        {" "}
-                        <Input
-                          placeholder="Add new type"
-                          value={newTypeName}
-                          onChange={(e) => setNewTypeName(e.target.value)}
-                          onKeyDown={(e) => e.stopPropagation()}
-                        />{" "}
-                        <Button
-                          type="text"
-                          icon={<PlusOutlined />}
-                          onClick={handleAddNewType}
-                        >
-                          Add
-                        </Button>{" "}
-                      </Space>{" "}
-                    </>
-                  )}
+          <Card title="Source" type="inner" className="mb-4">
+            <Row gutter={16}>
+              <Col span={12}>
+                <Form.Item
+                  name="SourceHarvestProductID"
+                  label="Source Dressed Chicken"
+                  rules={[{ required: true }]}
                 >
-                  {byproductTypeOptions.map((pt) => (
-                    <Option key={pt} value={pt}>
-                      {pt}
-                    </Option>
-                  ))}
-                </Select>
-              </Form.Item>
-            </div>
+                  <Select
+                    placeholder="Select a batch of Dressed chicken"
+                    onChange={(value) =>
+                      setSelectedDressedProduct(
+                        dressedInventory.find(
+                          (p) => p.HarvestProductID === value
+                        ) || null
+                      )
+                    }
+                  >
+                    {dressedInventory.map((p) => (
+                      <Option
+                        key={p.HarvestProductID}
+                        value={p.HarvestProductID}
+                      >
+                        Harvested on {dayjs(p.HarvestDate).format("MMM D")} (
+                        {p.QuantityRemaining} pcs remaining)
+                      </Option>
+                    ))}
+                  </Select>
+                </Form.Item>
+              </Col>
+              <Col span={12}>
+                <Form.Item
+                  name="QuantityToProcess"
+                  label="Quantity to Process"
+                  rules={[
+                    { required: true },
+                    ({ getFieldValue }) => ({
+                      validator(_, value) {
+                        if (
+                          !value ||
+                          !selectedDressedProduct ||
+                          value <= selectedDressedProduct.QuantityRemaining
+                        ) {
+                          return Promise.resolve();
+                        }
+                        return Promise.reject(
+                          new Error(
+                            `Max available is ${selectedDressedProduct.QuantityRemaining} pcs`
+                          )
+                        );
+                      },
+                    }),
+                  ]}
+                >
+                  <InputNumber
+                    style={{ width: "100%" }}
+                    placeholder="0"
+                    min={1}
+                  />
+                </Form.Item>
+              </Col>
+            </Row>
             <Form.Item
-              name="ByproductWeightKg"
-              label="Byproduct Weight (kg)"
-              rules={[{ required: true }]}
-            >
-              <InputNumber
-                style={{ width: "100%" }}
-                placeholder="0.00"
-                min={0.01}
-              />
-            </Form.Item>
-            <Form.Item
-              name="HarvestDate"
+              name="ProcessingDate"
               label="Processing Date"
               rules={[{ required: true }]}
             >
               <DatePicker style={{ width: "100%" }} />
             </Form.Item>
-          </div>
-          <Form.Item className="mt-6">
-            <Button
-              type="primary"
-              htmlType="submit"
-              loading={loading}
-              size="large"
-            >
-              Create Byproduct
-            </Button>
-          </Form.Item>
+          </Card>
+
+          <Card title="Yield (Resulting Byproducts)" type="inner">
+            <Form.List name="yields">
+              {(fields, { add, remove }) => (
+                <>
+                  {fields.map(({ key, name, ...restField }) => (
+                    <Space
+                      key={key}
+                      style={{ display: "flex", marginBottom: 8 }}
+                      align="baseline"
+                    >
+                      <Form.Item
+                        {...restField}
+                        name={[name, "ByproductType"]}
+                        rules={[
+                          { required: true, message: "Type is required" },
+                        ]}
+                      >
+                        <Select
+                          placeholder="Byproduct Type"
+                          style={{ width: 250 }}
+                          dropdownRender={(menu) => (
+                            <>
+                              {" "}
+                              {menu} <Divider style={{ margin: "8px 0" }} />{" "}
+                              <Space style={{ padding: "0 8px 4px" }}>
+                                {" "}
+                                <Input
+                                  placeholder="Add new type"
+                                  value={newTypeName}
+                                  onChange={(e) =>
+                                    setNewTypeName(e.target.value)
+                                  }
+                                  onKeyDown={(e) => e.stopPropagation()}
+                                />{" "}
+                                <Button
+                                  type="text"
+                                  icon={<PlusOutlined />}
+                                  onClick={handleAddNewType}
+                                >
+                                  Add
+                                </Button>{" "}
+                              </Space>{" "}
+                            </>
+                          )}
+                        >
+                          {byproductTypeOptions.map((pt) => (
+                            <Option key={pt} value={pt}>
+                              {pt}
+                            </Option>
+                          ))}
+                        </Select>
+                      </Form.Item>
+                      <Form.Item
+                        {...restField}
+                        name={[name, "ByproductWeightKg"]}
+                        rules={[
+                          { required: true, message: "Weight is required" },
+                        ]}
+                      >
+                        <InputNumber placeholder="Weight (kg)" min={0.01} />
+                      </Form.Item>
+                      <FaMinusCircle
+                        onClick={() => remove(name)}
+                        style={{ cursor: "pointer", color: "red" }}
+                      />
+                    </Space>
+                  ))}
+                  <Form.Item>
+                    <Button
+                      type="dashed"
+                      onClick={() => add()}
+                      block
+                      icon={<PlusOutlined />}
+                    >
+                      Add Byproduct Yield
+                    </Button>
+                  </Form.Item>
+                </>
+              )}
+            </Form.List>
+          </Card>
         </Form>
-      </Card>
+      </Modal>
 
       <Divider />
-
       <h2 className="text-xl font-semibold">
         Harvested Products (From This Batch)
       </h2>
@@ -675,6 +724,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
         rowKey="HarvestProductID"
         pagination={false}
       />
+
       <EditHarvestForm
         visible={isEditModalVisible}
         initialValues={editingHarvest}

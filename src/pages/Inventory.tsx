@@ -3,22 +3,24 @@ import MainBody from "../components/MainBody";
 import StockLevels from "./Extra/Inventory/StockLevels";
 import ItemList from "./Extra/Inventory/Itemlist";
 import Supplier from "./Extra/Inventory/Supplier";
+import HarvestedProducts from "./Extra/Inventory/HarvestedProducts";
 
-// Define the tab types
-type TabType = "stock" | "items" | "suppliers";
+type TabType = "stock" | "items" | "suppliers" | "harvested";
 
-// Define the tabs in the desired order: left, center, right
 const tabs: { id: TabType; label: string }[] = [
+  { id: "harvested", label: "Harvested Products" },
   { id: "stock", label: "Stock Levels" },
   { id: "items", label: "Item List" },
   { id: "suppliers", label: "Suppliers" },
 ];
 
 function InventoryPage() {
-  const [activeTab, setActiveTab] = useState<TabType>("items"); // Default to center tab
+  const [activeTab, setActiveTab] = useState<TabType>("harvested");
 
   const renderTabContent = () => {
     switch (activeTab) {
+      case "harvested":
+        return <HarvestedProducts />;
       case "stock":
         return <StockLevels />;
       case "items":
@@ -26,7 +28,7 @@ function InventoryPage() {
       case "suppliers":
         return <Supplier />;
       default:
-        return <ItemList />;
+        return <HarvestedProducts />;
     }
   };
 
@@ -51,9 +53,7 @@ function InventoryPage() {
         </div>
 
         {/* Tab Content */}
-        <div className="mt-4">
-          {renderTabContent()}
-        </div>
+        <div className="mt-4">{renderTabContent()}</div>
       </div>
     </MainBody>
   );
