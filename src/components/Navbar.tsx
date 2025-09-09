@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
+import { motion } from "framer-motion";
 import {
   Home,
   Package,
@@ -37,20 +38,20 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
     <>
       {/* Mobile Header */}
       <div className="sm:hidden fixed top-0 left-0 right-0 bg-green-800 text-white px-4 py-2 flex items-center justify-between z-50 border-b border-green-700">
-        <Link to="/homepage" className="flex items-center">
-          <span className="font-bold text-white text-lg">Chickmate</span>
+        <Link to="/homepage" className="flex items-center nav-item">
+          <span className="font-bold text-lg">Chickmate</span>
         </Link>
         <div className="flex items-center space-x-2">
           <div className="text-right">
-            <div className="text-xs font-medium truncate max-w-[100px]">{userEmail}</div>
-            <div className="text-[10px] text-green-200 truncate">{userRole}</div>
+            <div className="text-sm font-medium text-white truncate max-w-[100px]">{userEmail}</div>
+            <div className="text-xs text-green-200 truncate">{userRole}</div>
           </div>
           <button
             onClick={handleLogout}
             className="p-1 rounded-full hover:bg-green-700 text-white"
             title="Logout"
           >
-            <LogOut size={16} />
+            <LogOut size={16} className="text-white" />
           </button>
         </div>
       </div>
@@ -58,26 +59,26 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
       {/* Desktop Sidebar */}
       <div className="hidden sm:flex flex-col h-screen w-64 bg-green-800 text-white fixed left-0 top-0 border-r border-green-700 z-50">
         {/* Logo */}
-        <Link to="/homepage" className="flex items-center justify-center p-4 border-b border-green-700">
+        <Link to="/homepage" className="flex items-center justify-center p-4 border-b border-green-700 nav-item">
           <img src="/Extras/logo.png" alt="Logo" className="h-10 w-auto" />
         </Link>
 
         {/* Navigation Links */}
         <nav className="flex-1 overflow-y-auto py-4">
-          <ul className="space-y-2 px-4">
+          <ul className="space-y-4 px-4">
             {!isControl ? (
               <>
-                <NavItem to="/homepage" icon={<Home size={20} />} text="Home" />
-                <NavItem to="/inventory" icon={<Package size={20} />} text="Inventory" />
-                <NavItem to="/batches" icon={<LayoutList size={20} />} text="Batches" />
-                <NavItem to="/sales" icon={<ShoppingCart size={20} />} text="Sales" />
-                <NavItem to="/reports" icon={<FileText size={20} />} text="Reports" />
-                <NavItem to="/control" icon={<Settings size={20} />} text="Control" />
+                <NavItem to="/homepage" icon={<Home size={28} className="text-white" />} text="Home" />
+                <NavItem to="/inventory" icon={<Package size={28} className="text-white" />} text="Inventory" />
+                <NavItem to="/batches" icon={<LayoutList size={28} className="text-white" />} text="Batches" />
+                <NavItem to="/sales" icon={<ShoppingCart size={28} className="text-white" />} text="Sales" />
+                <NavItem to="/reports" icon={<FileText size={28} className="text-white" />} text="Reports" />
+                <NavItem to="/control" icon={<Settings size={28} className="text-white" />} text="Control" />
               </>
             ) : (
               <>
-                <NavItem to="/notification" icon={<Bell size={20} />} text="Notification" />
-                <NavItem to="/homepage" icon={<ServerCog size={20} />} text="System" />
+                <NavItem to="/notification" icon={<Bell size={28} className="text-white" />} text="Notification" />
+                <NavItem to="/homepage" icon={<ServerCog size={28} className="text-white" />} text="System" />
               </>
             )}
           </ul>
@@ -86,7 +87,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
         {/* User Info and Logout */}
         <div className="p-4 border-t border-green-700">
           <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 nav-item">
               <div className="h-8 w-8 rounded-full bg-green-600 flex items-center justify-center">
                 {userEmail.charAt(0).toUpperCase()}
               </div>
@@ -100,7 +101,7 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
               className="p-1 rounded-full hover:bg-green-700 text-white"
               title="Logout"
             >
-              <LogOut size={18} />
+              <LogOut size={20} className="text-white" />
             </button>
           </div>
         </div>
@@ -111,17 +112,17 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
         <ul className="flex justify-around">
           {!isControl ? (
             <>
-              <MobileNavItem to="/homepage" icon={<Home size={20} />} text="Home" />
-              <MobileNavItem to="/inventory" icon={<Package size={20} />} text="Inventory" />
-              <MobileNavItem to="/batches" icon={<LayoutList size={20} />} text="Batches" />
-              <MobileNavItem to="/sales" icon={<ShoppingCart size={20} />} text="Sales" />
-              <MobileNavItem to="/reports" icon={<FileText size={20} />} text="Reports" />
-              <MobileNavItem to="/control" icon={<Settings size={20} />} text="Control" />
+              <MobileNavItem to="/homepage" icon={<Home size={24} className="text-white" />} text="Home" />
+              <MobileNavItem to="/inventory" icon={<Package size={24} className="text-white" />} text="Inventory" />
+              <MobileNavItem to="/batches" icon={<LayoutList size={24} className="text-white" />} text="Batches" />
+              <MobileNavItem to="/sales" icon={<ShoppingCart size={24} className="text-white" />} text="Sales" />
+              <MobileNavItem to="/reports" icon={<FileText size={24} className="text-white" />} text="Reports" />
+              <MobileNavItem to="/control" icon={<Settings size={24} className="text-white" />} text="Control" />
             </>
           ) : (
             <>
-              <MobileNavItem to="/notification" icon={<Bell size={20} />} text="Notification" />
-              <MobileNavItem to="/homepage" icon={<ServerCog size={20} />} text="System" />
+              <MobileNavItem to="/notification" icon={<Bell size={24} className="text-white" />} text="Notification" />
+              <MobileNavItem to="/homepage" icon={<ServerCog size={24} className="text-white" />} text="System" />
             </>
           )}
         </ul>
@@ -130,30 +131,89 @@ const Navbar: React.FC<NavbarProps> = ({ isControl = false }) => {
   );
 };
 
-// Desktop Nav Item Component
-const NavItem = ({ to, icon, text }: { to: string; icon: React.ReactNode; text: string }) => (
-  <li>
-    <Link
-      to={to}
-      className="flex items-center space-x-3 p-3 rounded-lg hover:bg-green-700 text-white transition-colors"
+// Desktop Nav Item Component with Animation
+const NavItem = ({ to, icon, text }: { to: string; icon: React.ReactNode; text: string }) => {
+  const location = useLocation();
+  const isActive = location.pathname === to;
+  
+  return (
+    <motion.li 
+      className="nav-item"
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.98 }}
     >
-      <span className="text-white">{icon}</span>
-      <span className="text-white text-sm">{text}</span>
-    </Link>
-  </li>
-);
+      <Link
+        to={to}
+        className={`flex items-center space-x-4 p-4 rounded-lg transition-all duration-300 text-lg font-medium text-white ${
+          isActive 
+            ? 'bg-green-700 shadow-lg' 
+            : 'hover:bg-green-700/80 hover:shadow-md'
+        }`}
+      >
+        <motion.span 
+          className="flex-shrink-0"
+          animate={{ 
+            rotate: isActive ? [0, 10, -10, 10, 0] : 0,
+            scale: isActive ? [1, 1.1, 1] : 1
+          }}
+          transition={{ duration: 0.5 }}
+        >
+          {icon}
+        </motion.span>
+        <motion.span
+          initial={{ x: -10, opacity: 0 }}
+          animate={{ x: 0, opacity: 1 }}
+          transition={{ delay: 0.1 }}
+        >
+          {text}
+        </motion.span>
+        {isActive && (
+          <motion.div 
+            className="absolute right-0 h-8 w-1 bg-white rounded-l-lg"
+            layoutId="activeNav"
+            transition={{ type: "spring", stiffness: 300, damping: 30 }}
+          />
+        )}
+      </Link>
+    </motion.li>
+  );
+};
 
-// Mobile Nav Item Component
-const MobileNavItem = ({ to, icon, text }: { to: string; icon: React.ReactNode; text: string }) => (
-  <li className="w-1/6 text-center">
-    <Link
-      to={to}
-      className="flex flex-col items-center justify-center py-2 text-white hover:text-white text-xs"
+// Mobile Nav Item Component with Animation
+const MobileNavItem = ({ to, icon, text }: { to: string; icon: React.ReactNode; text: string }) => {
+  const location = useLocation();
+  const isActive = location.pathname === to;
+  
+  return (
+    <motion.li 
+      className="flex-1 mobile-nav-item"
+      whileTap={{ scale: 0.95 }}
     >
-      <div className="mb-1 text-white">{icon}</div>
-      <span className="text-white text-[11px] leading-tight">{text}</span>
-    </Link>
-  </li>
-);
+      <Link
+        to={to}
+        className={`flex flex-col items-center justify-center p-3 rounded-lg transition-all duration-200 text-white ${
+          isActive 
+            ? 'bg-green-700' 
+            : 'hover:bg-green-700/80'
+        }`}
+      >
+        <motion.span 
+          className="mb-1"
+          animate={isActive ? { y: [0, -3, 0] } : {}}
+          transition={{ repeat: isActive ? Infinity : 0, duration: 1.5 }}
+        >
+          {icon}
+        </motion.span>
+        <motion.span 
+          className="text-sm font-medium"
+          animate={isActive ? { scale: 1.1 } : {}}
+          transition={{ type: "spring", stiffness: 500, damping: 30 }}
+        >
+          {text}
+        </motion.span>
+      </Link>
+    </motion.li>
+  );
+};
 
 export default Navbar;

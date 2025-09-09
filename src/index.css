@@ -21,3 +21,54 @@
     padding-bottom: 4rem; /* Space for bottom navigation */
   }
 }
+
+/* Navigation Text Colors */
+.nav-item,
+.nav-item a,
+.nav-item span:not(.icon-wrapper *),
+.nav-item .text-sm,
+.nav-item .text-base,
+.nav-item .text-lg,
+.nav-item .font-medium,
+.nav-item .font-semibold {
+  color: white !important;
+}
+
+/* Ensure text stays white on hover/active states */
+.nav-item:hover,
+.nav-item:hover *:not(.icon-wrapper *),
+.nav-item:active,
+.nav-item:active *:not(.icon-wrapper *),
+.nav-item.active,
+.nav-item.active *:not(.icon-wrapper *) {
+  color: white !important;
+}
+
+/* Mobile specific navigation text */
+@media (max-width: 640px) {
+  .mobile-nav-item,
+  .mobile-nav-item a,
+  .mobile-nav-item span:not(.icon-wrapper *),
+  .mobile-nav-item .text-sm,
+  .mobile-nav-item .text-base {
+    color: white !important;
+  }
+  
+  .mobile-nav-item:hover,
+  .mobile-nav-item:active,
+  .mobile-nav-item.active {
+    color: white !important;
+  }
+  
+  /* Ensure icons keep their original color */
+  .mobile-nav-item .icon-wrapper * {
+    color: inherit !important;
+    fill: currentColor !important;
+  }
+}
+
+/* Ensure icons keep their original color */
+.icon-wrapper * {
+  color: inherit !important;
+  fill: currentColor !important;
+}

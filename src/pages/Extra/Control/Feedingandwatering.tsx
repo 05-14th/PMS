@@ -5,8 +5,45 @@ const Feedingandwatering: React.FC = () => {
   return (
     <div className="w-full max-w-4xl mx-auto p-4">
       <div className="flex flex-col items-center gap-4">
-        {/* Top Big Rectangle */}
-        <div className="w-full max-w-2xl h-32 sm:h-40 bg-white border-2 border-pink-200 shadow-sm rounded-xl" />
+        {/* Top Big Rectangle - Divided into 3 parts with icons above */}
+        <div className="w-full max-w-2xl flex gap-2">
+          {/* Feed Section */}
+          <div className="flex-1 flex flex-col items-center">
+            <div className="w-12 h-12 mb-1 rounded-full bg-white border-2 border-pink-200 flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 10c.5.5 3.5 1 4.5 0 1-.5 1-2.5 0-3-.5-1-3.5-3-4.5-2-1 .5-1 3.5 0 5z"/>
+                <path d="M12 11l1 3c0 2-1 4-3 4s-3-2-3-4c0-1 0-3 1-4"/>
+                <path d="M18 10c1 1 2 3 1 5s-3 4-5 4-4.5-2-4.5-4c0-1.5 1-3 2-4"/>
+              </svg>
+            </div>
+            <span className="text-sm font-medium text-gray-700 mb-1">Feed</span>
+            <div className="w-full h-20 sm:h-28 bg-white border-2 border-pink-200 shadow-sm rounded-xl flex items-center justify-center">
+              {/* Content can go here */}
+            </div>
+          </div>
+          
+          {/* Water Section */}
+          <div className="flex-1 flex flex-col items-center">
+            <div className="w-12 h-12 mb-1 rounded-full bg-white border-2 border-pink-200 flex items-center justify-center">
+              <Droplets className="w-6 h-6 text-green-500" />
+            </div>
+            <span className="text-sm font-medium text-gray-700 mb-1">Water</span>
+            <div className="w-full h-20 sm:h-28 bg-white border-2 border-pink-200 shadow-sm rounded-xl flex items-center justify-center">
+              {/* Content can go here */}
+            </div>
+          </div>
+          
+          {/* Medicine Section */}
+          <div className="flex-1 flex flex-col items-center">
+            <div className="w-12 h-12 mb-1 rounded-full bg-white border-2 border-pink-200 flex items-center justify-center">
+              <Pill className="w-6 h-6 text-green-500" />
+            </div>
+            <span className="text-sm font-medium text-gray-700 mb-1">Medicine</span>
+            <div className="w-full h-20 sm:h-28 bg-white border-2 border-pink-200 shadow-sm rounded-xl flex items-center justify-center">
+              {/* Content can go here */}
+            </div>
+          </div>
+        </div>
 
         {/* Water & Medicine Sections */}
         <div className="w-full max-w-2xl grid grid-cols-1 sm:grid-cols-2 gap-4">
