@@ -1,308 +1,504 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from "react";
+import {
+  Form,
+  Select,
+  DatePicker,
+  InputNumber,
+  Checkbox,
+  Button,
+  message,
+  Table,
+  Divider,
+  Space,
+  Input,
+  Tooltip,
+} from "antd";
+import axios from "axios";
+import dayjs from "dayjs";
+import { FaEdit, FaTrash } from "react-icons/fa";
+import { PlusOutlined, SettingOutlined } from "@ant-design/icons";
+import ManageProductTypesModal from "./ManageProductTypesModal";
+import EditHarvestForm from "./EditHarvestForm";
+import AddCustomerForm from "../Forms_Sales/AddCustomerForm";
+
+const { Option } = Select;
 
 interface Batch {
-  id: string;
-  name: string;
-  expectedHarvestDate?: string;
+  batchID: number;
+  batchName: string;
+}
+interface Customer {
+  CustomerID: number;
+  Name: string;
+}
+interface HarvestedProduct {
+  HarvestProductID: number;
+  HarvestDate: string;
+  ProductType: string;
+  QuantityHarvested: number;
+  QuantityRemaining: number;
+  WeightHarvestedKg: number;
+  WeightRemainingKg: number;
 }
 
 interface HarvestingProps {
   batch: Batch;
 }
 
-const productTypes = [
-  'Whole Chicken',
-  'Dressed Chicken',
-  'Chicken Parts',
-  'Processed Meat',
-  'Eggs',
-  'Other'
-];
-
-const customers = [
-  'Retail Customer',
-  'Local Market',
-  'Restaurant Chain',
-  'Supermarket',
-  'Wholesale Buyer'
-];
-
-const paymentMethods = [
-  'Cash',
-  'Credit Card',
-  'Bank Transfer',
-  'Check',
-  'Mobile Payment'
-];
+const api = axios.create({
+  baseURL: import.meta.env.VITE_APP_SERVERHOST,
+  timeout: 10000,
+});
 
 const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
-  const [quantity, setQuantity] = useState<number>(0);
-  const [selectedProduct, setSelectedProduct] = useState<string>('');
-  const [selectedCustomer, setSelectedCustomer] = useState<string>('');
-  const [selectedPayment, setSelectedPayment] = useState<string>('');
-  const [pricePerKg, setPricePerKg] = useState<number>(180);
-  const [inventoryData, setInventoryData] = useState<Array<{
-    id: number;
-    date: Date;
-    productType: string;
-    qtyHarvested: number;
-    qtyRemaining: number;
-  }>>([]);
-  
-  const totalWeight = quantity * 2;
-  const totalAmount = totalWeight * pricePerKg;
+  const [form] = Form.useForm();
+  const [loading, setLoading] = useState(false);
+  const [productType, setProductType] = useState<string | null>(null);
+  const [createInstantSale, setCreateInstantSale] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [paymentMethods, setPaymentMethods] = useState<string[]>([]);
+  const [harvestedProducts, setHarvestedProducts] = useState<
+    HarvestedProduct[]
+  >([]);
+  const [isEditModalVisible, setIsEditModalVisible] = useState(false);
+  const [editingHarvest, setEditingHarvest] = useState<HarvestedProduct | null>(
+    null
+  );
+  const [isManageTypesModalVisible, setIsManageTypesModalVisible] =
+    useState(false);
+  const [newTypeName, setNewTypeName] = useState("");
+  const [productTypes, setProductTypes] = useState<string[]>([]);
+  const [isAddCustomerModalVisible, setIsAddCustomerModalVisible] =
+    useState(false);
 
-  const handleCreateSale = () => {
-    if (!selectedProduct || !quantity || !selectedCustomer || !selectedPayment) return;
-    
-    const newInventoryItem = {
-      id: Date.now(),
-      date: new Date(),
-      productType: selectedProduct,
-      qtyHarvested: quantity,
-      qtyRemaining: quantity // Initially, all harvested quantity is remaining
-    };
-    
-    setInventoryData([...inventoryData, newInventoryItem]);
-    
-    // Reset form
-    setQuantity(0);
-    setSelectedProduct('');
-    setSelectedCustomer('');
-    setSelectedPayment('');
+  const fetchHarvestedProducts = async () => {
+    try {
+      const harvestedRes = await api.get(
+        `/api/batches/${batch.batchID}/harvest-products`
+      );
+      setHarvestedProducts(harvestedRes.data || []);
+    } catch (error) {
+      console.error("Failed to refresh harvested products list:", error);
+    }
   };
+
+  const handleDeleteHarvest = async (harvestProductID: number) => {
+    if (
+      !window.confirm(
+        "Are you sure you want to delete this harvest record? This will return the chickens to the batch count."
+      )
+    ) {
+      return;
+    }
+    try {
+      await api.delete(`/api/harvest-products/${harvestProductID}`);
+      message.success("Harvest record deleted successfully.");
+      fetchHarvestedProducts(); // Refresh the table
+    } catch (error: any) {
+      const errorMsg =
+        error.response?.data?.error || "Failed to delete harvest record.";
+      message.error(errorMsg);
+    }
+  };
+
+  const fetchProductTypes = async () => {
+    try {
+      const productTypesRes = await api.get("/api/product-types");
+      setProductTypes(productTypesRes.data || []);
+    } catch (error) {
+      console.error("Failed to fetch product types", error);
+      message.error("Could not load product types.");
+    }
+  };
+
+  const fetchCustomers = async () => {
+    try {
+      const customersRes = await api.get("/api/customers");
+      setCustomers(customersRes.data || []);
+    } catch (error) {
+      console.error("Failed to fetch customers", error);
+      message.error("Could not load customer list.");
+    }
+  };
+
+  useEffect(() => {
+    const fetchInitialData = async () => {
+      try {
+        const paymentMethodsRes = await api.get("/api/payment-methods");
+        setPaymentMethods(paymentMethodsRes.data || []);
+      } catch (error) {
+        message.error("Failed to load necessary form data.");
+      }
+    };
+    fetchInitialData();
+    fetchCustomers();
+    fetchProductTypes();
+    fetchHarvestedProducts();
+  }, [batch.batchID]);
+
+  const handleCreateCustomer = async (values: any) => {
+    try {
+      const response = await api.post("/api/customers", values);
+      const newCustomerId = response.data.insertedId;
+
+      message.success("Customer added successfully!");
+      setIsAddCustomerModalVisible(false); // Close the modal
+
+      await fetchCustomers(); // Refresh the customer list
+
+      // Automatically select the new customer in the form
+      form.setFieldsValue({ CustomerID: newCustomerId });
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || "Failed to add customer.";
+      message.error(errorMsg);
+      // Re-throw error to keep the modal open on failure
+      throw new Error(errorMsg);
+    }
+  };
+
+  const handleAddNewType = async () => {
+    if (newTypeName.trim() === "") {
+      message.warning("Please enter a name for the new product type.");
+      return;
+    }
+    try {
+      await api.post("/api/product-types", { newType: newTypeName });
+      message.success(`Product type "${newTypeName}" added successfully.`);
+      setNewTypeName("");
+      await fetchProductTypes(); // Refresh the list
+    } catch (error: any) {
+      const errorMsg = error.response?.data?.error || "Failed to add new type.";
+      message.error(errorMsg);
+    }
+  };
+
+  const handleProductTypeChange = (value: string) => {
+    setProductType(value);
+    if (value !== "Live") {
+      setCreateInstantSale(false);
+      form.setFieldsValue({ createSale: false });
+    }
+  };
+
+  const handleFinish = async (values: any) => {
+    setLoading(true);
+    const payload = {
+      BatchID: batch.batchID,
+      HarvestDate: values.HarvestDate.format("YYYY-MM-DD"),
+      ProductType: values.ProductType,
+      // MODIFICATION 1: If QuantityHarvested is not entered, default it to 0.
+      QuantityHarvested: values.QuantityHarvested || 0,
+      TotalWeightKg: values.TotalWeightKg,
+      SaleDetails: createInstantSale
+        ? {
+            CustomerID: values.CustomerID,
+            PricePerKg: values.PricePerKg,
+            PaymentMethod: values.PaymentMethod,
+          }
+        : null,
+    };
+
+    try {
+      await api.post("/api/harvests", payload);
+      message.success("Harvest recorded successfully!");
+      form.resetFields();
+      setProductType(null);
+      setCreateInstantSale(false);
+      fetchHarvestedProducts();
+    } catch (error) {
+      message.error("Failed to record harvest.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const columns = [
+    {
+      title: "Harvest Date",
+      dataIndex: "HarvestDate",
+      key: "HarvestDate",
+      render: (text: string) => dayjs(text).format("YYYY-MM-DD"),
+    },
+    { title: "Product Type", dataIndex: "ProductType", key: "ProductType" },
+    {
+      title: "Qty Harvested",
+      dataIndex: "QuantityHarvested",
+      key: "QuantityHarvested",
+    },
+    // NEW COLUMN
+    {
+      title: "Weight Harvested (kg)",
+      dataIndex: "WeightHarvestedKg",
+      key: "WeightHarvestedKg",
+      render: (weight: number) => weight.toFixed(2),
+    },
+    {
+      title: "Qty Remaining",
+      dataIndex: "QuantityRemaining",
+      key: "QuantityRemaining",
+    },
+    // NEW COLUMN
+    {
+      title: "Weight Remaining (kg)",
+      dataIndex: "WeightRemainingKg",
+      key: "WeightRemainingKg",
+      render: (weight: number) => weight.toFixed(2),
+    },
+    {
+      title: "Actions",
+      key: "actions",
+      render: (_: any, record: HarvestedProduct) => {
+        const isSold = record.QuantityRemaining < record.QuantityHarvested;
+        return (
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => {
+                if (!isSold) {
+                  setEditingHarvest(record);
+                  setIsEditModalVisible(true);
+                }
+              }}
+              className={
+                isSold
+                  ? "text-gray-400 cursor-not-allowed"
+                  : "text-blue-600 hover:text-blue-900"
+              }
+              title={isSold ? "Cannot edit a sold product" : "Edit Harvest"}
+              disabled={isSold}
+            >
+              <FaEdit />
+            </button>
+            <button
+              onClick={() => {
+                if (!isSold) {
+                  handleDeleteHarvest(record.HarvestProductID);
+                }
+              }}
+              className={
+                isSold
+                  ? "text-gray-400 cursor-not-allowed"
+                  : "text-red-600 hover:text-red-900"
+              }
+              title={isSold ? "Cannot delete a sold product" : "Delete Harvest"}
+              disabled={isSold}
+            >
+              <FaTrash />
+            </button>
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
     <div className="space-y-6">
-      <h2 className="text-2xl font-semibold text-gray-900">Create Sellable Inventory from Harvest</h2>
-      
-      {/* Harvest Details Section */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium text-gray-900 mb-6">Harvest Details</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Product Type Dropdown */}
-          <div>
-            <label htmlFor="product-type" className="block text-sm font-medium text-gray-700 mb-1">
-              Product Type
-            </label>
-            <select
-              id="product-type"
-              value={selectedProduct}
-              onChange={(e) => setSelectedProduct(e.target.value)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-            >
-              <option value="">Select product type</option>
-              {productTypes.map((type) => (
-                <option key={type} value={type}>
-                  {type}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Harvest Date */}
-          <div>
-            <label htmlFor="harvest-date" className="block text-sm font-medium text-gray-700 mb-1">
-              Harvest Date
-            </label>
-            <div className="mt-1">
-              <input
-                type="text"
-                id="harvest-date"
-                readOnly
-                value={new Date().toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'short',
-                  day: '2-digit'
-                })}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm bg-gray-50"
-              />
+      <h2 className="text-xl font-semibold">
+        Create Sellable Inventory from Harvest
+      </h2>
+      <Form
+        form={form}
+        layout="vertical"
+        onFinish={handleFinish}
+        initialValues={{ HarvestDate: dayjs() }}
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+          <div className="flex flex-col">
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-sm font-medium text-gray-700">
+                Product Type
+              </label>
+              <Tooltip title="Manage Product Types">
+                <Button
+                  type="text"
+                  shape="circle"
+                  icon={<SettingOutlined />}
+                  onClick={() => setIsManageTypesModalVisible(true)}
+                />
+              </Tooltip>
             </div>
+            <Form.Item name="ProductType" noStyle rules={[{ required: true }]}>
+              <Select
+                placeholder="Select product type"
+                onChange={handleProductTypeChange}
+                dropdownRender={(menu) => (
+                  <>
+                    {menu}
+                    <Divider style={{ margin: "8px 0" }} />
+                    <Space style={{ padding: "0 8px 4px" }}>
+                      <Input
+                        placeholder="Add new type"
+                        value={newTypeName}
+                        onChange={(e) => setNewTypeName(e.target.value)}
+                        onKeyDown={(e) => e.stopPropagation()}
+                      />
+                      <Button
+                        type="text"
+                        icon={<PlusOutlined />}
+                        onClick={handleAddNewType}
+                      >
+                        Add
+                      </Button>
+                    </Space>
+                  </>
+                )}
+              >
+                {productTypes.map((pt) => (
+                  <Option key={pt} value={pt}>
+                    {pt}
+                  </Option>
+                ))}
+              </Select>
+            </Form.Item>
           </div>
-
-          {/* Quantity Harvested */}
-          <div>
-            <label htmlFor="quantity" className="block text-sm font-medium text-gray-700 mb-1">
-              Quantity Harvested
-            </label>
-            <div className="mt-1">
-              <input
-                type="number"
-                id="quantity"
-                value={quantity}
-                onChange={(e) => setQuantity(Number(e.target.value))}
-                min="0"
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Total Weight */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Total Weight (kg)
-            </label>
-            <div className="mt-1">
-              <input
-                type="text"
-                readOnly
-                value={totalWeight.toFixed(2)}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm bg-gray-50"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Instant Sale Details Section */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium text-gray-900 mb-6">Instant Sale Details</h3>
-        
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Customer Dropdown */}
-          <div>
-            <label htmlFor="customer" className="block text-sm font-medium text-gray-700 mb-1">
-              Customer
-            </label>
-            <select
-              id="customer"
-              value={selectedCustomer}
-              onChange={(e) => setSelectedCustomer(e.target.value)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-            >
-              <option value="">Select customer</option>
-              {customers.map((customer) => (
-                <option key={customer} value={customer}>
-                  {customer}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Price per Kg */}
-          <div>
-            <label htmlFor="price" className="block text-sm font-medium text-gray-700 mb-1">
-              Price per Kg (₱)
-            </label>
-            <div className="mt-1">
-              <input
-                type="number"
-                id="price"
-                value={pricePerKg}
-                onChange={(e) => setPricePerKg(Number(e.target.value))}
-                min="0"
-                step="0.01"
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Payment Method */}
-          <div>
-            <label htmlFor="payment-method" className="block text-sm font-medium text-gray-700 mb-1">
-              Payment Method
-            </label>
-            <select
-              id="payment-method"
-              value={selectedPayment}
-              onChange={(e) => setSelectedPayment(e.target.value)}
-              className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm"
-            >
-              <option value="">Select payment method</option>
-              {paymentMethods.map((method) => (
-                <option key={method} value={method}>
-                  {method}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Total Amount */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Total Amount (₱)
-            </label>
-            <div className="mt-1">
-              <input
-                type="text"
-                readOnly
-                value={totalAmount.toFixed(2)}
-                className="block w-full rounded-md border-gray-300 shadow-sm focus:border-green-500 focus:ring-green-500 sm:text-sm bg-gray-50 font-medium"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Action Button */}
-        <div className="mt-6 flex justify-end">
-          <button
-            type="button"
-            onClick={handleCreateSale}
-            disabled={!selectedProduct || !quantity || !selectedCustomer || !selectedPayment}
-            className={`px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 ${
-              selectedProduct && quantity && selectedCustomer && selectedPayment
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-gray-400 cursor-not-allowed'
-            }`}
+          <Form.Item
+            name="HarvestDate"
+            label="Harvest Date"
+            rules={[{ required: true }]}
           >
-            Add Harvest & Create Sale
-          </button>
-        </div>
-      </div>
+            <DatePicker style={{ width: "100%" }} />
+          </Form.Item>
 
-      {/* Inventory Table */}
-      <div className="bg-white p-6 rounded-lg shadow">
-        <h3 className="text-lg font-medium text-gray-900 mb-4">Current Inventory</h3>
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Harvest Date
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Product Type
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Qty Harvested
-                </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Qty Remaining
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {inventoryData.length > 0 ? (
-                inventoryData.map((item) => (
-                  <tr key={item.id}>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.date.toLocaleDateString()}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {item.productType}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.qtyHarvested}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {item.qtyRemaining}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
-                    No inventory records found
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+          <Form.Item
+            name="QuantityHarvested"
+            label="Quantity Harvested"
+            rules={[
+              {
+                required: productType === "Live" || productType === "Dressed",
+                message: "Quantity is required for Live or Dressed chicken.",
+              },
+            ]}
+          >
+            <InputNumber style={{ width: "100%" }} placeholder="0" min={0} />
+          </Form.Item>
+          <Form.Item
+            name="TotalWeightKg"
+            label="Total Weight (kg)"
+            rules={[{ required: true, type: "number", min: 0.01 }]}
+          >
+            <InputNumber style={{ width: "100%" }} placeholder="0.00" />
+          </Form.Item>
         </div>
-      </div>
 
-     
+        {productType === "Live" && (
+          <Form.Item name="createSale" valuePropName="checked" className="mt-4">
+            <Checkbox onChange={(e) => setCreateInstantSale(e.target.checked)}>
+              Create a sale for this live harvest?
+            </Checkbox>
+          </Form.Item>
+        )}
+
+        {createInstantSale && (
+          <>
+            <Divider>Instant Sale Details</Divider>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6">
+              <Form.Item
+                name="CustomerID"
+                label="Customer"
+                rules={[{ required: true }]}
+              >
+                {/* MODIFICATION 1: The Customer Select dropdown is now customized */}
+                <Select
+                  placeholder="Select customer"
+                  showSearch
+                  optionFilterProp="children"
+                  dropdownRender={(menu) => (
+                    <>
+                      {menu}
+                      <Divider style={{ margin: "8px 0" }} />
+                      <Button
+                        type="text"
+                        icon={<PlusOutlined />}
+                        onClick={() => setIsAddCustomerModalVisible(true)}
+                        style={{ width: "100%" }}
+                      >
+                        Add New Customer
+                      </Button>
+                    </>
+                  )}
+                >
+                  {customers.map((c) => (
+                    <Option key={c.CustomerID} value={c.CustomerID}>
+                      {c.Name}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              <Form.Item
+                name="PricePerKg"
+                label="Price Per Kg (₱)"
+                rules={[{ required: true, type: "number", min: 0 }]}
+              >
+                <InputNumber style={{ width: "100%" }} placeholder="180" />
+              </Form.Item>
+              <Form.Item
+                name="PaymentMethod"
+                label="Payment Method"
+                rules={[{ required: true }]}
+              >
+                <Select placeholder="Select payment method">
+                  {paymentMethods.map((pm) => (
+                    <Option key={pm} value={pm}>
+                      {pm}
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+            </div>
+          </>
+        )}
+
+        <Form.Item className="mt-6">
+          <Button
+            type="primary"
+            htmlType="submit"
+            loading={loading}
+            size="large"
+          >
+            {createInstantSale
+              ? "Add Harvest & Create Sale"
+              : "Add Harvest to Inventory"}
+          </Button>
+        </Form.Item>
+      </Form>
+
+      <Divider />
+
+      <h2 className="text-xl font-semibold">
+        Harvested Products (From This Batch)
+      </h2>
+      <Table
+        columns={columns}
+        dataSource={harvestedProducts}
+        rowKey="HarvestProductID"
+        pagination={false}
+      />
+      <EditHarvestForm
+        visible={isEditModalVisible}
+        initialValues={editingHarvest}
+        productTypes={productTypes}
+        onCancel={() => {
+          setIsEditModalVisible(false);
+          setEditingHarvest(null);
+        }}
+        onSubmit={() => {
+          setIsEditModalVisible(false);
+          setEditingHarvest(null);
+          fetchHarvestedProducts();
+        }}
+      />
+
+      <ManageProductTypesModal
+        visible={isManageTypesModalVisible}
+        productTypes={productTypes}
+        onClose={() => setIsManageTypesModalVisible(false)}
+        onUpdate={fetchProductTypes}
+      />
+
+      <AddCustomerForm
+        visible={isAddCustomerModalVisible}
+        onCreate={handleCreateCustomer}
+        onCancel={() => setIsAddCustomerModalVisible(false)}
+      />
     </div>
   );
 };

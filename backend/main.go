@@ -124,7 +124,7 @@ type SimpleSales struct {
 
 // for inventory items list
 type InventoryItem struct {
-	ItemID                 string  `json:"ItemID,omitempty"`
+	ItemID                 int     `json:"ItemID,omitempty"`
 	ItemName               string  `json:"ItemName"`
 	Category               string  `json:"Category"`
 	Unit                   string  `json:"Unit"`
@@ -281,6 +281,53 @@ type HealthCheckPayload struct {
 	Observations string `json:"Observations"`
 	CheckedBy    string `json:"CheckedBy"`
 }
+
+// for direct cost entry
+type DirectCostPayload struct {
+	BatchID     int     `json:"BatchID"`
+	Date        string  `json:"Date"`
+	CostType    string  `json:"CostType"`
+	Description string  `json:"Description"`
+	Amount      float64 `json:"Amount"`
+}
+
+// For the list of harvested products in the Harvesting tab
+type HarvestedProduct struct {
+	HarvestProductID  int    `json:"HarvestProductID"`
+	HarvestDate       string `json:"HarvestDate"`
+	ProductType       string `json:"ProductType"`
+	QuantityHarvested int    `json:"QuantityHarvested"`
+	QuantityRemaining int    `json:"QuantityRemaining"`
+	WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
+	WeightRemainingKg float64 `json:"WeightRemainingKg"`
+}
+
+// For the optional sale details within the harvest payload
+type InstantSaleDetails struct {
+	CustomerID    int     `json:"CustomerID"`
+	PricePerKg    float64 `json:"PricePerKg"`
+	PaymentMethod string  `json:"PaymentMethod"`
+}
+
+// For the main harvest payload from the frontend
+type HarvestPayload struct {
+	BatchID           int                 `json:"BatchID"`
+	HarvestDate       string              `json:"HarvestDate"`
+	ProductType       string              `json:"ProductType"`
+	QuantityHarvested int                 `json:"QuantityHarvested"`
+	TotalWeightKg     float64             `json:"TotalWeightKg"`
+	// This is a pointer, which allows the field to be null if no sale is made
+	SaleDetails       *InstantSaleDetails `json:"SaleDetails"`
+}
+// for updating or editing a harvested product
+type HarvestProductUpdatePayload struct {
+	HarvestDate       string  `json:"HarvestDate"`
+	ProductType       string  `json:"ProductType"`
+	QuantityHarvested int     `json:"QuantityHarvested"`
+	TotalWeightKg     float64 `json:"TotalWeightKg"`
+}
+
+
 
 /* ===========================
     Models for IoT
@@ -771,7 +818,7 @@ func getBatchCosts(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	query := `SELECT Date, CostType, Description, Amount 
+	query := `SELECT CostID, Date, CostType, Description, Amount 
             FROM cm_production_cost 
             WHERE BatchID = ? ORDER BY Date DESC`
 
@@ -784,14 +831,15 @@ func getBatchCosts(w http.ResponseWriter, r *http.Request) {
 
 	var costs []map[string]interface{}
 	for rows.Next() {
+		var costID int
 		var date, costType, description string
 		var amount float64
-		if err := rows.Scan(&date, &costType, &description, &amount); err != nil {
+		if err := rows.Scan(&costID, &date, &costType, &description, &amount); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan batch costs", err)
 			return
 		}
 		costs = append(costs, map[string]interface{}{
-			"id":          date + costType + description,
+			"id":          costID,
 			"date":        date,
 			"type":        costType,
 			"description": description,
@@ -811,7 +859,32 @@ func getBatchEvents(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	rows, err := db.QueryContext(ctx, mustGetEnv("GET_EVENTS"), batchId, batchId)
+	query := `
+		SELECT 
+			UsageID AS EventID, 
+			'consumption' AS EventType, 
+			iu.Date AS EventDate,
+			i.ItemName AS Details, 
+			CONCAT(iu.QuantityUsed, ' ', i.Unit) AS QtyCount
+		FROM cm_inventory_usage iu
+		JOIN cm_items i ON iu.ItemID = i.ItemID
+		WHERE iu.BatchID = ?
+		
+		UNION ALL
+		
+		SELECT 
+			MortalityID AS EventID, 
+			'mortality' AS EventType, 
+			m.Date AS EventDate, 
+			m.Notes AS Details, 
+			m.BirdsLoss AS QtyCount
+		FROM cm_mortality m
+		WHERE m.BatchID = ?
+		
+		ORDER BY EventDate DESC;
+	`
+
+	rows, err := db.QueryContext(ctx, query, batchId, batchId)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to fetch batch events", err)
 		return
@@ -820,21 +893,32 @@ func getBatchEvents(w http.ResponseWriter, r *http.Request) {
 
 	var events []map[string]interface{}
 	for rows.Next() {
-		var date, event, details, qtyCount string
-		if err := rows.Scan(&date, &event, &details, &qtyCount); err != nil {
+		var eventID int
+		var eventType, eventDate, details, qtyCount string
+		
+		if err := rows.Scan(&eventID, &eventType, &eventDate, &details, &qtyCount); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan batch events", err)
 			return
 		}
+
+		// Convert date to just YYYY-MM-DD format
+		parsedDate, err := time.Parse(time.RFC3339, eventDate)
+		if err != nil {
+			parsedDate, _ = time.Parse("2006-01-02 15:04:05", eventDate)
+		}
+
 		events = append(events, map[string]interface{}{
-			"id":      date + event + details + qtyCount,
-			"date":    date,
-			"event":   event,
+			"id":      eventID,
+			"type":    eventType,
+			"date":    parsedDate.Format("2006-01-02"),
+			"event":   strings.Title(eventType), // "consumption" -> "Consumption"
 			"details": details,
 			"qty":     qtyCount,
 		})
 	}
 	respondJSON(w, http.StatusOK, map[string]interface{}{"data": events})
 }
+
 
 func updateBatchEvent(w http.ResponseWriter, r *http.Request) {
 	batchId := chi.URLParam(r, "id")
@@ -1226,8 +1310,6 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // for inventory items
-
-// In main.go, replace the existing getInventoryItems function with this one
 
 func getInventoryItems(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
@@ -1923,11 +2005,10 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 	defer tx.Rollback()
 
 	stockQuery := `
-		SELECT PurchaseID, QuantityRemaining, WeightRemainingKg 
+		SELECT PurchaseID, QuantityRemaining 
 		FROM cm_inventory_purchases 
 		WHERE ItemID = ? AND IsActive = 1 AND QuantityRemaining > 0 
-		ORDER BY PurchaseDate ASC 
-		FOR UPDATE`
+		ORDER BY PurchaseDate ASC`
 
 	rows, err := tx.QueryContext(ctx, stockQuery, payload.ItemID)
 	if err != nil {
@@ -1938,13 +2019,13 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 	type purchaseStock struct {
 		ID              int
 		QtyRemaining    float64
-		WeightRemaining float64
+		
 	}
 	var availablePurchases []purchaseStock
 	var totalStockAvailable float64
 	for rows.Next() {
 		var ps purchaseStock
-		if err := rows.Scan(&ps.ID, &ps.QtyRemaining, &ps.WeightRemaining); err != nil {
+		if err := rows.Scan(&ps.ID, &ps.QtyRemaining); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan stock", err)
 			return
 		}
@@ -1981,14 +2062,8 @@ func createInventoryUsage(w http.ResponseWriter, r *http.Request) {
 			quantityDrawn = quantityToDeduct
 		}
 
-		avgWeight := 0.0
-		if purchase.QtyRemaining > 0 {
-			avgWeight = purchase.WeightRemaining / purchase.QtyRemaining
-		}
-		weightDrawn := quantityDrawn * avgWeight
-
-		updateQuery := "UPDATE cm_inventory_purchases SET QuantityRemaining = QuantityRemaining - ?, WeightRemainingKg = WeightRemainingKg - ? WHERE PurchaseID = ?"
-		_, err := tx.ExecContext(ctx, updateQuery, quantityDrawn, weightDrawn, purchase.ID)
+		updateQuery := "UPDATE cm_inventory_purchases SET QuantityRemaining = QuantityRemaining - ? WHERE PurchaseID = ?"
+		_, err := tx.ExecContext(ctx, updateQuery, quantityDrawn, purchase.ID)
 		if err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to update purchase stock", err)
 			return
@@ -2178,6 +2253,614 @@ func createHealthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
 }
 
+// for deleting an event (consumption or mortality) and reverting its effects on Batch Monitoring
+func deleteEvent(w http.ResponseWriter, r *http.Request) {
+	eventType := chi.URLParam(r, "type")
+	eventID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid event ID", err)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback() 
+
+	switch eventType {
+	case "consumption":
+	
+		type reversalDetail struct {
+			PurchaseID    int
+			QuantityDrawn float64
+		}
+		var details []reversalDetail
+
+	
+		rows, err := tx.QueryContext(ctx, "SELECT PurchaseID, QuantityDrawn FROM cm_inventory_usage_details WHERE UsageID = ?", eventID)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to find usage details", err)
+			return
+		}
+
+		for rows.Next() {
+			var d reversalDetail
+			if err := rows.Scan(&d.PurchaseID, &d.QuantityDrawn); err != nil {
+				rows.Close()
+				handleError(w, http.StatusInternalServerError, "Failed to scan usage detail", err)
+				return
+			}
+			details = append(details, d)
+		}
+	
+		rows.Close()
+		if err = rows.Err(); err != nil {
+			handleError(w, http.StatusInternalServerError, "Error iterating usage details", err)
+			return
+		}
+
+	
+		for _, d := range details {
+			_, err = tx.ExecContext(ctx, "UPDATE cm_inventory_purchases SET QuantityRemaining = QuantityRemaining + ? WHERE PurchaseID = ?", d.QuantityDrawn, d.PurchaseID)
+			if err != nil {
+				handleError(w, http.StatusInternalServerError, "Failed to restore inventory stock", err)
+				return
+			}
+		}
+
+		
+		if _, err := tx.ExecContext(ctx, "DELETE FROM cm_inventory_usage_details WHERE UsageID = ?", eventID); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to delete usage details", err)
+			return
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM cm_inventory_usage WHERE UsageID = ?", eventID); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to delete usage record", err)
+			return
+		}
+
+	case "mortality":
+		var birdsLoss, batchID int
+		err := tx.QueryRowContext(ctx, "SELECT BirdsLoss, BatchID FROM cm_mortality WHERE MortalityID = ?", eventID).Scan(&birdsLoss, &batchID)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to find mortality record", err)
+			return
+		}
+		_, err = tx.ExecContext(ctx, "UPDATE cm_batches SET CurrentChicken = CurrentChicken + ? WHERE BatchID = ?", birdsLoss, batchID)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to restore batch population", err)
+			return
+		}
+		if _, err := tx.ExecContext(ctx, "DELETE FROM cm_mortality WHERE MortalityID = ?", eventID); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to delete mortality record", err)
+			return
+		}
+
+	case "cost":
+		_, err := tx.ExecContext(ctx, "DELETE FROM cm_production_cost WHERE CostID = ?", eventID)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to delete cost record", err)
+			return
+		}
+
+	default:
+		handleError(w, http.StatusBadRequest, "Unknown event type", nil)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+// for getting cost records in batches tab
+
+func createDirectCost(w http.ResponseWriter, r *http.Request) {
+	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid batch ID", err)
+		return
+	}
+
+	var payload DirectCostPayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	payload.BatchID = batchID
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := "INSERT INTO cm_production_cost (BatchID, Date, CostType, Amount, Description) VALUES (?, ?, ?, ?, ?)"
+	res, err := db.ExecContext(ctx, query, payload.BatchID, payload.Date, payload.CostType, payload.Amount, payload.Description)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to insert direct cost", err)
+		return
+	}
+
+	lastID, _ := res.LastInsertId()
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "insertedId": lastID})
+}
+
+// for updating a direct cost record in batches tab
+
+func updateDirectCost(w http.ResponseWriter, r *http.Request) {
+	costID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid cost ID", err)
+		return
+	}
+
+	var payload DirectCostPayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := `
+		UPDATE cm_production_cost 
+		SET Date = ?, CostType = ?, Description = ?, Amount = ? 
+		WHERE CostID = ?`
+	
+	res, err := db.ExecContext(ctx, query, payload.Date, payload.CostType, payload.Description, payload.Amount, costID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update direct cost", err)
+		return
+	}
+
+	rowsAffected, _ := res.RowsAffected()
+	if rowsAffected == 0 {
+		handleError(w, http.StatusNotFound, "Cost record not found or no changes made", nil)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+
+func getHarvestedProducts(w http.ResponseWriter, r *http.Request) {
+	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid batch ID", err)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+
+	query := `
+		SELECT
+			hp.HarvestProductID,
+			h.HarvestDate,
+			hp.ProductType,
+			hp.QuantityHarvested,
+			hp.QuantityRemaining,
+			hp.WeightHarvestedKg,
+			hp.WeightRemainingKg
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE h.BatchID = ?
+		ORDER BY h.HarvestDate DESC`
+
+	rows, err := db.QueryContext(ctx, query, batchID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to query harvested products", err)
+		return
+	}
+	defer rows.Close()
+
+	var products []HarvestedProduct
+	for rows.Next() {
+		var p HarvestedProduct
+		
+		if err := rows.Scan(
+			&p.HarvestProductID, &p.HarvestDate, &p.ProductType,
+			&p.QuantityHarvested, &p.QuantityRemaining,
+			&p.WeightHarvestedKg, &p.WeightRemainingKg,
+		); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan harvested product", err)
+			return
+		}
+		products = append(products, p)
+	}
+
+	respondJSON(w, http.StatusOK, products)
+}
+
+func createHarvest(w http.ResponseWriter, r *http.Request) {
+	var payload HarvestPayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+
+	var currentChicken int
+	checkQuery := "SELECT CurrentChicken FROM cm_batches WHERE BatchID = ? FOR UPDATE"
+	if err := tx.QueryRowContext(ctx, checkQuery, payload.BatchID).Scan(&currentChicken); err != nil {
+		handleError(w, http.StatusNotFound, "Batch not found", err)
+		return
+	}
+	if payload.QuantityHarvested > currentChicken {
+		handleError(w, http.StatusBadRequest, "Not enough chickens in the batch to harvest.", nil)
+		return
+	}
+
+	
+	updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken - ? WHERE BatchID = ?"
+	if _, err := tx.ExecContext(ctx, updateBatchQuery, payload.QuantityHarvested, payload.BatchID); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update batch population", err)
+		return
+	}
+
+
+	harvestNote := fmt.Sprintf("%d %s chickens harvested.", payload.QuantityHarvested, payload.ProductType)
+	harvestQuery := "INSERT INTO cm_harvest (BatchID, HarvestDate, Notes) VALUES (?, ?, ?)"
+	res, err := tx.ExecContext(ctx, harvestQuery, payload.BatchID, payload.HarvestDate, harvestNote)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to create harvest record", err)
+		return
+	}
+	harvestID, _ := res.LastInsertId()
+
+
+	if payload.SaleDetails != nil {
+	
+
+	
+		productQuery := `
+			INSERT INTO cm_harvest_products 
+			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg) 
+			VALUES (?, ?, ?, ?, 0, 0.00)`
+		res, err = tx.ExecContext(ctx, productQuery, harvestID, payload.ProductType, payload.QuantityHarvested, payload.TotalWeightKg)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to create harvested product record for sale", err)
+			return
+		}
+		harvestProductID, _ := res.LastInsertId()
+
+	
+		totalAmount := payload.TotalWeightKg * payload.SaleDetails.PricePerKg
+		saleOrderQuery := `
+			INSERT INTO cm_sales_orders (CustomerID, SaleDate, TotalAmount, PaymentMethod, Notes) 
+			VALUES (?, ?, ?, ?, 'Instant sale from live harvest')`
+		res, err = tx.ExecContext(ctx, saleOrderQuery, payload.SaleDetails.CustomerID, payload.HarvestDate, totalAmount, payload.SaleDetails.PaymentMethod)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to create sales order", err)
+			return
+		}
+		saleID, _ := res.LastInsertId()
+
+	
+		saleDetailQuery := `
+			INSERT INTO cm_sales_details (SaleID, HarvestProductID, QuantitySold, TotalWeightKg, PricePerKg) 
+			VALUES (?, ?, ?, ?, ?)`
+		_, err = tx.ExecContext(ctx, saleDetailQuery, saleID, harvestProductID, payload.QuantityHarvested, payload.TotalWeightKg, payload.SaleDetails.PricePerKg)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to create sales detail", err)
+			return
+		}
+
+	} else {
+		
+		productQuery := `
+			INSERT INTO cm_harvest_products 
+			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg) 
+			VALUES (?, ?, ?, ?, ?, ?)`
+		_, err = tx.ExecContext(ctx, productQuery, harvestID, payload.ProductType, payload.QuantityHarvested, payload.TotalWeightKg, payload.QuantityHarvested, payload.TotalWeightKg)
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to create harvested product record", err)
+			return
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
+}
+
+// for getting product types (enum) in harvesting tab
+func getProductTypes(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := `
+		SELECT SUBSTRING(COLUMN_TYPE, 6, LENGTH(COLUMN_TYPE) - 6)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() 
+		AND TABLE_NAME = 'cm_harvest_products' 
+		AND COLUMN_NAME = 'ProductType'`
+
+	var enumStr string
+	if err := db.QueryRowContext(ctx, query).Scan(&enumStr); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to query product types", err)
+		return
+	}
+
+	cleanedStr := strings.ReplaceAll(enumStr, "'", "")
+	types := strings.Split(cleanedStr, ",")
+	respondJSON(w, http.StatusOK, types)
+}
+// for adding a new product type (enum) in harvesting tab
+func addProductType(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		NewType string `json:"newType"`
+	}
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	if payload.NewType == "" {
+		handleError(w, http.StatusBadRequest, "New product type name cannot be empty.", nil)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+	
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	query := `
+		SELECT SUBSTRING(COLUMN_TYPE, 6, LENGTH(COLUMN_TYPE) - 6)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cm_harvest_products' AND COLUMN_NAME = 'ProductType'`
+	
+	var enumStr string
+	if err := tx.QueryRowContext(ctx, query).Scan(&enumStr); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to query current product types", err)
+		return
+	}
+
+	cleanedStr := strings.ReplaceAll(enumStr, "'", "")
+	existingTypes := strings.Split(cleanedStr, ",")
+	for _, t := range existingTypes {
+		if strings.EqualFold(t, payload.NewType) {
+			handleError(w, http.StatusConflict, "This product type already exists.", nil)
+			return
+		}
+	}
+
+	newEnumList := enumStr + ",'" + payload.NewType + "'"
+	alterQuery := fmt.Sprintf("ALTER TABLE cm_harvest_products MODIFY COLUMN ProductType ENUM(%s)", newEnumList)
+
+	if _, err := tx.ExecContext(ctx, alterQuery); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update product types in database.", err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
+}
+
+// for deleting a product type (enum) in harvesting tab
+func deleteProductType(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		TypeToDelete string `json:"typeToDelete"`
+	}
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	if payload.TypeToDelete == "" {
+		handleError(w, http.StatusBadRequest, "Product type to delete cannot be empty.", nil)
+		return
+	}
+	if strings.EqualFold(payload.TypeToDelete, "Live") || strings.EqualFold(payload.TypeToDelete, "Dressed") {
+		handleError(w, http.StatusBadRequest, "Cannot delete core product types 'Live' or 'Dressed'.", nil)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	var usageCount int
+	usageQuery := "SELECT COUNT(*) FROM cm_harvest_products WHERE ProductType = ?"
+	if err := tx.QueryRowContext(ctx, usageQuery, payload.TypeToDelete).Scan(&usageCount); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to check product type usage.", err)
+		return
+	}
+	if usageCount > 0 {
+		handleError(w, http.StatusConflict, "Cannot delete a product type that is currently in use.", nil)
+		return
+	}
+
+	query := `
+		SELECT SUBSTRING(COLUMN_TYPE, 6, LENGTH(COLUMN_TYPE) - 6)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cm_harvest_products' AND COLUMN_NAME = 'ProductType'`
+	
+	var enumStr string
+	if err := tx.QueryRowContext(ctx, query).Scan(&enumStr); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to query current product types", err)
+		return
+	}
+
+	cleanedStr := strings.ReplaceAll(enumStr, "'", "")
+	existingTypes := strings.Split(cleanedStr, ",")
+	var newTypes []string
+	for _, t := range existingTypes {
+		if !strings.EqualFold(t, payload.TypeToDelete) {
+			newTypes = append(newTypes, "'"+t+"'")
+		}
+	}
+	newEnumList := strings.Join(newTypes, ",")
+
+	alterQuery := fmt.Sprintf("ALTER TABLE cm_harvest_products MODIFY COLUMN ProductType ENUM(%s)", newEnumList)
+	if _, err := tx.ExecContext(ctx, alterQuery); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update product types in database.", err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+// for deleting a harvest product and reverting its effects on Batch Monitoring and Sales
+
+func deleteHarvestProduct(w http.ResponseWriter, r *http.Request) {
+	harvestProductID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid harvest product ID", err)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	var batchID, quantityHarvested, quantityRemaining int
+	infoQuery := `
+		SELECT h.BatchID, hp.QuantityHarvested, hp.QuantityRemaining
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE hp.HarvestProductID = ? FOR UPDATE`
+	if err := tx.QueryRowContext(ctx, infoQuery, harvestProductID).Scan(&batchID, &quantityHarvested, &quantityRemaining); err != nil {
+		handleError(w, http.StatusNotFound, "Harvest product not found", err)
+		return
+	}
+	
+	if quantityRemaining < quantityHarvested {
+		handleError(w, http.StatusBadRequest, "Cannot delete a harvest that has already been sold.", nil)
+		return
+	}
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM cm_harvest_products WHERE HarvestProductID = ?", harvestProductID); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to delete harvest product", err)
+		return
+	}
+
+	updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken + ? WHERE BatchID = ?"
+	if _, err := tx.ExecContext(ctx, updateBatchQuery, quantityHarvested, batchID); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to restore batch population", err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func updateHarvestProduct(w http.ResponseWriter, r *http.Request) {
+	harvestProductID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid harvest product ID", err)
+		return
+	}
+
+	var payload HarvestProductUpdatePayload
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	var oldQtyHarvested, oldQtyRemaining, batchID int
+	checkQuery := `
+		SELECT h.BatchID, hp.QuantityHarvested, hp.QuantityRemaining
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE hp.HarvestProductID = ? FOR UPDATE`
+	if err := tx.QueryRowContext(ctx, checkQuery, harvestProductID).Scan(&batchID, &oldQtyHarvested, &oldQtyRemaining); err != nil {
+		handleError(w, http.StatusNotFound, "Harvest product not found", err)
+		return
+	}
+
+	if oldQtyRemaining < oldQtyHarvested {
+		handleError(w, http.StatusBadRequest, "Cannot edit a harvest that has already been sold.", nil)
+		return
+	}
+
+	updateProductQuery := `
+		UPDATE cm_harvest_products 
+		SET ProductType = ?, QuantityHarvested = ?, WeightHarvestedKg = ?, QuantityRemaining = ?, WeightRemainingKg = ?
+		WHERE HarvestProductID = ?`
+	_, err = tx.ExecContext(ctx, updateProductQuery, payload.ProductType, payload.QuantityHarvested, payload.TotalWeightKg, payload.QuantityHarvested, payload.TotalWeightKg, harvestProductID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update harvest product", err)
+		return
+	}
+
+	updateHarvestQuery := "UPDATE cm_harvest SET HarvestDate = ? WHERE HarvestID = (SELECT HarvestID FROM cm_harvest_products WHERE HarvestProductID = ?)"
+	_, err = tx.ExecContext(ctx, updateHarvestQuery, payload.HarvestDate, harvestProductID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update harvest date", err)
+		return
+	}
+
+	// Adjust the batch's chicken count based on the change in harvested quantity
+	qtyDifference := payload.QuantityHarvested - oldQtyHarvested
+	updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken - ? WHERE BatchID = ?"
+	if _, err := tx.ExecContext(ctx, updateBatchQuery, qtyDifference, batchID); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to adjust batch population", err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
 /* ===========================
     Router / Server
 =========================== */
@@ -2254,14 +2937,27 @@ func buildRouter() http.Handler {
 			r.Get("/vitals", getBatchVitals)
 			r.Get("/events", getBatchEvents)
 			r.Get("/costs", getBatchCosts)
-			// These event-specific routes can be added later if needed
-			// r.Post("/events", insertBatchEvent)
-			// r.Put("/events", updateBatchEvent)
-			// r.Delete("/events", deleteBatchEvent)
+			r.Post("/costs", createDirectCost)
+			r.Get("/harvest-products", getHarvestedProducts)
 		})
 
+		// for record daily events
 		r.Post("/mortality", createMortalityRecord)
 		r.Post("/health-checks", createHealthCheck)
+		r.Delete("/events/{type}/{id}", deleteEvent) 
+
+		r.Put("/costs/{id}", updateDirectCost)
+		r.Delete("/events/{type}/{id}", deleteEvent)
+
+		// for harvesting
+		r.Get("/product-types", getProductTypes)
+		r.Post("/product-types", addProductType)
+		r.Delete("/product-types", deleteProductType)
+		r.Post("/harvests", createHarvest)
+		r.Delete("/harvest-products/{id}", deleteHarvestProduct)
+		r.Put("/harvest-products/{id}", updateHarvestProduct)
+
+
 	})
 
 	return r

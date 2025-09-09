@@ -16,6 +16,8 @@ const { Option } = Select;
 interface Item {
   ItemID: number;
   ItemName: string;
+  TotalQuantityRemaining: number;
+  Unit: string;
 }
 
 interface ConsumptionFormProps {
@@ -45,12 +47,8 @@ const ConsumptionForm: React.FC<ConsumptionFormProps> = ({
   useEffect(() => {
     if (visible) {
       const fetchItems = async () => {
-        const category =
-          eventType === "Feed"
-            ? "Feed"
-            : eventType === "Medicine"
-              ? "Medicine"
-              : "Vitamins";
+        const category = eventType;
+
         try {
           const response = await api.get(`/api/items?category=${category}`);
           setItems(response.data || []);
@@ -61,7 +59,6 @@ const ConsumptionForm: React.FC<ConsumptionFormProps> = ({
       fetchItems();
       form.setFieldsValue({ Date: dayjs() });
     } else {
-      // This line resets the form when the modal is closed
       form.resetFields();
     }
   }, [visible, eventType, form]);
@@ -80,7 +77,7 @@ const ConsumptionForm: React.FC<ConsumptionFormProps> = ({
         try {
           await api.post("/api/usage", payload);
           message.success("Consumption recorded successfully!");
-          onSubmit(); // This will trigger a data refresh on the parent
+          onSubmit();
           form.resetFields();
         } catch (error: any) {
           const errorMsg =
@@ -113,14 +110,16 @@ const ConsumptionForm: React.FC<ConsumptionFormProps> = ({
           >
             {items.map((item) => (
               <Option key={item.ItemID} value={item.ItemID}>
-                {item.ItemName}
+                {`${item.ItemName} (${item.TotalQuantityRemaining.toFixed(
+                  2
+                )}${item.Unit})`}
               </Option>
             ))}
           </Select>
         </Form.Item>
         <Form.Item
           name="QuantityUsed"
-          label="Quantity Used (kg or pcs)"
+          label="Quantity Used"
           rules={[{ required: true }]}
         >
           <InputNumber min={0.01} style={{ width: "100%" }} />
