@@ -363,14 +363,16 @@ const NewSale: React.FC = () => {
 
   return (
     <div className="p-2 sm:p-4">
-      <Card
-        title={
-          <Title level={4} style={{ margin: 0 }}>
-            Order Information
-          </Title>
-        }
-        style={{ marginBottom: 24 }}
-      >
+<Card
+  title={
+    <Title level={4} style={{ margin: 0 }}>
+      Order Information
+    </Title>
+  }
+  style={{ marginBottom: 24 }}
+  styles={{ body: { padding: screens.xs ? "8px" : "16px" } }} // ✅ updated
+>
+
         <Form
           form={form}
           layout="vertical"
@@ -386,30 +388,31 @@ const NewSale: React.FC = () => {
                 name="CustomerID"
                 rules={[{ required: true }]}
               >
-                <Select
-                  placeholder="Select customer"
-                  showSearch
-                  optionFilterProp="label"
-                  disabled={salesItems.length > 0}
-                  options={customers.map((c) => ({
-                    value: c.CustomerID,
-                    label: c.Name,
-                  }))}
-                  dropdownRender={(menu) => (
-                    <>
-                      {menu}
-                      <Divider style={{ margin: "8px 0" }} />
-                      <Button
-                        type="text"
-                        icon={<PlusOutlined />}
-                        onClick={() => setIsCustomerModalVisible(true)}
-                        style={{ width: "100%" }}
-                      >
-                        Add New Customer
-                      </Button>
-                    </>
-                  )}
-                />
+               <Select
+  placeholder="Select customer"
+  showSearch
+  optionFilterProp="label"
+  disabled={salesItems.length > 0}
+  options={customers.map((c) => ({
+    value: c.CustomerID,
+    label: c.Name,
+  }))}
+  popupRender={(menu) => (   // ✅ use popupRender instead of dropdownRender
+    <>
+      {menu}
+      <Divider style={{ margin: "8px 0" }} />
+      <Button
+        type="text"
+        icon={<PlusOutlined />}
+        onClick={() => setIsCustomerModalVisible(true)}
+        style={{ width: "100%" }}
+      >
+        Add New Customer
+      </Button>
+    </>
+  )}
+/>
+
               </Form.Item>
             </Col>
             <Col xs={24} md={8}>
@@ -503,10 +506,11 @@ const NewSale: React.FC = () => {
       </Card>
 
       <Card
-        title={<Title level={5}>Order Items</Title>}
-        style={{ marginBottom: 16 }}
-        bodyStyle={{ padding: screens.xs ? "8px" : "16px" }}
-      >
+  title={<Title level={5}>Order Items</Title>}
+  style={{ marginBottom: 16 }}
+  styles={{ body: { padding: screens.xs ? "8px" : "16px" } }} // ✅ updated
+>
+
         <Table
           size={screens.xs ? "small" : "middle"}
           columns={orderItemColumns}

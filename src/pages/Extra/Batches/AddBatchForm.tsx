@@ -50,7 +50,7 @@ const AddBatchForm: React.FC<AddBatchFormProps> = ({
             console.log("Validate Failed:", info);
           });
       }}
-      destroyOnClose // Ensures form resets state when closed
+      destroyOnHidden // Ensures form resets state when closed
     >
       <Form
         form={form}
