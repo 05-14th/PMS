@@ -102,7 +102,11 @@ const ConsumptionForm: React.FC<ConsumptionFormProps> = ({
       okText="Record"
     >
       <Form form={form} layout="vertical">
-        <Form.Item name="ItemID" label="Item" rules={[{ required: true }]}>
+        <Form.Item
+          name="ItemID"
+          label="Item"
+          rules={[{ required: true, message: "Please select an item" }]}
+        >
           <Select
             placeholder="Select an item"
             showSearch
@@ -120,7 +124,7 @@ const ConsumptionForm: React.FC<ConsumptionFormProps> = ({
         <Form.Item
           name="QuantityUsed"
           label="Quantity Used"
-          rules={[{ required: true }]}
+          rules={[{ required: true, message: "Please enter quantity used" }]}
         >
           <InputNumber min={0.01} style={{ width: "100%" }} />
         </Form.Item>

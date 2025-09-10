@@ -1,5 +1,5 @@
-import React from "react";
-import { Modal, List, Button, message } from "antd";
+import React, { useEffect, useState } from "react";
+import { Modal, List, Button, message, Tooltip } from "antd";
 import { DeleteOutlined } from "@ant-design/icons";
 import axios from "axios";
 
@@ -20,7 +20,24 @@ const ManageProductTypesModal: React.FC<ManageProductTypesModalProps> = ({
   productTypes,
   onClose,
   onUpdate,
+  zIndex,
 }) => {
+  const [usedTypes, setUsedTypes] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (visible) {
+      const fetchUsage = async () => {
+        try {
+          const res = await api.get("/api/product-types/usage");
+          setUsedTypes(res.data || []);
+        } catch (error) {
+          console.error("Failed to fetch product type usage", error);
+        }
+      };
+      fetchUsage();
+    }
+  }, [visible]);
+
   const handleDelete = async (typeToDelete: string) => {
     if (
       !window.confirm(
@@ -56,6 +73,7 @@ const ManageProductTypesModal: React.FC<ManageProductTypesModalProps> = ({
           Close
         </Button>,
       ]}
+      zIndex={zIndex} // Apply the zIndex to the modal
     >
       <p className="text-sm text-gray-500 mb-4">
         You can delete custom product types that are not currently in use.
@@ -63,23 +81,32 @@ const ManageProductTypesModal: React.FC<ManageProductTypesModalProps> = ({
       <List
         bordered
         dataSource={customTypes}
-        renderItem={(item) => (
-          <List.Item
-            actions={[
-              <Button
-                type="text"
-                danger
-                icon={<DeleteOutlined />}
-                onClick={() => handleDelete(item)}
-              />,
-            ]}
-          >
-            {item}
-          </List.Item>
-        )}
+        renderItem={(item) => {
+          const isInUse = usedTypes.includes(item);
+          return (
+            <List.Item
+              actions={[
+                <Tooltip
+                  title={
+                    isInUse ? "Cannot delete a type that is in use" : "Delete"
+                  }
+                >
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={() => handleDelete(item)}
+                    disabled={isInUse}
+                  />
+                </Tooltip>,
+              ]}
+            >
+              {item}
+            </List.Item>
+          );
+        }}
       />
     </Modal>
   );
 };
-
 export default ManageProductTypesModal;

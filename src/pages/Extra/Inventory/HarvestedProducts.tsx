@@ -67,7 +67,7 @@ const HarvestedProducts: React.FC = () => {
       try {
         const [inventoryRes, summaryRes] = await Promise.all([
           api.get("/api/harvested-products", { params: filters }),
-          api.get("/api/harvested-products/summary"),
+          api.get("/api/harvested-products/summary", { params: filters }),
         ]);
         setInventory(inventoryRes.data || []);
         setSummary(summaryRes.data || null);

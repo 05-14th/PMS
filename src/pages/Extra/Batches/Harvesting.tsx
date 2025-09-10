@@ -90,6 +90,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
   const [isProcessingModalVisible, setIsProcessingModalVisible] =
     useState(false);
   const [processingLoading, setProcessingLoading] = useState(false);
+  const [vitals, setVitals] = useState<BatchVitals | null>(null);
 
   const fetchHarvestedProducts = async () => {
     try {
@@ -144,17 +145,24 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
   useEffect(() => {
     const fetchInitialData = async () => {
       try {
-        const [customersRes, paymentsRes, productTypesRes, dressedRes] =
-          await Promise.all([
-            api.get("/api/customers"),
-            api.get("/api/payment-methods"),
-            api.get("/api/product-types"),
-            api.get("/api/sale-products?type=Dressed"),
-          ]);
+        const [
+          customersRes,
+          paymentsRes,
+          productTypesRes,
+          dressedRes,
+          vitalsRes,
+        ] = await Promise.all([
+          api.get("/api/customers"),
+          api.get("/api/payment-methods"),
+          api.get("/api/product-types"),
+          api.get("/api/sale-products?type=Dressed"),
+          api.get(`/api/batches/${batch.batchID}/vitals`),
+        ]);
         setCustomers(customersRes.data || []);
         setPaymentMethods(paymentsRes.data || []);
         setProductTypes(productTypesRes.data || []);
         setDressedInventory(dressedRes.data || []);
+        setVitals(vitalsRes.data || null);
       } catch (error) {
         message.error("Failed to load necessary form data.");
       }
@@ -162,7 +170,6 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
     fetchInitialData();
     fetchHarvestedProducts();
   }, [batch.batchID]);
-
   const handlePrimaryHarvestFinish = async (values: any) => {
     setLoading(true);
     const payload = {
@@ -409,7 +416,9 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
             <Form.Item
               name="ProductType"
               label="Product Type"
-              rules={[{ required: true }]}
+              rules={[
+                { required: true, message: "Please select a product type." },
+              ]}
             >
               <Select
                 placeholder="Select product type"
@@ -426,17 +435,53 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
             >
               <DatePicker style={{ width: "100%" }} />
             </Form.Item>
+            {/* MODIFICATION: The Quantity Harvested field now has two new validation rules */}
             <Form.Item
               name="QuantityHarvested"
               label="Quantity Harvested"
-              rules={[{ required: true, type: "number", min: 1 }]}
+              rules={[
+                { required: true, message: "Please input a quantity." },
+                {
+                  type: "integer",
+                  message: "Quantity must be a whole number.",
+                },
+                // This is the new custom validator
+                ({ getFieldValue }) => ({
+                  validator(_, value) {
+                    if (
+                      !value ||
+                      !vitals ||
+                      value <= vitals.currentPopulation
+                    ) {
+                      return Promise.resolve();
+                    }
+                    return Promise.reject(
+                      new Error(
+                        `Cannot harvest more than the current population of ${vitals.currentPopulation}`
+                      )
+                    );
+                  },
+                }),
+              ]}
             >
-              <InputNumber style={{ width: "100%" }} placeholder="0" />
+              <InputNumber
+                style={{ width: "100%" }}
+                placeholder="0"
+                min={1}
+                precision={0}
+              />
             </Form.Item>
             <Form.Item
               name="TotalWeightKg"
               label="Total Weight (kg)"
-              rules={[{ required: true, type: "number", min: 0.01 }]}
+              rules={[
+                {
+                  required: true,
+                  type: "number",
+                  min: 0.01,
+                  message: "Please input a valid weight.",
+                },
+              ]}
             >
               <InputNumber style={{ width: "100%" }} placeholder="0.00" />
             </Form.Item>
@@ -461,7 +506,9 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
                 <Form.Item
                   name="CustomerID"
                   label="Customer"
-                  rules={[{ required: true }]}
+                  rules={[
+                    { required: true, message: "Please select a customer." },
+                  ]}
                 >
                   <Select
                     placeholder="Select customer"
@@ -492,14 +539,26 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
                 <Form.Item
                   name="PricePerKg"
                   label="Price Per Kg (₱)"
-                  rules={[{ required: true, type: "number", min: 0 }]}
+                  rules={[
+                    {
+                      required: true,
+                      type: "number",
+                      min: 0,
+                      message: "Please input a valid price.",
+                    },
+                  ]}
                 >
                   <InputNumber style={{ width: "100%" }} placeholder="180" />
                 </Form.Item>
                 <Form.Item
                   name="PaymentMethod"
                   label="Payment Method"
-                  rules={[{ required: true }]}
+                  rules={[
+                    {
+                      required: true,
+                      message: "Please select a payment method.",
+                    },
+                  ]}
                 >
                   <Select placeholder="Select payment method">
                     {paymentMethods.map((pm) => (
@@ -565,7 +624,12 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
                 <Form.Item
                   name="SourceHarvestProductID"
                   label="Source Dressed Chicken"
-                  rules={[{ required: true }]}
+                  rules={[
+                    {
+                      required: true,
+                      message: "Please select a source batch.",
+                    },
+                  ]}
                 >
                   <Select
                     placeholder="Select a batch of Dressed chicken"
@@ -594,7 +658,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
                   name="QuantityToProcess"
                   label="Quantity to Process"
                   rules={[
-                    { required: true },
+                    { required: true, message: "Please enter a quantity." },
                     ({ getFieldValue }) => ({
                       validator(_, value) {
                         if (
@@ -630,7 +694,19 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
             </Form.Item>
           </Card>
 
-          <Card title="Yield (Resulting Byproducts)" type="inner">
+          <Card
+            title="Yield (Resulting Byproducts)"
+            type="inner"
+            extra={
+              <Button
+                type="link"
+                icon={<SettingOutlined />}
+                onClick={() => setIsManageTypesModalVisible(true)}
+              >
+                Manage Types
+              </Button>
+            }
+          >
             <Form.List name="yields">
               {(fields, { add, remove }) => (
                 <>
@@ -745,6 +821,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
         productTypes={productTypes}
         onClose={() => setIsManageTypesModalVisible(false)}
         onUpdate={fetchProductTypes}
+        zIndex={1010}
       />
 
       <AddCustomerForm

@@ -2680,6 +2680,29 @@ func getProductTypes(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, types)
 }
 
+func getProductTypeUsage(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	rows, err := db.QueryContext(ctx, "SELECT DISTINCT ProductType FROM cm_harvest_products")
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to query product type usage", err)
+		return
+	}
+	defer rows.Close()
+
+	var usedTypes []string
+	for rows.Next() {
+		var productType string
+		if err := rows.Scan(&productType); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan used product type", err)
+			return
+		}
+		usedTypes = append(usedTypes, productType)
+	}
+	respondJSON(w, http.StatusOK, usedTypes)
+}
+
 // for adding a new product type (enum) in harvesting tab
 func addProductType(w http.ResponseWriter, r *http.Request) {
 	var payload struct {
@@ -3173,18 +3196,71 @@ func getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, inventory)
 }
 
-// Add this handler to fetch the summary card data
+// In main.go, replace the existing getHarvestedSummary function
 func getHarvestedSummary(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
+	productTypeFilter := r.URL.Query().Get("productType")
+	batchIDFilter := r.URL.Query().Get("batchId")
+
+	// Base WHERE clause and arguments that apply to all queries
+	whereClause := "WHERE hp.IsActive = 1"
+	var baseArgs []interface{}
+
+	if batchIDFilter != "" && batchIDFilter != "All" {
+		whereClause += " AND h.BatchID = ?"
+		baseArgs = append(baseArgs, batchIDFilter)
+	}
+
 	var totalDressed, totalLive int
 	var totalByproductWeight float64
 
-	// Parallel execution can be complex, sequential is fine for this
-	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_harvest_products WHERE ProductType = 'Dressed' AND IsActive = 1").Scan(&totalDressed)
-	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_harvest_products WHERE ProductType = 'Live' AND IsActive = 1").Scan(&totalLive)
-	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(WeightRemainingKg), 0) FROM cm_harvest_products WHERE ProductType NOT IN ('Live', 'Dressed') AND IsActive = 1").Scan(&totalByproductWeight)
+	// --- Calculate Total Dressed ---
+	// Only calculate if the filter allows for 'Dressed' products
+	if productTypeFilter == "" || productTypeFilter == "All" || productTypeFilter == "Dressed" {
+		query := fmt.Sprintf(`
+			SELECT COALESCE(SUM(hp.QuantityRemaining), 0)
+			FROM cm_harvest_products hp
+			JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+			%s AND hp.ProductType = 'Dressed'`, whereClause)
+		
+		db.QueryRowContext(ctx, query, baseArgs...).Scan(&totalDressed)
+	}
+
+	// --- Calculate Total Live ---
+	// Only calculate if the filter allows for 'Live' products
+	if productTypeFilter == "" || productTypeFilter == "All" || productTypeFilter == "Live" {
+		query := fmt.Sprintf(`
+			SELECT COALESCE(SUM(hp.QuantityRemaining), 0)
+			FROM cm_harvest_products hp
+			JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+			%s AND hp.ProductType = 'Live'`, whereClause)
+
+		db.QueryRowContext(ctx, query, baseArgs...).Scan(&totalLive)
+	}
+
+	// --- Calculate Total Byproduct Weight ---
+	// Only calculate if the filter allows for byproducts
+	if productTypeFilter == "" || productTypeFilter == "All" || (productTypeFilter != "Live" && productTypeFilter != "Dressed") {
+		var byproductWhereClause string
+		var byproductArgs = append([]interface{}{}, baseArgs...) // Create a copy of baseArgs
+
+		if productTypeFilter != "" && productTypeFilter != "All" {
+			byproductWhereClause = " AND hp.ProductType = ?"
+			byproductArgs = append(byproductArgs, productTypeFilter)
+		} else {
+			byproductWhereClause = " AND hp.ProductType NOT IN ('Live', 'Dressed')"
+		}
+		
+		query := fmt.Sprintf(`
+			SELECT COALESCE(SUM(hp.WeightRemainingKg), 0)
+			FROM cm_harvest_products hp
+			JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+			%s %s`, whereClause, byproductWhereClause)
+
+		db.QueryRowContext(ctx, query, byproductArgs...).Scan(&totalByproductWeight)
+	}
 
 	summary := map[string]interface{}{
 		"totalDressed":         totalDressed,
@@ -3194,7 +3270,7 @@ func getHarvestedSummary(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, summary)
 }
 
-// Add this handler to fetch a simple list of batches for the filter dropdown
+
 func getBatchListForFilter(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
@@ -3311,6 +3387,7 @@ func buildRouter() http.Handler {
 
 		// for harvesting
 		r.Get("/product-types", getProductTypes)
+		r.Get("/product-types/usage", getProductTypeUsage)
 		r.Post("/product-types", addProductType)
 		r.Delete("/product-types", deleteProductType)
 		r.Post("/harvests", createHarvest)
