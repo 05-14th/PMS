@@ -170,6 +170,7 @@ const Batches: React.FC = () => {
         isOpen={!!selectedBatch}
         onClose={() => setSelectedBatch(null)}
         batch={selectedBatch}
+        onDataChange={fetchBatches}
       />
 
       <AddBatchForm

@@ -9,7 +9,7 @@ type TabType = "stock" | "items" | "suppliers" | "harvested";
 
 const tabs: { id: TabType; label: string }[] = [
   { id: "harvested", label: "Harvested Products" },
-  { id: "stock", label: "Stock Levels" },
+  { id: "stock", label: "Raw Materials Stock" },
   { id: "items", label: "Item List" },
   { id: "suppliers", label: "Suppliers" },
 ];

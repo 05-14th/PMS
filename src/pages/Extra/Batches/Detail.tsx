@@ -19,11 +19,17 @@ interface DetailProps {
   isOpen: boolean;
   onClose: () => void;
   batch: Batch | null;
+  onDataChange?: () => void;
 }
 
 type TabType = "monitoring" | "harvesting";
 
-const Detail: React.FC<DetailProps> = ({ isOpen, onClose, batch }) => {
+const Detail: React.FC<DetailProps> = ({
+  isOpen,
+  onClose,
+  batch,
+  onDataChange,
+}) => {
   const [activeTab, setActiveTab] = useState<TabType>("monitoring");
 
   useEffect(() => {
@@ -88,8 +94,12 @@ const Detail: React.FC<DetailProps> = ({ isOpen, onClose, batch }) => {
 
         {/* Tab Content */}
         <div className="flex-1 overflow-auto p-4">
-          {activeTab === "monitoring" && <Monitoring batch={batch} />}
-          {activeTab === "harvesting" && <Harvesting batch={batch} />}
+          {activeTab === "monitoring" && (
+            <Monitoring batch={batch} onDataChange={onDataChange} />
+          )}
+          {activeTab === "harvesting" && (
+            <Harvesting batch={batch} onDataChange={onDataChange} />
+          )}
         </div>
       </div>
     </div>

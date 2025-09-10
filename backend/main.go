@@ -380,6 +380,46 @@ type UpdateBatchPayload struct {
 	Status              string `json:"Status"`
 }
 
+// for reporting tab - executive summary, financial breakdown, operational analytics
+type ExecutiveSummary struct {
+	NetProfit           float64 `json:"netProfit"`
+	ROI                 float64 `json:"roi"`
+	FeedConversionRatio float64 `json:"feedConversionRatio"`
+	HarvestRecovery     float64 `json:"harvestRecovery"`
+	CostPerKg           float64 `json:"costPerKg"`
+	
+}
+
+type FinancialBreakdownItem struct {
+	Category   string  `json:"category"`
+	Amount     float64 `json:"amount"`
+	Percentage float64 `json:"percentage"`
+	PerBird    float64 `json:"perBird"`
+}
+
+type OperationalAnalytics struct {
+	InitialBirdCount    int     `json:"initialBirdCount"`
+	FinalBirdCount      int     `json:"finalBirdCount"`
+	MortalityRate       float64 `json:"mortalityRate"`
+	TotalFeedConsumed   float64 `json:"totalFeedConsumed"`
+	TotalWeightHarvested float64 `json:"totalWeightHarvested"`
+	AverageHarvestWeight float64 `json:"averageHarvestWeight"`
+}
+
+type BatchReportData struct {
+	ExecutiveSummary     ExecutiveSummary         `json:"executiveSummary"`
+	FinancialBreakdown   []FinancialBreakdownItem `json:"financialBreakdown"`
+	OperationalAnalytics OperationalAnalytics     `json:"operationalAnalytics"`
+}
+
+// for transaction history in reports tab
+type Transaction struct {
+	Date        string  `json:"date"`
+	Type        string  `json:"type"`
+	Description string  `json:"description"`
+	Amount      float64 `json:"amount"`
+}
+
 /* ===========================
     Models for IoT
 =========================== */
@@ -2298,6 +2338,17 @@ func createMortalityRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
+	
+	var currentChicken int
+	checkQuery := "SELECT CurrentChicken FROM cm_batches WHERE BatchID = ? FOR UPDATE"
+	if err := tx.QueryRowContext(ctx, checkQuery, payload.BatchID).Scan(&currentChicken); err != nil {
+		handleError(w, http.StatusNotFound, "Batch not found", err)
+		return
+	}
+	if payload.BirdsLoss > currentChicken {
+		handleError(w, http.StatusBadRequest, "Birds loss cannot be greater than current population.", nil)
+		return
+	}
 
 	insertQuery := "INSERT INTO cm_mortality (BatchID, Date, BirdsLoss, Notes) VALUES (?, ?, ?, ?)"
 	_, err = tx.ExecContext(ctx, insertQuery, payload.BatchID, payload.Date, payload.BirdsLoss, payload.Notes)
@@ -2305,13 +2356,23 @@ func createMortalityRecord(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to insert mortality record", err)
 		return
 	}
+	
 
-	updateQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken - ? WHERE BatchID = ?"
-	_, err = tx.ExecContext(ctx, updateQuery, payload.BirdsLoss, payload.BatchID)
+	newPopulation := currentChicken - payload.BirdsLoss
+	updateQuery := "UPDATE cm_batches SET CurrentChicken = ? WHERE BatchID = ?"
+	_, err = tx.ExecContext(ctx, updateQuery, newPopulation, payload.BatchID)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to update batch population", err)
 		return
 	}
+	
+	if newPopulation <= 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE cm_batches SET Status = 'Sold' WHERE BatchID = ?", payload.BatchID); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to update batch status to sold", err)
+			return
+		}
+	}
+   
 
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
@@ -2588,12 +2649,21 @@ func createHarvest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken - ? WHERE BatchID = ?"
-	if _, err := tx.ExecContext(ctx, updateBatchQuery, payload.QuantityHarvested, payload.BatchID); err != nil {
+	newPopulation := currentChicken - payload.QuantityHarvested
+	updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = ? WHERE BatchID = ?"
+	if _, err := tx.ExecContext(ctx, updateBatchQuery, newPopulation, payload.BatchID); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to update batch population", err)
 		return
 	}
 
+	if newPopulation <= 0 {
+		if _, err := tx.ExecContext(ctx, "UPDATE cm_batches SET Status = 'Sold' WHERE BatchID = ?", payload.BatchID); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to update batch status", err)
+			return
+		}
+	}
+	
+	
 	harvestNote := fmt.Sprintf("%d %s chickens harvested.", payload.QuantityHarvested, payload.ProductType)
 	harvestQuery := "INSERT INTO cm_harvest (BatchID, HarvestDate, Notes) VALUES (?, ?, ?)"
 	res, err := tx.ExecContext(ctx, harvestQuery, payload.BatchID, payload.HarvestDate, harvestNote)
@@ -3294,6 +3364,201 @@ func getBatchListForFilter(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, batchList)
 }
 
+func getBatchReport(w http.ResponseWriter, r *http.Request) {
+	batchID := chi.URLParam(r, "id")
+	if batchID == "" || batchID == "all" {
+		respondJSON(w, http.StatusOK, nil)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	// --- 1. Fetch all raw data points first ---
+	var initialBirdCount, totalMortality, birdsHarvestedCount int
+	var totalRevenue, totalWeightHarvested, totalFeedConsumed float64
+	var chickPurchaseCost, feedUsageCost, dynamicCostsTotal float64
+
+	// Get operational data
+	db.QueryRowContext(ctx, "SELECT COALESCE(TotalChicken, 0) FROM cm_batches WHERE BatchID = ?", batchID).Scan(&initialBirdCount)
+	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(BirdsLoss), 0) FROM cm_mortality WHERE BatchID = ?", batchID).Scan(&totalMortality)
+	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(QuantityHarvested), 0) FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)", batchID).Scan(&birdsHarvestedCount)
+	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(WeightHarvestedKg), 0) FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)", batchID).Scan(&totalWeightHarvested)
+	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(iu.QuantityUsed), 0) FROM cm_inventory_usage iu JOIN cm_items i ON iu.ItemID = i.ItemID WHERE iu.BatchID = ? AND i.Category = 'Feed'", batchID).Scan(&totalFeedConsumed)
+
+	// Get financial data
+	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleID IN (SELECT SaleID FROM cm_sales_details WHERE HarvestProductID IN (SELECT HarvestProductID FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)))", batchID).Scan(&totalRevenue)
+	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE BatchID = ? AND CostType = 'Chick Purchase'", batchID).Scan(&chickPurchaseCost)
+	
+	feedCostQuery := `
+		SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0)
+		FROM cm_inventory_usage iu
+		JOIN cm_inventory_usage_details iud ON iu.UsageID = iud.UsageID
+		JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID
+		WHERE iu.BatchID = ?`
+	db.QueryRowContext(ctx, feedCostQuery, batchID).Scan(&feedUsageCost)
+	
+	var dynamicCosts []FinancialBreakdownItem
+	dynamicCostQuery := `
+		SELECT CostType, COALESCE(SUM(Amount), 0) as TotalAmount
+		FROM cm_production_cost
+		WHERE BatchID = ? AND CostType != 'Chick Purchase' GROUP BY CostType`
+	rows, _ := db.QueryContext(ctx, dynamicCostQuery, batchID)
+	defer rows.Close()
+	for rows.Next() {
+		var item FinancialBreakdownItem; var costType string; var amount float64
+		rows.Scan(&costType, &amount)
+		item.Category = "- " + costType; item.Amount = -amount
+		dynamicCosts = append(dynamicCosts, item)
+		dynamicCostsTotal += amount
+	}
+	totalCost := chickPurchaseCost + feedUsageCost + dynamicCostsTotal
+
+	// --- 2. Perform all calculations from raw data ---
+	var report BatchReportData
+	finalBirdCount := initialBirdCount - totalMortality
+	
+	// Operational Analytics
+	report.OperationalAnalytics.InitialBirdCount = initialBirdCount
+	report.OperationalAnalytics.FinalBirdCount = finalBirdCount
+	if initialBirdCount > 0 {
+		report.OperationalAnalytics.MortalityRate = (float64(totalMortality) / float64(initialBirdCount)) * 100
+	}
+	if birdsHarvestedCount > 0 {
+		report.OperationalAnalytics.AverageHarvestWeight = totalWeightHarvested / float64(birdsHarvestedCount)
+	}
+	report.OperationalAnalytics.TotalFeedConsumed = totalFeedConsumed
+	report.OperationalAnalytics.TotalWeightHarvested = totalWeightHarvested
+
+	// Executive Summary
+	report.ExecutiveSummary.NetProfit = totalRevenue - totalCost
+	if totalCost > 0 {
+		report.ExecutiveSummary.ROI = (report.ExecutiveSummary.NetProfit / totalCost) * 100
+	}
+	if totalWeightHarvested > 0 {
+		report.ExecutiveSummary.CostPerKg = totalCost / totalWeightHarvested
+		if totalFeedConsumed > 0 {
+			report.ExecutiveSummary.FeedConversionRatio = totalFeedConsumed / totalWeightHarvested
+		}
+	}
+	if initialBirdCount > 0 {
+		report.ExecutiveSummary.HarvestRecovery = (float64(birdsHarvestedCount) / float64(initialBirdCount)) * 100
+	}
+	
+	// Financial Breakdown
+	if initialBirdCount > 0 {
+		var breakdown []FinancialBreakdownItem
+		perBirdDivisor := float64(initialBirdCount)
+		breakdown = append(breakdown, FinancialBreakdownItem{"Total Revenue", totalRevenue, 0, totalRevenue / perBirdDivisor})
+		breakdown = append(breakdown, FinancialBreakdownItem{"Total Costs", -totalCost, 100, -totalCost / perBirdDivisor})
+		if feedUsageCost > 0 {
+			breakdown = append(breakdown, FinancialBreakdownItem{"- Feed Cost", -feedUsageCost, (feedUsageCost / totalCost) * 100, -feedUsageCost / perBirdDivisor})
+		}
+		for _, item := range dynamicCosts {
+			item.Percentage = ((-item.Amount) / totalCost) * 100
+			item.PerBird = item.Amount / perBirdDivisor
+			breakdown = append(breakdown, item)
+		}
+		if chickPurchaseCost > 0 {
+			breakdown = append(breakdown, FinancialBreakdownItem{"- Chick Purchase", -chickPurchaseCost, (chickPurchaseCost / totalCost) * 100, -chickPurchaseCost / perBirdDivisor})
+		}
+		report.FinancialBreakdown = breakdown
+	}
+
+	// --- 3. Respond with the complete report ---
+	respondJSON(w, http.StatusOK, report)
+}
+
+func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
+	batchID := chi.URLParam(r, "id")
+	if batchID == "" {
+		handleError(w, http.StatusBadRequest, "batch id is required", nil)
+		return
+	}
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	query := `
+		-- 1. Get direct costs like chick purchases
+		SELECT
+			Date,
+			'Cost' AS Type,
+			Description,
+			-Amount AS Amount
+		FROM cm_production_cost
+		WHERE BatchID = ?
+
+		UNION ALL
+
+		-- 2. Calculate and get costs from inventory usage (e.g., feed)
+		SELECT
+			DATE(iu.Date) AS Date,
+			'Cost' AS Type,
+			CONCAT('Feed Usage: ', i.ItemName) AS Description,
+			-- CORRECTED CALCULATION: (QuantityDrawn / QuantityPurchased) * TotalCost
+			-SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost) AS Amount
+		FROM cm_inventory_usage iu
+		JOIN cm_items i ON iu.ItemID = i.ItemID
+		JOIN cm_inventory_usage_details iud ON iu.UsageID = iud.UsageID
+		JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID
+		WHERE iu.BatchID = ?
+		GROUP BY iu.UsageID, DATE(iu.Date), i.ItemName
+
+		UNION ALL
+
+		-- 3. Get revenue from sales linked to this batch
+		SELECT
+			DATE(so.SaleDate) AS Date,
+			'Revenue' AS Type,
+			CONCAT('Sale to ', c.Name) AS Description,
+			SUM(sd.TotalWeightKg * sd.PricePerKg) AS Amount
+		FROM cm_sales_details sd
+		JOIN cm_sales_orders so ON sd.SaleID = so.SaleID
+		JOIN cm_customers c ON so.CustomerID = c.CustomerID
+		JOIN cm_harvest_products hp ON sd.HarvestProductID = hp.HarvestProductID
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE h.BatchID = ?
+		GROUP BY so.SaleID, DATE(so.SaleDate), c.Name
+
+		ORDER BY Date DESC;
+	`
+
+	rows, err := db.QueryContext(ctx, query, batchID, batchID, batchID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch batch transactions", err)
+		return
+	}
+	defer rows.Close()
+
+	var transactions []Transaction
+	for rows.Next() {
+		var t Transaction
+		// Use sql.NullFloat64 to handle potential NULL from division by zero
+		var amount sql.NullFloat64
+		if err := rows.Scan(&t.Date, &t.Type, &t.Description, &amount); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan transaction", err)
+			return
+		}
+		if amount.Valid {
+			t.Amount = amount.Float64
+		} else {
+			t.Amount = 0 // Default to 0 if amount is NULL
+		}
+
+		// Truncate the date to YYYY-MM-DD
+		parsedDate, err := time.Parse("2006-01-02 15:04:05", t.Date)
+		if err == nil {
+			t.Date = parsedDate.Format("2006-01-02")
+		}
+		transactions = append(transactions, t)
+	}
+
+	respondJSON(w, http.StatusOK, transactions)
+}
+
+
+
 /* ===========================
     Router / Server
 =========================== */
@@ -3373,6 +3638,7 @@ func buildRouter() http.Handler {
 			r.Get("/costs", getBatchCosts)
 			r.Post("/costs", createDirectCost)
 			r.Get("/harvest-products", getHarvestedProducts)
+			r.Get("/transactions", getBatchTransactions)
 			r.Put("/", updateBatch)
 			r.Delete("/", deleteBatch)
 		})
@@ -3399,6 +3665,9 @@ func buildRouter() http.Handler {
 		r.Get("/harvested-products", getHarvestedInventory)
 		r.Get("/harvested-products/summary", getHarvestedSummary)
 		r.Get("/batch-list", getBatchListForFilter)
+
+		//for reports tab
+		r.Get("/reports/batch/{id}", getBatchReport)
 
 	})
 
