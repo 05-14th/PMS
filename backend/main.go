@@ -2677,8 +2677,8 @@ func createHarvest(w http.ResponseWriter, r *http.Request) {
 
 		productQuery := `
 			INSERT INTO cm_harvest_products 
-			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg) 
-			VALUES (?, ?, ?, ?, 0, 0.00)`
+			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg, IsActive) 
+			VALUES (?, ?, ?, ?, 0, 0.00, 0)` 
 		res, err = tx.ExecContext(ctx, productQuery, harvestID, payload.ProductType, payload.QuantityHarvested, payload.TotalWeightKg)
 		if err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to create harvested product record for sale", err)
@@ -3223,19 +3223,13 @@ func getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
 
 	query := `
 		SELECT
-			hp.HarvestProductID,
-			h.HarvestDate,
-			hp.ProductType,
-			b.BatchName,
-			hp.QuantityHarvested,
-			hp.WeightHarvestedKg,
-			hp.QuantityRemaining,
-			hp.WeightRemainingKg
+			hp.HarvestProductID, h.HarvestDate, hp.ProductType, b.BatchName,
+			hp.QuantityHarvested, hp.WeightHarvestedKg, hp.QuantityRemaining, hp.WeightRemainingKg
 		FROM cm_harvest_products hp
 		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
 		JOIN cm_batches b ON h.BatchID = b.BatchID
-		WHERE hp.IsActive = 1`
-
+		WHERE 1=1` 
+	
 	var args []interface{}
 	if productTypeFilter != "" && productTypeFilter != "All" {
 		query += " AND hp.ProductType = ?"
@@ -3245,7 +3239,7 @@ func getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
 		query += " AND b.BatchID = ?"
 		args = append(args, batchIDFilter)
 	}
-	query += " ORDER BY h.HarvestDate DESC"
+	query += " ORDER BY h.HarvestDate DESC, hp.HarvestProductID DESC"
 
 	rows, err := db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -3275,7 +3269,7 @@ func getHarvestedSummary(w http.ResponseWriter, r *http.Request) {
 	batchIDFilter := r.URL.Query().Get("batchId")
 
 	// Base WHERE clause and arguments that apply to all queries
-	whereClause := "WHERE hp.IsActive = 1"
+		whereClause := "WHERE 1=1" 
 	var baseArgs []interface{}
 
 	if batchIDFilter != "" && batchIDFilter != "All" {
