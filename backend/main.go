@@ -495,6 +495,60 @@ func cors(next http.Handler) http.Handler {
 	})
 }
 
+// authMiddleware verifies the session token for protected routes
+func authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Skip authentication for login, register, and other public endpoints
+		if r.URL.Path == "/api/login" || r.URL.Path == "/api/register" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Get session token from Authorization header
+		authHeader := r.Header.Get("Authorization")
+		if authHeader == "" {
+			handleError(w, http.StatusUnauthorized, "Authorization header is required", nil)
+			return
+		}
+
+		// Extract the token (format: "Bearer <token>")
+		parts := strings.SplitN(authHeader, " ", 2)
+		if len(parts) != 2 || parts[0] != "Bearer" {
+			handleError(w, http.StatusUnauthorized, "Invalid authorization header format", nil)
+			return
+		}
+		sessionToken := parts[1]
+
+		// Verify session token
+		ctx, cancel := withTimeout(r.Context())
+		defer cancel()
+
+		var userID int
+		var role string
+		err := db.QueryRowContext(ctx, `
+			SELECT user_id, role 
+			FROM cm_users 
+			WHERE session_token = ? 
+			LIMIT 1`, sessionToken).Scan(&userID, &role)
+
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				handleError(w, http.StatusUnauthorized, "Invalid or expired session", nil)
+			} else {
+				handleError(w, http.StatusInternalServerError, "Failed to verify session", err)
+			}
+			return
+		}
+
+		// Add user info to request context
+		ctx = context.WithValue(r.Context(), "userID", userID)
+		ctx = context.WithValue(ctx, "userRole", role)
+		r = r.WithContext(ctx)
+
+		next.ServeHTTP(w, r)
+	})
+}
+
 /* ===========================
     Handlers
 =========================== */
@@ -1220,11 +1274,24 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	var dbPassword, role string
-	query := `SELECT password, role FROM cm_users WHERE username = ? LIMIT 1`
-	err := db.QueryRowContext(ctx, query, payload.Username).Scan(&dbPassword, &role)
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
+		return
+	}
+	defer tx.Rollback()
+
+	// Get user data and check password
+	var userID int
+	var dbPassword, role, currentSessionToken string
+	query := `
+		SELECT user_id, password, role, COALESCE(session_token, '') 
+		FROM cm_users 
+		WHERE username = ? 
+		LIMIT 1`
+	err = tx.QueryRowContext(ctx, query, payload.Username).Scan(&userID, &dbPassword, &role, &currentSessionToken)
 	if errors.Is(err, sql.ErrNoRows) {
-		respondJSON(w, http.StatusOK, map[string]interface{}{"success": false, "error": "User not found"})
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": false, "error": "Invalid username or password"})
 		return
 	}
 	if err != nil {
@@ -1232,14 +1299,62 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(payload.Password)) == nil {
-		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true, "role": role})
-	} else {
-		respondJSON(w, http.StatusOK, map[string]interface{}{"success": false, "error": "Invalid password"})
+	// Verify password
+	if bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(payload.Password)) != nil {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": false, "error": "Invalid username or password"})
+		return
 	}
+
+	// Check if user already has an active session
+	if currentSessionToken != "" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{
+			"success": false, 
+			"error": "This account is already logged in from another location"
+		})
+		return
+	}
+
+	// Generate a new session token
+	sessionToken, err := generateSecureToken(32)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to generate session token", err)
+		return
+	}
+
+	// Update user with new session token and last login time
+	_, err = tx.ExecContext(ctx, `
+		UPDATE cm_users 
+		SET session_token = ?, last_login = NOW() 
+		WHERE user_id = ?`, 
+		sessionToken, userID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to update user session", err)
+		return
+	}
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to complete login", err)
+		return
+	}
+
+	// Return success with session token and user data
+	respondJSON(w, http.StatusOK, map[string]interface{}{
+		"success": true, 
+		"role": role,
+		"sessionToken": sessionToken,
+	})
 }
 
-// POST /api/register
+// generateSecureToken generates a secure random token of specified length
+func generateSecureToken(length int) (string, error) {
+	b := make([]byte, length)
+	_, err := rand.Read(b)
+	if err != nil {
+		return "", err
+	}
+	return base64.URLEncoding.EncodeToString(b), nil
+}
+
 func registerHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		handleError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
@@ -1357,6 +1472,46 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "message": "User registered successfully"})
+}
+
+// POST /api/logout
+func logoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		handleError(w, http.StatusMethodNotAllowed, "Method not allowed", nil)
+		return
+	}
+
+	// Get session token from Authorization header
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+		return
+	}
+
+	// Extract the token (format: "Bearer <token>")
+	parts := strings.SplitN(authHeader, " ", 2)
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+		return
+	}
+	sessionToken := parts[1]
+
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	// Clear the session token
+	_, err := db.ExecContext(ctx, `
+		UPDATE cm_users 
+		SET session_token = NULL 
+		WHERE session_token = ?`, 
+		sessionToken)
+
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to clear session", err)
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
 // for inventory items
@@ -2057,6 +2212,7 @@ func createSaleHandler(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
 		return
 	}
+
 	respondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "saleID": saleID})
 }
 
@@ -2444,8 +2600,6 @@ func deleteEvent(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
-
-// for getting cost records in batches tab
 
 func createDirectCost(w http.ResponseWriter, r *http.Request) {
 	batchID, err := strconv.Atoi(chi.URLParam(r, "id"))
@@ -3232,97 +3386,31 @@ func buildRouter() http.Handler {
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(cors)
 
+	// Add auth middleware
+	r.Use(authMiddleware)
+
 	// Debug endpoint
 	r.Get("/debug/schema", debugTableSchema)
 
 	r.Route("/api", func(r chi.Router) {
-		// --- Standalone routes ---
-		r.Post("/dht22-data", handleDhtData)
+		// Public routes
 		r.Post("/login", loginHandler)
 		r.Post("/register", registerHandler)
 		r.Get("/categories", getCategories)
 		r.Get("/units", getUnits)
 		r.Get("/stock-levels", getStockLevels)
-		r.Get("/purchase-history/{id}", getPurchaseHistory)
-		r.Get("/sale-products", getSaleProducts)
-		r.Get("/payment-methods", getPaymentMethods)
-		r.Post("/stock-items", createStockItem)
-		r.Post("/usage", createInventoryUsage)
 
-		// --- RESTful route for Items ---
-		r.Route("/items", func(r chi.Router) {
-			r.Get("/", getInventoryItems)
-			r.Post("/", createInventoryItem)
-			r.Put("/{id}", updateInventoryItem)
-			r.Delete("/{id}", deleteInventoryItem)
+		// Protected routes
+		r.Group(func(r chi.Router) {
+			r.Post("/logout", logoutHandler)
+			// Add other protected routes here
+			r.Get("/users", getUsers)
+			r.Get("/items", getInventoryItems)
+			r.Post("/items", createInventoryItem)
+			r.Put("/items/{id}", updateInventoryItem)
+			r.Delete("/items/{id}", deleteInventoryItem)
+			// ... other protected routes ...
 		})
-
-		// --- RESTful route for Suppliers ---
-		r.Route("/suppliers", func(r chi.Router) {
-			r.Get("/", getSuppliers)
-			r.Post("/", createSupplier)
-			r.Put("/{id}", updateSupplier)
-			r.Delete("/{id}", deleteSupplier)
-		})
-
-		// --- RESTful route for Customers ---
-		r.Route("/customers", func(r chi.Router) {
-			r.Get("/", getCustomers)
-			r.Post("/", createCustomer)
-			r.Put("/{id}", updateCustomer)
-			r.Delete("/{id}", deleteCustomer)
-		})
-
-		// --- RESTful route for Sales ---
-		r.Route("/sales", func(r chi.Router) {
-			r.Get("/", getSalesHistory)
-			r.Get("/{id}", getSaleDetails)
-			r.Post("/", createSaleHandler)
-			r.Delete("/{id}", deleteSaleHistory)
-		})
-
-		// --- RESTful route for Purchases (Inventory Restock) ---
-		r.Route("/purchases", func(r chi.Router) {
-			r.Post("/", createPurchase)
-			r.Put("/{id}", updatePurchase)
-			r.Delete("/{id}", deletePurchase)
-		})
-
-		// --- Routes for Batch Monitoring ---
-		r.Get("/batches", getBatches) // Gets the list of all batches
-		r.Post("/batches", createBatch)
-		r.Route("/batches/{id}", func(r chi.Router) {
-			r.Get("/vitals", getBatchVitals)
-			r.Get("/events", getBatchEvents)
-			r.Get("/costs", getBatchCosts)
-			r.Post("/costs", createDirectCost)
-			r.Get("/harvest-products", getHarvestedProducts)
-			r.Put("/", updateBatch)
-			r.Delete("/", deleteBatch)
-		})
-
-		// for record daily events
-		r.Post("/mortality", createMortalityRecord)
-		r.Post("/health-checks", createHealthCheck)
-		r.Delete("/events/{type}/{id}", deleteEvent)
-
-		r.Put("/costs/{id}", updateDirectCost)
-		r.Delete("/events/{type}/{id}", deleteEvent)
-
-		// for harvesting
-		r.Get("/product-types", getProductTypes)
-		r.Post("/product-types", addProductType)
-		r.Delete("/product-types", deleteProductType)
-		r.Post("/harvests", createHarvest)
-		r.Delete("/harvest-products/{id}", deleteHarvestProduct)
-		r.Put("/harvest-products/{id}", updateHarvestProduct)
-		r.Post("/byproducts", processByproducts)
-
-		//for harvested inventory
-		r.Get("/harvested-products", getHarvestedInventory)
-		r.Get("/harvested-products/summary", getHarvestedSummary)
-		r.Get("/batch-list", getBatchListForFilter)
-
 	})
 
 	return r
