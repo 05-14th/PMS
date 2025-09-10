@@ -420,6 +420,74 @@ type Transaction struct {
 	Amount      float64 `json:"amount"`
 }
 
+// for dashboard data ---------------------------------
+// For the main dashboard data structure
+type DashboardData struct {
+	AtAGlance     AtAGlanceData      `json:"atAGlance"`
+	ActiveBatches []ActiveBatch      `json:"activeBatches"`
+	StockItems    []StockStatus      `json:"stockItems"`
+	Charts        ChartsData         `json:"charts"`
+	Alerts        []Alert            `json:"alerts"`
+	FinancialForecasts []FinancialForecastData `json:"financialForecasts"`
+}
+
+// For the top "At a Glance" cards
+type AtAGlanceData struct {
+	ActiveBatchCount  int     `json:"activeBatchCount"`
+	CurrentPopulation int     `json:"currentPopulation"`
+	MonthlyRevenue    float64 `json:"monthlyRevenue"`
+	SellableInventory int     `json:"sellableInventory"`
+	TotalBirds   int     `json:"totalBirds"`
+}
+
+// For the "Active Batches" list
+type ActiveBatch struct {
+	ID         string `json:"id"`
+	Age        int    `json:"age"`
+	Population int    `json:"population"`
+}
+
+// For the "Stock Status" panel
+type StockStatus struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Level    int    `json:"level"` // Percentage for progress bar
+	Status   string `json:"status"` // "low", "adequate"
+	Quantity string `json:"quantity"`
+}
+
+// For the new charts
+type ChartsData struct {
+	RevenueTimeline []RevenueDataPoint   `json:"revenueTimeline"`
+	CostBreakdown   []CostBreakdownPoint `json:"costBreakdown"`
+}
+
+type RevenueDataPoint struct {
+	Date    string  `json:"date"`
+	Revenue float64 `json:"revenue"`
+}
+
+type CostBreakdownPoint struct {
+	Name  string  `json:"name"`
+	Value float64 `json:"value"`
+}
+
+// For the "Smart Alerts" panel
+type Alert struct {
+	Type    string `json:"type"` // "warning", "critical", "info"
+	Message string `json:"message"`
+}
+
+type FinancialForecastData struct {
+	BatchID          string  `json:"batchId"`
+	BatchName        string  `json:"batchName"`
+	AccruedCost      float64 `json:"accruedCost"`
+	EstimatedRevenue float64 `json:"estimatedRevenue"`
+	Progress         int     `json:"progress"`
+	StartDate        string  `json:"startDate"`
+	EndDate          string  `json:"endDate"`
+}
+
 /* ===========================
     Models for IoT
 =========================== */
@@ -3528,7 +3596,7 @@ func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 	var transactions []Transaction
 	for rows.Next() {
 		var t Transaction
-		// Use sql.NullFloat64 to handle potential NULL from division by zero
+		
 		var amount sql.NullFloat64
 		if err := rows.Scan(&t.Date, &t.Type, &t.Description, &amount); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan transaction", err)
@@ -3537,10 +3605,10 @@ func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 		if amount.Valid {
 			t.Amount = amount.Float64
 		} else {
-			t.Amount = 0 // Default to 0 if amount is NULL
+			t.Amount = 0 
 		}
 
-		// Truncate the date to YYYY-MM-DD
+	
 		parsedDate, err := time.Parse("2006-01-02 15:04:05", t.Date)
 		if err == nil {
 			t.Date = parsedDate.Format("2006-01-02")
@@ -3549,6 +3617,117 @@ func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondJSON(w, http.StatusOK, transactions)
+}
+
+
+
+func getDashboardData(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := withTimeout(r.Context())
+	defer cancel()
+
+	var data DashboardData
+
+	
+	db.QueryRowContext(ctx, `SELECT COALESCE(COUNT(BatchID), 0), COALESCE(SUM(CurrentChicken), 0) FROM cm_batches WHERE Status = 'Active'`).Scan(&data.AtAGlance.ActiveBatchCount, &data.AtAGlance.CurrentPopulation)
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(TotalChicken), 0) FROM cm_batches`).Scan(&data.AtAGlance.TotalBirds)
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleDate >= DATE_FORMAT(NOW(), '%Y-%m-01')`).Scan(&data.AtAGlance.MonthlyRevenue)
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_harvest_products WHERE ProductType IN ('Live', 'Dressed') AND IsActive = 1`).Scan(&data.AtAGlance.SellableInventory)
+
+	type activeBatchInfo struct { 
+		ID         int
+		Name       string
+		StartDate  string
+		EndDate    string
+		Population int
+	}
+	var activeBatchList []activeBatchInfo
+	
+	rows, err := db.QueryContext(ctx, `
+		SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, CurrentChicken 
+		FROM cm_batches WHERE Status = 'Active' ORDER BY StartDate ASC`)
+	if err != nil {}
+	defer rows.Close()
+
+	for rows.Next() {
+		var b activeBatchInfo
+		rows.Scan(&b.ID, &b.Name, &b.StartDate, &b.EndDate, &b.Population)
+		
+		
+		parsedStartDate, _ := time.Parse("2006-01-02", b.StartDate)
+		age := int(time.Since(parsedStartDate).Hours() / 24)
+		data.ActiveBatches = append(data.ActiveBatches, ActiveBatch{ID: b.Name, Age: age, Population: b.Population})
+		
+		activeBatchList = append(activeBatchList, b)
+	}
+
+	
+	// ... (logic for stock status and alerts) ...
+	var feedStock float64
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(p.QuantityRemaining), 0) FROM cm_inventory_purchases p JOIN cm_items i ON p.ItemID = i.ItemID WHERE i.Category = 'Feed' AND p.IsActive = 1`).Scan(&feedStock)
+	feedStatus := StockStatus{ID: "feed", Name: "Feed (kg)", Quantity: fmt.Sprintf("%.2f kg left", feedStock)}
+	if feedStock < 100.0 {
+		feedStatus.Level = 15; feedStatus.Status = "low"
+		data.Alerts = append(data.Alerts, Alert{Type: "warning", Message: fmt.Sprintf("Feed stock is low (%.2f kg remaining). Consider restocking soon.", feedStock)})
+	} else {
+		feedStatus.Level = 75; feedStatus.Status = "adequate"
+	}
+	data.StockItems = append(data.StockItems, feedStatus)
+
+	
+	// ... (logic for charts) ...
+	revenueRows, _ := db.QueryContext(ctx, `SELECT DATE(SaleDate), SUM(TotalAmount) FROM cm_sales_orders WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY GROUP BY DATE(SaleDate) ORDER BY DATE(SaleDate) ASC`)
+	defer revenueRows.Close()
+	revenueMap := make(map[string]float64)
+	for i := 0; i < 30; i++ { day := time.Now().AddDate(0, 0, -i).Format("2006-01-02"); revenueMap[day] = 0 }
+	for revenueRows.Next() { var date string; var revenue float64; revenueRows.Scan(&date, &revenue); revenueMap[date] = revenue }
+	for i := 29; i >= 0; i-- { day := time.Now().AddDate(0, 0, -i).Format("2006-01-02"); data.Charts.RevenueTimeline = append(data.Charts.RevenueTimeline, RevenueDataPoint{Date: day, Revenue: revenueMap[day]}) }
+	var feedCost, chickCost, otherCost float64
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0) FROM cm_inventory_usage_details iud JOIN cm_inventory_usage iu ON iud.UsageID = iu.UsageID JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID WHERE iu.BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')`).Scan(&feedCost)
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType = 'Chick Purchase' AND BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')`).Scan(&chickCost)
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType != 'Chick Purchase' AND BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')`).Scan(&otherCost)
+	data.Charts.CostBreakdown = append(data.Charts.CostBreakdown, CostBreakdownPoint{Name: "Feed Cost", Value: feedCost}, CostBreakdownPoint{Name: "Chick Purchase", Value: chickCost}, CostBreakdownPoint{Name: "Other Costs", Value: otherCost})
+
+	
+	for _, batch := range activeBatchList {
+		var forecast FinancialForecastData
+		forecast.BatchID = strconv.Itoa(batch.ID)
+		forecast.BatchName = batch.Name
+		forecast.StartDate = batch.StartDate
+		forecast.EndDate = batch.EndDate
+
+		
+		var batchFeedCost, batchChickCost, batchOtherCost float64
+		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0) FROM cm_inventory_usage_details iud JOIN cm_inventory_usage iu ON iud.UsageID = iu.UsageID JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID WHERE iu.BatchID = ?`, batch.ID).Scan(&batchFeedCost)
+		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType = 'Chick Purchase' AND BatchID = ?`, batch.ID).Scan(&batchChickCost)
+		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType != 'Chick Purchase' AND BatchID = ?`, batch.ID).Scan(&batchOtherCost)
+		forecast.AccruedCost = batchFeedCost + batchChickCost + batchOtherCost
+
+		
+		var initialPop int
+		db.QueryRowContext(ctx, "SELECT TotalChicken FROM cm_batches WHERE BatchID = ?", batch.ID).Scan(&initialPop)
+		forecast.EstimatedRevenue = float64(initialPop) * 1.8 * 200 
+
+	
+		start, _ := time.Parse("2006-01-02", batch.StartDate)
+		end, _ := time.Parse("2006-01-02", batch.EndDate)
+		totalDuration := end.Sub(start).Hours() / 24
+		currentDuration := time.Since(start).Hours() / 24
+		if totalDuration > 0 {
+			forecast.Progress = int((currentDuration / totalDuration) * 100)
+			if forecast.Progress > 100 { forecast.Progress = 100 }
+		}
+		
+		data.FinancialForecasts = append(data.FinancialForecasts, forecast)
+	}
+
+	if data.ActiveBatches == nil { data.ActiveBatches = make([]ActiveBatch, 0) }
+	if data.StockItems == nil { data.StockItems = make([]StockStatus, 0) }
+	if data.Charts.RevenueTimeline == nil { data.Charts.RevenueTimeline = make([]RevenueDataPoint, 0) }
+	if data.Charts.CostBreakdown == nil { data.Charts.CostBreakdown = make([]CostBreakdownPoint, 0) }
+	if data.Alerts == nil { data.Alerts = make([]Alert, 0) }
+	if data.FinancialForecasts == nil { data.FinancialForecasts = make([]FinancialForecastData, 0) }
+
+	respondJSON(w, http.StatusOK, data)
 }
 
 
@@ -3572,6 +3751,7 @@ func buildRouter() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		// --- Standalone routes ---
+		r.Get("/dashboard", getDashboardData) 
 		r.Post("/dht22-data", handleDhtData)
 		r.Post("/login", loginHandler)
 		r.Post("/register", registerHandler)

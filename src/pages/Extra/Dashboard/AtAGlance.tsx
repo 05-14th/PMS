@@ -1,40 +1,46 @@
-import { FiDollarSign, FiPackage, FiUsers, FiTrendingUp } from 'react-icons/fi';
+import { FiDollarSign, FiPackage, FiUsers } from "react-icons/fi";
 
-interface DashboardData {
+// --- UPDATED: This interface now matches the API response ---
+interface AtAGlanceData {
+  activeBatchCount: number;
   currentPopulation: number;
-  totalBirds: number;
   monthlyRevenue: number;
   sellableInventory: number;
-  accruedCost: number;
+  totalBirds: number;
 }
 
 interface AtAGlanceProps {
-  data: DashboardData;
+  data: AtAGlanceData;
 }
 
 const formatCurrency = (amount: number) => {
-  return new Intl.NumberFormat('en-PH', {
-    style: 'currency',
-    currency: 'PHP',
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
+  return new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
   }).format(amount);
 };
 
 export default function AtAGlance({ data }: AtAGlanceProps) {
+  // Defensive check in case data is not yet available
+  if (!data) {
+    return null; // Or a loading skeleton
+  }
+
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
       {/* Current Population Card */}
-      <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-blue-500">
+      <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-500 text-sm font-medium">Current Population</p>
+            <p className="text-gray-500 text-sm font-medium">
+              Current Population
+            </p>
             <h2 className="text-3xl font-bold text-gray-800 mt-1">
-              {data.currentPopulation}
+              {data.currentPopulation?.toLocaleString() || 0}
             </h2>
-            <p className="text-green-600 text-sm mt-2 flex items-center">
-              <FiTrendingUp className="mr-1" />
-              <span>Active Batches</span>
+            {/* UPDATED: Displays the active batch count */}
+            <p className="text-gray-500 text-sm mt-2">
+              <span>in {data.activeBatchCount} Active Batches</span>
             </p>
           </div>
           <div className="p-3 bg-blue-100 rounded-full">
@@ -44,12 +50,12 @@ export default function AtAGlance({ data }: AtAGlanceProps) {
       </div>
 
       {/* Total Birds Card */}
-      <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-green-500">
+      <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
         <div className="flex items-center justify-between">
           <div>
             <p className="text-gray-500 text-sm font-medium">Total Birds</p>
             <h2 className="text-3xl font-bold text-gray-800 mt-1">
-              {data.totalBirds.toLocaleString()}
+              {data.totalBirds?.toLocaleString() || 0}
             </h2>
             <p className="text-gray-500 text-sm mt-2">
               <span>Across all batches</span>
@@ -62,16 +68,17 @@ export default function AtAGlance({ data }: AtAGlanceProps) {
       </div>
 
       {/* This Month's Revenue Card */}
-      <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-purple-500">
+      <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-500 text-sm font-medium">This Month's Revenue</p>
+            <p className="text-gray-500 text-sm font-medium">
+              This Month's Revenue
+            </p>
             <h2 className="text-3xl font-bold text-gray-800 mt-1">
-              {formatCurrency(data.monthlyRevenue)}
+              {formatCurrency(data.monthlyRevenue || 0)}
             </h2>
-            <p className="text-green-600 text-sm mt-2 flex items-center">
-              <FiTrendingUp className="mr-1" />
-              <span>12% from last month</span>
+            <p className="text-gray-500 text-sm mt-2">
+              <span>In the last 30 days</span>
             </p>
           </div>
           <div className="p-3 bg-purple-100 rounded-full">
@@ -81,12 +88,14 @@ export default function AtAGlance({ data }: AtAGlanceProps) {
       </div>
 
       {/* Sellable Inventory Card */}
-      <div className="bg-white rounded-xl shadow-md p-6 border-l-4 border-orange-500">
+      <div className="bg-white rounded-lg shadow p-6 border border-gray-100">
         <div className="flex items-center justify-between">
           <div>
-            <p className="text-gray-500 text-sm font-medium">Sellable Inventory</p>
+            <p className="text-gray-500 text-sm font-medium">
+              Sellable Inventory
+            </p>
             <h2 className="text-3xl font-bold text-gray-800 mt-1">
-              {data.sellableInventory.toLocaleString()}
+              {data.sellableInventory?.toLocaleString() || 0}
             </h2>
             <p className="text-gray-500 text-sm mt-2">
               <span>Ready for market</span>
