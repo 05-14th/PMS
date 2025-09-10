@@ -41,6 +41,7 @@ interface BatchCost {
 
 interface MonitoringProps {
   batch: Batch;
+  onDataChange?: () => void;
 }
 
 const api = axios.create({
@@ -48,7 +49,7 @@ const api = axios.create({
   timeout: 10000,
 });
 
-const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
+const Monitoring: React.FC<MonitoringProps> = ({ batch, onDataChange }) => {
   const [selectedEventType, setSelectedEventType] = useState<string>("");
   const [vitals, setVitals] = useState<BatchVitals | null>(null);
   const [events, setEvents] = useState<BatchEvent[]>([]);
@@ -109,6 +110,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
       await api.delete(`/api/events/${eventType}/${eventId}`);
       message.success("Event deleted and stock has been restored.");
       fetchMonitoringData(); // Refresh data
+      onDataChange();
     } catch (error) {
       message.error("Failed to delete the event.");
     }
@@ -141,6 +143,7 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
     setIsCostModalVisible(false);
     fetchMonitoringData();
     setEditingCost(null);
+    onDataChange();
   };
 
   const formatDate = (date: Date | string): string => {
@@ -155,10 +158,9 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
     <div className="space-y-6">
       <h2 className="text-xl font-semibold">Batch Monitoring</h2>
 
-      {/* --- Batch Vitals Section (No Changes) --- */}
       <div className="bg-white p-6 rounded-lg shadow">
         <h3 className="text-lg font-medium text-gray-900 mb-4">Batch Vitals</h3>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1">
               Start Date
@@ -195,6 +197,17 @@ const Monitoring: React.FC<MonitoringProps> = ({ batch }) => {
               type="text"
               readOnly
               value={vitals ? vitals.currentPopulation : "N/A"}
+              className="block w-full rounded-md border-gray-300 bg-gray-50"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Total Mortality
+            </label>
+            <input
+              type="text"
+              readOnly
+              value={vitals ? vitals.totalMortality : "N/A"}
               className="block w-full rounded-md border-gray-300 bg-gray-50"
             />
           </div>

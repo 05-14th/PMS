@@ -53,6 +53,7 @@ interface DressedProduct {
 }
 interface HarvestingProps {
   batch: Batch;
+  onDataChange: () => void;
 }
 
 const api = axios.create({
@@ -60,7 +61,7 @@ const api = axios.create({
   timeout: 10000,
 });
 
-const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
+const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
   const [form] = Form.useForm();
   const [loading, setLoading] = useState(false);
   const [productType, setProductType] = useState<string | null>(null);
@@ -115,6 +116,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
       await api.delete(`/api/harvest-products/${harvestProductID}`);
       message.success("Harvest record deleted successfully.");
       fetchHarvestedProducts(); // Refresh the table
+      onDataChange();
     } catch (error: any) {
       const errorMsg =
         error.response?.data?.error || "Failed to delete harvest record.";
@@ -200,6 +202,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
 
       fetchHarvestedProducts();
       fetchDressedInventory();
+      onDataChange();
     } catch (error) {
       message.error("Failed to record harvest.");
     } finally {
@@ -305,6 +308,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
 
       fetchHarvestedProducts();
       fetchDressedInventory();
+      onDataChange();
     } catch (error: any) {
       message.error(
         error.response?.data?.error || "Failed to create byproducts."
@@ -813,6 +817,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch }) => {
           setIsEditModalVisible(false);
           setEditingHarvest(null);
           fetchHarvestedProducts();
+          onDataChange();
         }}
       />
 

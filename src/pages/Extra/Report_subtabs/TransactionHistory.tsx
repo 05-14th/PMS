@@ -1,179 +1,253 @@
-import React, { useState, useEffect } from 'react';
-import { Download, ChevronDown, Search } from 'lucide-react';
-import { DatePicker, Button as AntdButton } from 'antd';
-import { CalendarOutlined } from '@ant-design/icons';
-import dayjs from 'dayjs';
+import React, { useState, useEffect } from "react";
+import { DatePicker, Select as AntdSelect } from "antd";
+import { CalendarFold, Loader2 } from "lucide-react";
+import dayjs from "dayjs";
 
 const { RangePicker } = DatePicker;
 
+// --- TYPE DEFINITIONS ---
 interface Transaction {
-  id: string | number;
   date: string;
   type: string;
   description: string;
-  amount: string | number;
+  amount: number;
 }
 
-const TransactionHistory: React.FC = () => {
-  const [selectedBatch, setSelectedBatch] = useState('All Batches');
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [dates, setDates] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
-  
-  // Sample batches - replace with actual data
-  const batches = ['All Batches', 'Batch #001', 'Batch #002', 'Batch #003'];
-  
-  // Empty transactions array - will be populated with actual data
-  const [transactions] = useState<Transaction[]>([]);
+interface TransactionHistoryProps {
+  selectedBatchId: string | null;
+}
 
-  const handleExport = () => {
-    // Add export functionality here
-    console.log('Exporting PDF...');
-  };
+// --- HELPER FUNCTION FOR CURRENCY FORMATTING ---
+const formatCurrency = (value: number) => {
+  const formatted = new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+  }).format(Math.abs(value));
+  return value < 0 ? `(${formatted})` : formatted;
+};
 
-  const handleDateChange = (dates: any, dateStrings: [string, string]) => {
-    setDates(dates);
-    // Trigger search when dates change
-    if (dates && dates[0] && dates[1]) {
-      console.log('Searching for:', { searchQuery, dates });
+// --- MAIN COMPONENT ---
+const TransactionHistory: React.FC<TransactionHistoryProps> = ({
+  selectedBatchId,
+}) => {
+  const [allTransactions, setAllTransactions] = useState<Transaction[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<
+    Transaction[]
+  >([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // State for filters
+  const [filterType, setFilterType] = useState("All");
+  const [dates, setDates] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([
+    null,
+    null,
+  ]);
+
+  // Fetch transactions when the selected batch changes
+  useEffect(() => {
+    if (!selectedBatchId || selectedBatchId === "all") {
+      setAllTransactions([]);
+      return;
     }
-  };
 
-  const handleClearDates = () => {
-    setDates([null, null]);
-    // Trigger search when dates are cleared
-    console.log('Searching for:', { searchQuery, dates: [null, null] });
-  };
+    const fetchTransactions = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          `http://localhost:8080/api/batches/${selectedBatchId}/transactions`
+        );
+        if (!response.ok) {
+          throw new Error("Failed to fetch transactions");
+        }
+        const data: Transaction[] = await response.json();
+        setAllTransactions(data);
+      } catch (err) {
+        setError("Could not load transaction data.");
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    // Trigger search when search query changes
-    console.log('Searching for:', { searchQuery, dates });
+    fetchTransactions();
+  }, [selectedBatchId]);
+
+  // Apply filters whenever transactions or filter criteria change
+  useEffect(() => {
+    let data = [...allTransactions];
+
+    // Filter by Type
+    if (filterType !== "All") {
+      data = data.filter((t) => t.type === filterType);
+    }
+
+    // Filter by Date Range
+    if (dates && dates[0] && dates[1]) {
+      const startDate = dates[0].startOf("day");
+      const endDate = dates[1].endOf("day");
+      data = data.filter((t) => {
+        const transactionDate = dayjs(t.date);
+        return (
+          transactionDate.isAfter(startDate) &&
+          transactionDate.isBefore(endDate)
+        );
+      });
+    }
+
+    setFilteredTransactions(data);
+  }, [allTransactions, filterType, dates]);
+
+  const renderContent = () => {
+    if (isLoading) {
+      return (
+        <tr>
+          <td colSpan={4} className="h-48 text-center">
+            <Loader2 className="h-8 w-8 animate-spin text-green-600 inline-block" />
+          </td>
+        </tr>
+      );
+    }
+
+    if (error) {
+      return (
+        <tr>
+          <td colSpan={4} className="px-6 py-4 text-center text-red-500">
+            {error}
+          </td>
+        </tr>
+      );
+    }
+
+    if (!selectedBatchId || selectedBatchId === "all") {
+      return (
+        <tr>
+          <td colSpan={4} className="px-6 py-20 text-center text-gray-500">
+            Please select a batch to view its ledger.
+          </td>
+        </tr>
+      );
+    }
+
+    if (filteredTransactions.length === 0) {
+      return (
+        <tr>
+          <td colSpan={4} className="px-6 py-20 text-center text-gray-500">
+            No transactions found for the selected criteria.
+          </td>
+        </tr>
+      );
+    }
+
+    return filteredTransactions.map((transaction, index) => (
+      <tr key={index} className="hover:bg-gray-50">
+        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+          {transaction.date}
+        </td>
+        <td className="px-6 py-4 whitespace-nowrap text-sm">
+          <span
+            className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+              transaction.type === "Revenue"
+                ? "bg-green-100 text-green-800"
+                : "bg-red-100 text-red-800"
+            }`}
+          >
+            {transaction.type}
+          </span>
+        </td>
+        <td className="px-6 py-4 text-sm text-gray-800">
+          {transaction.description}
+        </td>
+        <td
+          className={`px-6 py-4 whitespace-nowrap text-sm text-right font-medium ${
+            transaction.amount > 0 ? "text-green-600" : "text-red-600"
+          }`}
+        >
+          {formatCurrency(transaction.amount)}
+        </td>
+      </tr>
+    ));
   };
 
   return (
     <div className="space-y-6">
-      {/* Header with Batch Dropdown and Export Button */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <div className="relative w-full sm:w-64">
-          <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-full flex justify-between items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300"
+      {/* --- FILTER CONTROLS --- */}
+      <div className="flex flex-col sm:flex-row items-center gap-4 p-4 bg-gray-50 rounded-lg border">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <label
+            htmlFor="type-filter"
+            className="text-sm font-medium text-gray-700"
           >
-            {selectedBatch}
-            <ChevronDown className="ml-2 h-4 w-4 text-gray-500" />
-          </button>
-          {isDropdownOpen && (
-            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 focus:outline-none">
-              {batches.map((batch) => (
-                <button
-                  key={batch}
-                  onClick={() => {
-                    setSelectedBatch(batch);
-                    setIsDropdownOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  {batch}
-                </button>
-              ))}
-            </div>
-          )}
+            Filter by Type:
+          </label>
+          <AntdSelect
+            id="type-filter"
+            value={filterType}
+            onChange={(value) => setFilterType(value)}
+            className="w-full sm:w-48"
+          >
+            <AntdSelect.Option value="All">All Transactions</AntdSelect.Option>
+            <AntdSelect.Option value="Revenue">Revenue</AntdSelect.Option>
+            <AntdSelect.Option value="Cost">Cost</AntdSelect.Option>
+          </AntdSelect>
         </div>
-        
-        <button
-          onClick={handleExport}
-          className="w-full sm:w-auto flex items-center justify-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-300"
-        >
-          <Download className="h-4 w-4 mr-2 text-gray-700" />
-          Export PDF
-        </button>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <label
+            htmlFor="date-filter"
+            className="text-sm font-medium text-gray-700"
+          >
+            Date Range:
+          </label>
+          <RangePicker
+            id="date-filter"
+            format="YYYY-MM-DD"
+            onChange={(dates) =>
+              setDates(dates as [dayjs.Dayjs | null, dayjs.Dayjs | null])
+            }
+            className="w-full sm:w-64"
+            suffixIcon={<CalendarFold className="text-gray-400" />}
+          />
+        </div>
       </div>
 
-      {/* Search and Date Range */}
-      <div className="bg-white p-4 rounded-lg shadow">
-        <form onSubmit={handleSearch} className="space-y-4 sm:space-y-0 sm:flex sm:space-x-4">
-          <div className="relative flex-grow">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <Search className="h-5 w-5 text-gray-400" />
-            </div>
-            <input
-              type="text"
-              placeholder="Search transactions..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white text-gray-700 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gray-300 focus:border-transparent sm:text-sm"
-            />
-          </div>
-          
-          <div className="flex gap-2">
-            <RangePicker
-              format="YYYY-MM-DD"
-              onChange={handleDateChange}
-              value={dates}
-              className="w-full sm:w-64"
-              suffixIcon={<CalendarOutlined className="text-gray-400" />}
-              placeholder={['Start Date', 'End Date']}
-            />
-            <AntdButton 
-              onClick={handleClearDates}
-              className="flex items-center"
-            >
-              Clear
-            </AntdButton>
-          </div>
-        </form>
-      </div>
-
-      {/* Transactions Table */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
+      {/* --- TRANSACTIONS LEDGER TABLE --- */}
+      <div className="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
+        <h3 className="text-lg font-medium text-gray-900 px-6 py-4 bg-white border-b">
+          Ledger for Batch
+        </h3>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Date
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Type
                 </th>
-                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Description
                 </th>
-                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th
+                  scope="col"
+                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
+                >
                   Amount
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {transactions.length > 0 ? (
-                transactions.map((transaction) => (
-                  <tr key={transaction.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.date}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.type}
-                    </td>
-                    <td className="px-6 py-4 text-sm text-gray-900">
-                      {transaction.description}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                      {typeof transaction.amount === 'string' && transaction.amount.startsWith('-') ? (
-                        <span className="text-red-600">{transaction.amount}</span>
-                      ) : (
-                        <span className="text-green-600">+{transaction.amount}</span>
-                      )}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={4} className="px-6 py-4 text-center text-sm text-gray-500">
-                    No transactions found
-                  </td>
-                </tr>
-              )}
+              {renderContent()}
             </tbody>
           </table>
         </div>

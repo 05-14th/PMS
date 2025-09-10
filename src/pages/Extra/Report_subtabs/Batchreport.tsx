@@ -1,109 +1,163 @@
-import React, { useState } from "react";
-import { Download, ChevronDown } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
-interface TableRow {
-  id: string | number;
-  category: string;
-  amount: string | number;
-  percentage: string | number;
-  perBird: string | number;
-  isTotal?: boolean;
+// --- TYPE DEFINITIONS TO MATCH YOUR GO BACKEND ---
+interface ExecutiveSummary {
+  netProfit: number;
+  roi: number;
+  feedConversionRatio: number;
+  harvestRecovery: number; // ADDED THIS LINE
+  costPerKg: number;
 }
 
-const BatchReport: React.FC = () => {
-  // Sample data for metric cards
-  const metrics = [
-    { title: "Net Profit", value: "₱25,450", change: "+12.5%", isPositive: true },
-    { title: "Return on Investment", value: "18.7%", change: "+2.3%", isPositive: true },
-    { title: "Feed Conversion Ratio", value: "1.75", change: "-0.15", isPositive: false },
-    { title: "Harvest Recovery", value: "87.3%", change: "+1.2%", isPositive: true },
-    { title: "Cost per Kg", value: "₱89.50", change: "-₱2.30", isPositive: true },
-  ];
+interface FinancialBreakdownItem {
+  category: string;
+  amount: number;
+  percentage: number;
+  perBird: number;
+}
 
-  const [selectedBatch, setSelectedBatch] = useState("All Batches");
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-  const [tableData, setTableData] = useState<TableRow[]>([]);
+interface OperationalAnalytics {
+  initialBirdCount: number;
+  finalBirdCount: number;
+  mortalityRate: number;
+  totalFeedConsumed: number;
+  totalWeightHarvested: number;
+  averageHarvestWeight: number;
+}
 
-  const batches = ["All Batches", "Batch #001", "Batch #002", "Batch #003"];
+interface BatchReportData {
+  executiveSummary: ExecutiveSummary;
+  financialBreakdown: FinancialBreakdownItem[];
+  operationalAnalytics: OperationalAnalytics;
+}
 
-  const handleExport = () => {
-    // Add export functionality here
-    console.log("Exporting report...");
-  };
+// --- PROPS INTERFACE ---
+interface BatchReportProps {
+  selectedBatchId: string | null;
+}
+
+// --- HELPER FUNCTIONS FOR FORMATTING ---
+const formatCurrency = (value: number) =>
+  new Intl.NumberFormat("en-PH", {
+    style: "currency",
+    currency: "PHP",
+  }).format(value);
+
+const formatNumber = (value: number, decimals = 2) =>
+  value.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+
+// --- METRIC CARD COMPONENT ---
+const MetricCard: React.FC<{ title: string; value: string }> = ({
+  title,
+  value,
+}) => (
+  <div className="bg-white rounded-lg shadow p-4 border border-gray-100">
+    <p className="text-sm font-medium text-gray-500">{title}</p>
+    <p className="text-2xl font-bold text-gray-800 mt-1">{value}</p>
+  </div>
+);
+
+// --- MAIN COMPONENT ---
+const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
+  const [reportData, setReportData] = useState<BatchReportData | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedBatchId || selectedBatchId === "all") {
+      setReportData(null);
+      return;
+    }
+
+    const fetchReportData = async () => {
+      setIsLoading(true);
+      setError(null);
+      try {
+        const response = await fetch(
+          `http://localhost:8080/api/reports/batch/${selectedBatchId}`
+        );
+        if (!response.ok) {
+          throw new Error("Failed to fetch report data");
+        }
+        const data = await response.json();
+        setReportData(data);
+      } catch (err) {
+        setError("Could not load report data.");
+        console.error(err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchReportData();
+  }, [selectedBatchId]);
+
+  if (isLoading) {
+    return (
+      <div className="flex justify-center items-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-green-600" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return <div className="text-center text-red-500">{error}</div>;
+  }
+
+  if (!reportData) {
+    return (
+      <div className="text-center text-gray-500 h-64 flex items-center justify-center">
+        <p>Please select a batch to view its report.</p>
+      </div>
+    );
+  }
+
+  const { executiveSummary, financialBreakdown, operationalAnalytics } =
+    reportData;
 
   return (
-    <div className="space-y-6">
-      {/* Header with Dropdown and Export Button */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-        <div className="relative w-full sm:w-64">
-          <button
-            onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="w-full flex justify-between items-center px-4 py-2 bg-white border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-          >
-            {selectedBatch}
-            <ChevronDown className="ml-2 h-4 w-4 text-gray-500" />
-          </button>
-          {isDropdownOpen && (
-            <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md py-1 text-base ring-1 ring-black ring-opacity-5 focus:outline-none">
-              {batches.map((batch) => (
-                <button
-                  key={batch}
-                  onClick={() => {
-                    setSelectedBatch(batch);
-                    setIsDropdownOpen(false);
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-                >
-                  {batch}
-                </button>
-              ))}
-            </div>
-          )}
+    <div className="space-y-8">
+      {/* --- EXECUTIVE SUMMARY --- */}
+      <div>
+        <h3 className="text-lg leading-6 font-semibold text-gray-900 mb-4">
+          Executive Summary
+        </h3>
+        {/* UPDATED a 4 to a 5 for the grid columns to make it look nice */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+          <MetricCard
+            title="Net Profit"
+            value={formatCurrency(executiveSummary.netProfit)}
+          />
+          <MetricCard
+            title="Return on Investment"
+            value={`${formatNumber(executiveSummary.roi)}%`}
+          />
+          <MetricCard
+            title="Feed Conversion Ratio"
+            value={formatNumber(executiveSummary.feedConversionRatio)}
+          />
+          {/* ADDED this new Metric Card */}
+          <MetricCard
+            title="Harvest Recovery"
+            value={`${formatNumber(executiveSummary.harvestRecovery)}%`}
+          />
+          <MetricCard
+            title="Cost per Kg"
+            value={formatCurrency(executiveSummary.costPerKg)}
+          />
         </div>
-
-        <button
-          onClick={handleExport}
-          className="w-full sm:w-auto flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Export PDF
-        </button>
       </div>
 
-      {/* Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
-        {metrics.map((metric, index) => (
-          <div
-            key={index}
-            className="bg-white rounded-lg shadow p-4 border border-gray-100"
-          >
-            <div className="flex justify-between items-start">
-              <div>
-                <p className="text-sm font-medium text-gray-500">{metric.title}</p>
-                <p className="text-2xl font-bold text-gray-800 mt-1">{metric.value}</p>
-              </div>
-              <span
-                className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  metric.isPositive
-                    ? "bg-green-100 text-green-800"
-                    : "bg-red-100 text-red-800"
-                }`}
-              >
-                {metric.change}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Cost Breakdown Table */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-lg">
-        <div className="px-4 py-5 sm:px-6 border-b border-gray-200">
-          <h3 className="text-lg leading-6 font-medium text-gray-900">
-            Cost Breakdown
-          </h3>
-        </div>
-        <div className="overflow-x-auto">
+      {/* --- FINANCIAL BREAKDOWN --- */}
+      <div>
+        <h3 className="text-lg leading-6 font-semibold text-gray-900 mb-4">
+          Financial Breakdown
+        </h3>
+        <div className="shadow overflow-hidden border-b border-gray-200 sm:rounded-lg">
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
@@ -123,51 +177,99 @@ const BatchReport: React.FC = () => {
                   scope="col"
                   className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Percentage of Total Cost
+                  % of Total Cost
                 </th>
                 <th
                   scope="col"
                   className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
                 >
-                  Amount per Bird
+                  Cost per Bird
                 </th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {tableData.length > 0 ? (
-                tableData.map((row) => (
-                  <tr
-                    key={row.id}
-                    className={
-                      row.isTotal ? "bg-gray-50 font-semibold" : "hover:bg-gray-50"
-                    }
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {row.category}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
-                      {row.amount}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                      {row.percentage}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
-                      {row.perBird}
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
+              {financialBreakdown.map((row, index) => (
+                <tr
+                  key={index}
+                  className={
+                    row.category.startsWith("-")
+                      ? ""
+                      : "bg-gray-50 font-semibold"
+                  }
+                >
                   <td
-                    colSpan={4}
-                    className="px-6 py-4 text-center text-sm text-gray-500"
+                    className={`px-6 py-4 whitespace-nowrap text-sm ${row.category.startsWith("-") ? "pl-10 text-gray-700" : "text-gray-900"}`}
                   >
-                    No data available
+                    {row.category}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">
+                    {formatCurrency(row.amount)}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
+                    {row.percentage > 0
+                      ? `${formatNumber(row.percentage)}%`
+                      : "-"}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 text-right">
+                    {formatCurrency(row.perBird)}
                   </td>
                 </tr>
-              )}
+              ))}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      {/* --- OPERATIONAL ANALYTICS --- */}
+      <div>
+        <h3 className="text-lg leading-6 font-semibold text-gray-900 mb-4">
+          Operational Analytics
+        </h3>
+        <div className="bg-white shadow border p-6 rounded-lg grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-4">
+          <div className="flex justify-between border-b pb-2">
+            <span className="font-medium text-gray-600">
+              Initial Bird Count:
+            </span>{" "}
+            <span className="text-gray-900">
+              {operationalAnalytics.initialBirdCount}
+            </span>
+          </div>
+          <div className="flex justify-between border-b pb-2">
+            <span className="font-medium text-gray-600">
+              Total Feed Consumed:
+            </span>{" "}
+            <span className="text-gray-900">
+              {formatNumber(operationalAnalytics.totalFeedConsumed)} kg
+            </span>
+          </div>
+          <div className="flex justify-between border-b pb-2">
+            <span className="font-medium text-gray-600">Final Bird Count:</span>{" "}
+            <span className="text-gray-900">
+              {operationalAnalytics.finalBirdCount}
+            </span>
+          </div>
+          <div className="flex justify-between border-b pb-2">
+            <span className="font-medium text-gray-600">
+              Total Weight Harvested:
+            </span>{" "}
+            <span className="text-gray-900">
+              {formatNumber(operationalAnalytics.totalWeightHarvested)} kg
+            </span>
+          </div>
+          <div className="flex justify-between border-b pb-2">
+            <span className="font-medium text-gray-600">Mortality Rate:</span>{" "}
+            <span className="text-gray-900">
+              {formatNumber(operationalAnalytics.mortalityRate)}%
+            </span>
+          </div>
+          <div className="flex justify-between border-b pb-2">
+            <span className="font-medium text-gray-600">
+              Average Harvest Weight:
+            </span>{" "}
+            <span className="text-gray-900">
+              {formatNumber(operationalAnalytics.averageHarvestWeight)} kg
+            </span>
+          </div>
         </div>
       </div>
     </div>
