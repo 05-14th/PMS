@@ -13,7 +13,7 @@ import Detail from "./Extra/Batches/Detail";
 import AddBatchForm from "./Extra/Batches/AddBatchForm";
 import EditBatchForm from "./Extra/Batches/EditBatchForm";
 import axios from "axios";
-import { Button, Col, Input, message, Modal, Row, Select } from "antd";
+import { Button, Col, Input, message, Modal, Row, Select, Pagination } from "antd";
 import dayjs from "dayjs";
 import useDebounce from "../hooks/useDebounce";
 
@@ -42,28 +42,31 @@ const Batches: React.FC = () => {
     title: string;
   } | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
-  const [batches, setBatches] = useState<Batch[]>([]);
+  const [allBatches, setAllBatches] = useState<Batch[]>([]); // store all data
+  const [batches, setBatches] = useState<Batch[]>([]); // paginated data
   const [loading, setLoading] = useState<boolean>(true);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
 
-  // --- NEW: State for filters and modal ---
+  // --- Filters and modal ---
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const debouncedSearchText = useDebounce(searchText, 500);
 
+  // --- Pagination state ---
+  const [page, setPage] = useState<number>(1);
+  const [pageSize, setPageSize] = useState<number>(5);
+  const [total, setTotal] = useState<number>(0);
+
+  // Fetch all batches once
   const fetchBatches = async () => {
     setLoading(true);
     try {
-      const response = await api.get("/api/batches", {
-        params: {
-          search: debouncedSearchText,
-          status: statusFilter,
-        },
-      });
-      setBatches(response.data || []);
+      const response = await api.get("/api/batches");
+      const data = response.data?.data || response.data || [];
+      setAllBatches(data);
     } catch (error) {
       message.error("Failed to fetch batches.");
     } finally {
@@ -71,18 +74,45 @@ const Batches: React.FC = () => {
     }
   };
 
+  // Apply search + filter + pagination
+  useEffect(() => {
+    let filtered = [...allBatches];
+
+    // search filter
+    if (debouncedSearchText) {
+      filtered = filtered.filter((b) =>
+        b.batchName.toLowerCase().includes(debouncedSearchText.toLowerCase())
+      );
+    }
+
+    // status filter
+    if (statusFilter !== "All") {
+      filtered = filtered.filter((b) => b.status === statusFilter);
+    }
+
+    setTotal(filtered.length);
+
+    // pagination slice
+    const start = (page - 1) * pageSize;
+    const paginated = filtered.slice(start, start + pageSize);
+    setBatches(paginated);
+  }, [allBatches, debouncedSearchText, statusFilter, page, pageSize]);
+
+  // Reset to page 1 on search/filter change
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearchText, statusFilter]);
+
   useEffect(() => {
     fetchBatches();
-  }, [debouncedSearchText, statusFilter]);
+  }, []);
 
   const handleAddBatch = async (values: any) => {
     setIsSaving(true);
     const payload = {
       ...values,
       StartDate: dayjs(values.StartDate).format("YYYY-MM-DD"),
-      ExpectedHarvestDate: dayjs(values.ExpectedHarvestDate).format(
-        "YYYY-MM-DD"
-      ),
+      ExpectedHarvestDate: dayjs(values.ExpectedHarvestDate).format("YYYY-MM-DD"),
       Notes: values.Notes || "",
     };
     try {
@@ -102,9 +132,7 @@ const Batches: React.FC = () => {
     setIsSaving(true);
     const payload = {
       ...values,
-      ExpectedHarvestDate: dayjs(values.expectedHarvestDate).format(
-        "YYYY-MM-DD"
-      ),
+      ExpectedHarvestDate: dayjs(values.expectedHarvestDate).format("YYYY-MM-DD"),
       Notes: values.notes || "",
     };
     try {
@@ -133,8 +161,7 @@ const Batches: React.FC = () => {
           message.success("Batch deleted successfully.");
           fetchBatches(); // Refresh list
         } catch (error: any) {
-          const errorMsg =
-            error.response?.data?.error || "Failed to delete batch.";
+          const errorMsg = error.response?.data?.error || "Failed to delete batch.";
           message.error(errorMsg);
         }
       },
@@ -189,7 +216,7 @@ const Batches: React.FC = () => {
       />
 
       <div className="space-y-6">
-        {/* --- NEW: Filters and Add Button Section --- */}
+        {/* --- Filters and Add Button Section --- */}
         <div className="bg-white p-4 rounded-lg shadow-sm">
           <Row gutter={[16, 16]} justify="space-between" align="middle">
             <Col xs={24} md={12} lg={8}>
@@ -304,7 +331,11 @@ const Batches: React.FC = () => {
                             });
                           }
                         }}
-                        className={`inline-flex items-center text-sm ${batch.notes?.Valid ? "text-blue-600 hover:underline" : "text-gray-400"}`}
+                        className={`inline-flex items-center text-sm ${
+                          batch.notes?.Valid
+                            ? "text-blue-600 hover:underline"
+                            : "text-gray-400"
+                        }`}
                         disabled={!batch.notes?.Valid}
                       >
                         <FaStickyNote className="mr-1.5 h-4 w-4" />
@@ -343,6 +374,22 @@ const Batches: React.FC = () => {
                 ))}
               </tbody>
             </table>
+          </div>
+
+          {/* --- Pagination below table --- */}
+          <div className="p-4 flex justify-center border-t">
+            <Pagination
+              current={page}
+              pageSize={pageSize}
+              total={total}
+              showSizeChanger
+              pageSizeOptions={["5", "10", "20", "50"]}
+              onChange={(p, ps) => {
+                setPage(p);
+                setPageSize(ps);
+              }}
+              showTotal={(t, range) => `${range[0]}-${range[1]} of ${t} batches`}
+            />
           </div>
         </div>
       </div>
