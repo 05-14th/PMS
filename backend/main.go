@@ -1961,7 +1961,7 @@ func getSalesHistory(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, records)
 }
 
-// for deleting a sale record (soft delete)
+// for deleting a sale record (soft delete and returning stock)
 func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
@@ -1971,13 +1971,70 @@ func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
-
-	query := "UPDATE cm_sales_orders SET IsActive = 0 WHERE SaleID = ?"
-	_, err = db.ExecContext(ctx, query, saleID)
+	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to deactivate sale", err)
+		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
 		return
 	}
+	
+	defer tx.Rollback()
+
+	type saleItem struct {
+		HarvestProductID int
+		QuantitySold     int
+		TotalWeightKg    float64
+	}
+	var itemsToRevert []saleItem
+
+	rows, err := tx.QueryContext(ctx, "SELECT HarvestProductID, QuantitySold, TotalWeightKg FROM cm_sales_details WHERE SaleID = ?", saleID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to find sale details for reversal", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item saleItem
+		if err := rows.Scan(&item.HarvestProductID, &item.QuantitySold, &item.TotalWeightKg); err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan sale item", err)
+			return
+		}
+		itemsToRevert = append(itemsToRevert, item)
+	}
+	if err = rows.Err(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Error iterating sale items", err)
+		return
+	}
+
+	for _, item := range itemsToRevert {
+	
+		_, err := tx.ExecContext(ctx, `
+			UPDATE cm_harvest_products 
+			SET 
+				QuantityRemaining = QuantityRemaining + ?, 
+				WeightRemainingKg = WeightRemainingKg + ?,
+				IsActive = 1
+			WHERE HarvestProductID = ?`, 
+			item.QuantitySold, item.TotalWeightKg, item.HarvestProductID)
+		
+		if err != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to revert stock for product", err)
+			return
+		}
+	}
+
+	_, err = tx.ExecContext(ctx, "UPDATE cm_sales_orders SET IsActive = 0 WHERE SaleID = ?", saleID)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to deactivate sale order", err)
+		return
+	}
+
+
+	if err := tx.Commit(); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
+		return
+	}
+
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
@@ -3627,55 +3684,94 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 
 	var data DashboardData
 
-	
+	// --- 1. At a Glance Metrics (No changes) ---
 	db.QueryRowContext(ctx, `SELECT COALESCE(COUNT(BatchID), 0), COALESCE(SUM(CurrentChicken), 0) FROM cm_batches WHERE Status = 'Active'`).Scan(&data.AtAGlance.ActiveBatchCount, &data.AtAGlance.CurrentPopulation)
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(TotalChicken), 0) FROM cm_batches`).Scan(&data.AtAGlance.TotalBirds)
-	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleDate >= DATE_FORMAT(NOW(), '%Y-%m-01')`).Scan(&data.AtAGlance.MonthlyRevenue)
+	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY AND IsActive = 1`).Scan(&data.AtAGlance.MonthlyRevenue)
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_harvest_products WHERE ProductType IN ('Live', 'Dressed') AND IsActive = 1`).Scan(&data.AtAGlance.SellableInventory)
 
-	type activeBatchInfo struct { 
-		ID         int
-		Name       string
-		StartDate  string
-		EndDate    string
-		Population int
-	}
+	// --- 2. Active Batches Panel (No changes) ---
+	type activeBatchInfo struct { ID int; Name, StartDate, EndDate string; Population int }
 	var activeBatchList []activeBatchInfo
-	
-	rows, err := db.QueryContext(ctx, `
-		SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, CurrentChicken 
-		FROM cm_batches WHERE Status = 'Active' ORDER BY StartDate ASC`)
-	if err != nil {}
+	rows, _ := db.QueryContext(ctx, `SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, CurrentChicken FROM cm_batches WHERE Status = 'Active' ORDER BY StartDate ASC`)
 	defer rows.Close()
-
 	for rows.Next() {
 		var b activeBatchInfo
 		rows.Scan(&b.ID, &b.Name, &b.StartDate, &b.EndDate, &b.Population)
-		
-		
 		parsedStartDate, _ := time.Parse("2006-01-02", b.StartDate)
 		age := int(time.Since(parsedStartDate).Hours() / 24)
 		data.ActiveBatches = append(data.ActiveBatches, ActiveBatch{ID: b.Name, Age: age, Population: b.Population})
-		
 		activeBatchList = append(activeBatchList, b)
 	}
 
-	
-	// ... (logic for stock status and alerts) ...
-	var feedStock float64
-	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(p.QuantityRemaining), 0) FROM cm_inventory_purchases p JOIN cm_items i ON p.ItemID = i.ItemID WHERE i.Category = 'Feed' AND p.IsActive = 1`).Scan(&feedStock)
-	feedStatus := StockStatus{ID: "feed", Name: "Feed (kg)", Quantity: fmt.Sprintf("%.2f kg left", feedStock)}
-	if feedStock < 100.0 {
-		feedStatus.Level = 15; feedStatus.Status = "low"
-		data.Alerts = append(data.Alerts, Alert{Type: "warning", Message: fmt.Sprintf("Feed stock is low (%.2f kg remaining). Consider restocking soon.", feedStock)})
-	} else {
-		feedStatus.Level = 75; feedStatus.Status = "adequate"
+	// --- 3. REVISED: Fully Dynamic Stock Status & Smart Alerts by Category and Unit ---
+	type itemStock struct { Name, Unit, Category string; Quantity float64 }
+	var allItemStocks []itemStock
+	stockRows, err := db.QueryContext(ctx, `
+		SELECT i.ItemName, i.Unit, i.Category, COALESCE(SUM(p.QuantityRemaining), 0) as TotalStock
+		FROM cm_items i
+		LEFT JOIN cm_inventory_purchases p ON i.ItemID = p.ItemID AND p.IsActive = 1
+		WHERE i.IsActive = 1
+		GROUP BY i.ItemID, i.ItemName, i.Unit, i.Category`)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch all item stocks", err)
+		return
 	}
-	data.StockItems = append(data.StockItems, feedStatus)
+	defer stockRows.Close()
 
-	
-	// ... (logic for charts) ...
-	revenueRows, _ := db.QueryContext(ctx, `SELECT DATE(SaleDate), SUM(TotalAmount) FROM cm_sales_orders WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY GROUP BY DATE(SaleDate) ORDER BY DATE(SaleDate) ASC`)
+	for stockRows.Next() {
+		var stock itemStock
+		stockRows.Scan(&stock.Name, &stock.Unit, &stock.Category, &stock.Quantity)
+		allItemStocks = append(allItemStocks, stock)
+	}
+
+	// Define thresholds based on a combination of Category and Unit
+	thresholds := map[string]map[string]float64{
+		"Feed": {
+			"kg": 50.0,
+		},
+		"Vitamins": {
+			"pcs":   10.0,
+			"grams": 50.0,
+			"liter": 1.0,
+		},
+		"Medicine": {
+			"grams": 20.0,
+			"pcs":   15.0,
+			"liter": 0.5,
+		},
+	}
+
+	for _, stock := range allItemStocks {
+		// Check if a threshold exists for the item's category
+		if categoryThresholds, ok := thresholds[stock.Category]; ok {
+			// Check if a threshold exists for the specific unit within that category
+			if threshold, ok := categoryThresholds[stock.Unit]; ok {
+				
+				// Always add the item to the Stock Status panel
+				status := StockStatus{
+					ID:       strings.ToLower(strings.ReplaceAll(stock.Name, " ", "-")),
+					Name:     stock.Name,
+					Quantity: fmt.Sprintf("%.2f %s left", stock.Quantity, stock.Unit),
+				}
+				if stock.Quantity < threshold { 
+					status.Level = 15; status.Status = "low";
+					// Generate a specific alert if below the threshold
+					alertMsg := fmt.Sprintf("%s stock is low (%.2f %s remaining).", stock.Name, stock.Quantity, stock.Unit)
+					data.Alerts = append(data.Alerts, Alert{Type: "warning", Message: alertMsg})
+				} else if stock.Quantity < (threshold * 3) { // "Adequate" if it's less than 3x the low threshold
+					status.Level = 50; status.Status = "adequate";
+				} else { // "Good" if it's well above the threshold
+					status.Level = 85; status.Status = "good"; 
+				}
+				data.StockItems = append(data.StockItems, status)
+			}
+		}
+	}
+
+
+	// --- 4. Chart Data (No changes) ---
+	revenueRows, _ := db.QueryContext(ctx, `SELECT DATE(SaleDate), SUM(TotalAmount) FROM cm_sales_orders WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY AND IsActive = 1 GROUP BY DATE(SaleDate) ORDER BY DATE(SaleDate) ASC`)
 	defer revenueRows.Close()
 	revenueMap := make(map[string]float64)
 	for i := 0; i < 30; i++ { day := time.Now().AddDate(0, 0, -i).Format("2006-01-02"); revenueMap[day] = 0 }
@@ -3687,39 +3783,21 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType != 'Chick Purchase' AND BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')`).Scan(&otherCost)
 	data.Charts.CostBreakdown = append(data.Charts.CostBreakdown, CostBreakdownPoint{Name: "Feed Cost", Value: feedCost}, CostBreakdownPoint{Name: "Chick Purchase", Value: chickCost}, CostBreakdownPoint{Name: "Other Costs", Value: otherCost})
 
-	
+	// --- 5. Financial Forecast Calculation (No changes) ---
 	for _, batch := range activeBatchList {
-		var forecast FinancialForecastData
-		forecast.BatchID = strconv.Itoa(batch.ID)
-		forecast.BatchName = batch.Name
-		forecast.StartDate = batch.StartDate
-		forecast.EndDate = batch.EndDate
-
-		
+		var forecast FinancialForecastData; forecast.BatchID = strconv.Itoa(batch.ID); forecast.BatchName = batch.Name; forecast.StartDate = batch.StartDate; forecast.EndDate = batch.EndDate
 		var batchFeedCost, batchChickCost, batchOtherCost float64
 		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0) FROM cm_inventory_usage_details iud JOIN cm_inventory_usage iu ON iud.UsageID = iu.UsageID JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID WHERE iu.BatchID = ?`, batch.ID).Scan(&batchFeedCost)
 		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType = 'Chick Purchase' AND BatchID = ?`, batch.ID).Scan(&batchChickCost)
 		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType != 'Chick Purchase' AND BatchID = ?`, batch.ID).Scan(&batchOtherCost)
 		forecast.AccruedCost = batchFeedCost + batchChickCost + batchOtherCost
-
-		
-		var initialPop int
-		db.QueryRowContext(ctx, "SELECT TotalChicken FROM cm_batches WHERE BatchID = ?", batch.ID).Scan(&initialPop)
-		forecast.EstimatedRevenue = float64(initialPop) * 1.8 * 200 
-
-	
-		start, _ := time.Parse("2006-01-02", batch.StartDate)
-		end, _ := time.Parse("2006-01-02", batch.EndDate)
-		totalDuration := end.Sub(start).Hours() / 24
-		currentDuration := time.Since(start).Hours() / 24
-		if totalDuration > 0 {
-			forecast.Progress = int((currentDuration / totalDuration) * 100)
-			if forecast.Progress > 100 { forecast.Progress = 100 }
-		}
-		
+		var initialPop int; db.QueryRowContext(ctx, "SELECT TotalChicken FROM cm_batches WHERE BatchID = ?", batch.ID).Scan(&initialPop); forecast.EstimatedRevenue = float64(initialPop) * 1.8 * 200
+		start, _ := time.Parse("2006-01-02", batch.StartDate); end, _ := time.Parse("2006-01-02", batch.EndDate); totalDuration := end.Sub(start).Hours() / 24; currentDuration := time.Since(start).Hours() / 24
+		if totalDuration > 0 { forecast.Progress = int((currentDuration / totalDuration) * 100); if forecast.Progress > 100 { forecast.Progress = 100 } }
 		data.FinancialForecasts = append(data.FinancialForecasts, forecast)
 	}
 
+	// --- 6. Final Response (No changes) ---
 	if data.ActiveBatches == nil { data.ActiveBatches = make([]ActiveBatch, 0) }
 	if data.StockItems == nil { data.StockItems = make([]StockStatus, 0) }
 	if data.Charts.RevenueTimeline == nil { data.Charts.RevenueTimeline = make([]RevenueDataPoint, 0) }
@@ -3729,8 +3807,6 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, data)
 }
-
-
 
 /* ===========================
     Router / Server
