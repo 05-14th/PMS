@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Download } from "lucide-react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 
-// --- TYPE DEFINITIONS TO MATCH YOUR GO BACKEND ---
+// --- TYPE DEFINITIONS ---
 interface ExecutiveSummary {
   netProfit: number;
   roi: number;
   feedConversionRatio: number;
-  harvestRecovery: number; // ADDED THIS LINE
+  harvestRecovery: number;
   costPerKg: number;
 }
 
@@ -30,14 +32,15 @@ interface BatchReportData {
   executiveSummary: ExecutiveSummary;
   financialBreakdown: FinancialBreakdownItem[];
   operationalAnalytics: OperationalAnalytics;
+  batchName?: string;
+  durationDays?: number;
 }
 
-// --- PROPS INTERFACE ---
 interface BatchReportProps {
   selectedBatchId: string | null;
 }
 
-// --- HELPER FUNCTIONS FOR FORMATTING ---
+// --- FORMAT HELPERS ---
 const formatCurrency = (value: number) =>
   new Intl.NumberFormat("en-PH", {
     style: "currency",
@@ -96,6 +99,96 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
     fetchReportData();
   }, [selectedBatchId]);
 
+  const handleExportPDF = () => {
+    if (!reportData) return;
+
+    const doc = new jsPDF();
+    const today = new Date().toLocaleDateString("en-PH");
+
+    // Header
+    doc.setFontSize(12);
+    doc.text("Chickmate Poultry Farm", 14, 15);
+    doc.text("Address: Paracale, Bicol, PH", 14, 22);
+    doc.text(`Date Generated: ${today}`, 150, 15);
+
+    // Title
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.text("Performance and Financial Report", 14, 35);
+    doc.setFontSize(12);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Batch Name: ${reportData.batchName || selectedBatchId}`, 14, 42);
+    doc.text(`Duration: ${reportData.durationDays || "N/A"} days`, 14, 49);
+
+    // Executive Summary
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("Executive Summary", 14, 60);
+
+    doc.setFontSize(11);
+    doc.setFont("helvetica", "normal");
+    const es = reportData.executiveSummary;
+    const execSummaryData = [
+      ["Net Profit", formatCurrency(es.netProfit)],
+      ["Feed Conversion Ratio", formatNumber(es.feedConversionRatio)],
+      ["Liveability %", `${formatNumber(es.harvestRecovery)}%`],
+      ["Cost per Kg", formatCurrency(es.costPerKg)],
+    ];
+    autoTable(doc, {
+      startY: 65,
+      head: [["Metric", "Value"]],
+      body: execSummaryData,
+      theme: "grid",
+    });
+
+    // Financial Breakdown
+    const fbStartY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("Financial Breakdown", 14, fbStartY);
+
+    const fbRows = reportData.financialBreakdown.map((row) => [
+      row.category,
+      formatCurrency(row.amount),
+      row.percentage > 0 ? `${formatNumber(row.percentage)}%` : "-",
+      formatCurrency(row.perBird),
+    ]);
+    autoTable(doc, {
+      startY: fbStartY + 5,
+      head: [["Category", "Total Amount (Php)", "% of Total Cost", "Per Bird"]],
+      body: fbRows,
+      theme: "grid",
+    });
+
+    // Operational Analytics
+    const oaStartY = (doc as any).lastAutoTable.finalY + 10;
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text("Operational Analytics", 14, oaStartY);
+
+    const oa = reportData.operationalAnalytics;
+    const oaData = [
+      ["Initial Bird Count", oa.initialBirdCount],
+      ["Final Bird Count", oa.finalBirdCount],
+      ["Mortality Rate", `${formatNumber(oa.mortalityRate)}%`],
+      ["Average Harvest Age", `${reportData.durationDays || "N/A"} days`],
+      ["Total Feed Consumed", `${formatNumber(oa.totalFeedConsumed)} kg`],
+      ["Total Weight Harvested", `${formatNumber(oa.totalWeightHarvested)} kg`],
+      ["Average Harvest Weight", `${formatNumber(oa.averageHarvestWeight)} kg`],
+      ["Avg. Selling Price", formatCurrency(es.costPerKg)], // adjust if you have actual selling price
+    ];
+
+    autoTable(doc, {
+      startY: oaStartY + 5,
+      head: [["Metric", "Value"]],
+      body: oaData,
+      theme: "grid",
+    });
+
+    // Save PDF
+    doc.save(`BatchReport_${reportData.batchName || selectedBatchId}.pdf`);
+  };
+
   if (isLoading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -121,12 +214,22 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
 
   return (
     <div className="space-y-8">
+      {/* Export Button */}
+      <div className="flex justify-end">
+        <button
+          onClick={handleExportPDF}
+          className="flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-md shadow hover:bg-green-700"
+        >
+          <Download className="h-5 w-5" />
+          Export PDF
+        </button>
+      </div>
+
       {/* --- EXECUTIVE SUMMARY --- */}
       <div>
         <h3 className="text-lg leading-6 font-semibold text-gray-900 mb-4">
           Executive Summary
         </h3>
-        {/* UPDATED a 4 to a 5 for the grid columns to make it look nice */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
           <MetricCard
             title="Net Profit"
@@ -140,7 +243,6 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
             title="Feed Conversion Ratio"
             value={formatNumber(executiveSummary.feedConversionRatio)}
           />
-          {/* ADDED this new Metric Card */}
           <MetricCard
             title="Harvest Recovery"
             value={`${formatNumber(executiveSummary.harvestRecovery)}%`}
@@ -161,28 +263,16 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
           <table className="min-w-full divide-y divide-gray-200">
             <thead className="bg-gray-50">
               <tr>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
                   Category
                 </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                   Total Amount
                 </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                   % of Total Cost
                 </th>
-                <th
-                  scope="col"
-                  className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider"
-                >
+                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">
                   Cost per Bird
                 </th>
               </tr>
@@ -198,7 +288,11 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
                   }
                 >
                   <td
-                    className={`px-6 py-4 whitespace-nowrap text-sm ${row.category.startsWith("-") ? "pl-10 text-gray-700" : "text-gray-900"}`}
+                    className={`px-6 py-4 whitespace-nowrap text-sm ${
+                      row.category.startsWith("-")
+                        ? "pl-10 text-gray-700"
+                        : "text-gray-900"
+                    }`}
                   >
                     {row.category}
                   </td>
@@ -229,7 +323,7 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
           <div className="flex justify-between border-b pb-2">
             <span className="font-medium text-gray-600">
               Initial Bird Count:
-            </span>{" "}
+            </span>
             <span className="text-gray-900">
               {operationalAnalytics.initialBirdCount}
             </span>
@@ -237,13 +331,13 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
           <div className="flex justify-between border-b pb-2">
             <span className="font-medium text-gray-600">
               Total Feed Consumed:
-            </span>{" "}
+            </span>
             <span className="text-gray-900">
               {formatNumber(operationalAnalytics.totalFeedConsumed)} kg
             </span>
           </div>
           <div className="flex justify-between border-b pb-2">
-            <span className="font-medium text-gray-600">Final Bird Count:</span>{" "}
+            <span className="font-medium text-gray-600">Final Bird Count:</span>
             <span className="text-gray-900">
               {operationalAnalytics.finalBirdCount}
             </span>
@@ -251,13 +345,13 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
           <div className="flex justify-between border-b pb-2">
             <span className="font-medium text-gray-600">
               Total Weight Harvested:
-            </span>{" "}
+            </span>
             <span className="text-gray-900">
               {formatNumber(operationalAnalytics.totalWeightHarvested)} kg
             </span>
           </div>
           <div className="flex justify-between border-b pb-2">
-            <span className="font-medium text-gray-600">Mortality Rate:</span>{" "}
+            <span className="font-medium text-gray-600">Mortality Rate:</span>
             <span className="text-gray-900">
               {formatNumber(operationalAnalytics.mortalityRate)}%
             </span>
@@ -265,7 +359,7 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
           <div className="flex justify-between border-b pb-2">
             <span className="font-medium text-gray-600">
               Average Harvest Weight:
-            </span>{" "}
+            </span>
             <span className="text-gray-900">
               {formatNumber(operationalAnalytics.averageHarvestWeight)} kg
             </span>

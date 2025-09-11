@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { FileText, Package, List, Download } from "lucide-react";
+import { FileText, Package, List } from "lucide-react";
 import MainBody from "../components/MainBody";
 import TransactionHistory from "./Extra/Report_subtabs/TransactionHistory";
 import BatchReport from "./Extra/Report_subtabs/Batchreport";
@@ -33,11 +33,6 @@ const Reports: React.FC = () => {
     };
     fetchBatches();
   }, []);
-
-  const handleExport = () => {
-    console.log(`Exporting report for batch ID: ${selectedBatchId}`);
-    // Add your PDF export logic here
-  };
 
   const tabs = [
     {
@@ -73,14 +68,6 @@ const Reports: React.FC = () => {
               ))}
             </select>
           </div>
-          <button
-            onClick={handleExport}
-            disabled={!selectedBatchId || selectedBatchId === "all"}
-            className="w-full md:w-auto flex items-center justify-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
-            <Download className="h-4 w-4 mr-2" />
-            Export PDF
-          </button>
         </div>
 
         {/* Tabs - Unchanged */}
