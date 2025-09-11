@@ -401,12 +401,15 @@ type OperationalAnalytics struct {
 	InitialBirdCount    int     `json:"initialBirdCount"`
 	FinalBirdCount      int     `json:"finalBirdCount"`
 	MortalityRate       float64 `json:"mortalityRate"`
+	AverageHarvestAge int	 `json:"averageHarvestAge"`
 	TotalFeedConsumed   float64 `json:"totalFeedConsumed"`
 	TotalWeightHarvested float64 `json:"totalWeightHarvested"`
 	AverageHarvestWeight float64 `json:"averageHarvestWeight"`
 }
 
 type BatchReportData struct {
+	BatchName			string                   `json:"batchName"`
+	DurationDays		int                      `json:"durationDays"`	
 	ExecutiveSummary     ExecutiveSummary         `json:"executiveSummary"`
 	FinancialBreakdown   []FinancialBreakdownItem `json:"financialBreakdown"`
 	OperationalAnalytics OperationalAnalytics     `json:"operationalAnalytics"`
@@ -3483,6 +3486,7 @@ func getBatchListForFilter(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, batchList)
 }
 
+// for batch report
 func getBatchReport(w http.ResponseWriter, r *http.Request) {
 	batchID := chi.URLParam(r, "id")
 	if batchID == "" || batchID == "all" {
@@ -3493,35 +3497,46 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	// --- 1. Fetch all raw data points first ---
+	var report BatchReportData
 	var initialBirdCount, totalMortality, birdsHarvestedCount int
 	var totalRevenue, totalWeightHarvested, totalFeedConsumed float64
 	var chickPurchaseCost, feedUsageCost, dynamicCostsTotal float64
 
-	// Get operational data
-	db.QueryRowContext(ctx, "SELECT COALESCE(TotalChicken, 0) FROM cm_batches WHERE BatchID = ?", batchID).Scan(&initialBirdCount)
+	
+	var batchName, startDateStr, status string
+	err := db.QueryRowContext(ctx, "SELECT BatchName, StartDate, Status, COALESCE(TotalChicken, 0) FROM cm_batches WHERE BatchID = ?", batchID).Scan(&batchName, &startDateStr, &status, &initialBirdCount)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to fetch batch details", err)
+		return
+	}
+	report.BatchName = batchName
+	startDate, _ := time.Parse("2006-01-02", startDateStr)
+
+
+	if status == "Sold" {
+		var lastHarvestDateStr sql.NullString
+		db.QueryRowContext(ctx, "SELECT MAX(HarvestDate) FROM cm_harvest WHERE BatchID = ?", batchID).Scan(&lastHarvestDateStr)
+		if lastHarvestDateStr.Valid {
+			lastHarvestDate, _ := time.Parse("2006-01-02", lastHarvestDateStr.String)
+			report.DurationDays = int(lastHarvestDate.Sub(startDate).Hours() / 24)
+		}
+	} else { 
+		report.DurationDays = int(time.Since(startDate).Hours() / 24)
+	}
+	report.OperationalAnalytics.AverageHarvestAge = report.DurationDays
+	
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(BirdsLoss), 0) FROM cm_mortality WHERE BatchID = ?", batchID).Scan(&totalMortality)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(QuantityHarvested), 0) FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)", batchID).Scan(&birdsHarvestedCount)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(WeightHarvestedKg), 0) FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)", batchID).Scan(&totalWeightHarvested)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(iu.QuantityUsed), 0) FROM cm_inventory_usage iu JOIN cm_items i ON iu.ItemID = i.ItemID WHERE iu.BatchID = ? AND i.Category = 'Feed'", batchID).Scan(&totalFeedConsumed)
-
-	// Get financial data
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleID IN (SELECT SaleID FROM cm_sales_details WHERE HarvestProductID IN (SELECT HarvestProductID FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)))", batchID).Scan(&totalRevenue)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE BatchID = ? AND CostType = 'Chick Purchase'", batchID).Scan(&chickPurchaseCost)
 	
-	feedCostQuery := `
-		SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0)
-		FROM cm_inventory_usage iu
-		JOIN cm_inventory_usage_details iud ON iu.UsageID = iud.UsageID
-		JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID
-		WHERE iu.BatchID = ?`
+	feedCostQuery := `SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0) FROM cm_inventory_usage iu JOIN cm_inventory_usage_details iud ON iu.UsageID = iud.UsageID JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID WHERE iu.BatchID = ?`
 	db.QueryRowContext(ctx, feedCostQuery, batchID).Scan(&feedUsageCost)
 	
 	var dynamicCosts []FinancialBreakdownItem
-	dynamicCostQuery := `
-		SELECT CostType, COALESCE(SUM(Amount), 0) as TotalAmount
-		FROM cm_production_cost
-		WHERE BatchID = ? AND CostType != 'Chick Purchase' GROUP BY CostType`
+	dynamicCostQuery := `SELECT CostType, COALESCE(SUM(Amount), 0) as TotalAmount FROM cm_production_cost WHERE BatchID = ? AND CostType != 'Chick Purchase' GROUP BY CostType`
 	rows, _ := db.QueryContext(ctx, dynamicCostQuery, batchID)
 	defer rows.Close()
 	for rows.Next() {
@@ -3533,58 +3548,36 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 	}
 	totalCost := chickPurchaseCost + feedUsageCost + dynamicCostsTotal
 
-	// --- 2. Perform all calculations from raw data ---
-	var report BatchReportData
 	finalBirdCount := initialBirdCount - totalMortality
-	
-	// Operational Analytics
 	report.OperationalAnalytics.InitialBirdCount = initialBirdCount
 	report.OperationalAnalytics.FinalBirdCount = finalBirdCount
-	if initialBirdCount > 0 {
-		report.OperationalAnalytics.MortalityRate = (float64(totalMortality) / float64(initialBirdCount)) * 100
-	}
-	if birdsHarvestedCount > 0 {
-		report.OperationalAnalytics.AverageHarvestWeight = totalWeightHarvested / float64(birdsHarvestedCount)
-	}
+	if initialBirdCount > 0 { report.OperationalAnalytics.MortalityRate = (float64(totalMortality) / float64(initialBirdCount)) * 100 }
+	if birdsHarvestedCount > 0 { report.OperationalAnalytics.AverageHarvestWeight = totalWeightHarvested / float64(birdsHarvestedCount) }
 	report.OperationalAnalytics.TotalFeedConsumed = totalFeedConsumed
 	report.OperationalAnalytics.TotalWeightHarvested = totalWeightHarvested
-
-	// Executive Summary
 	report.ExecutiveSummary.NetProfit = totalRevenue - totalCost
-	if totalCost > 0 {
-		report.ExecutiveSummary.ROI = (report.ExecutiveSummary.NetProfit / totalCost) * 100
-	}
+	if totalCost > 0 { report.ExecutiveSummary.ROI = (report.ExecutiveSummary.NetProfit / totalCost) * 100 }
 	if totalWeightHarvested > 0 {
 		report.ExecutiveSummary.CostPerKg = totalCost / totalWeightHarvested
-		if totalFeedConsumed > 0 {
-			report.ExecutiveSummary.FeedConversionRatio = totalFeedConsumed / totalWeightHarvested
-		}
+		if totalFeedConsumed > 0 { report.ExecutiveSummary.FeedConversionRatio = totalFeedConsumed / totalWeightHarvested }
 	}
-	if initialBirdCount > 0 {
-		report.ExecutiveSummary.HarvestRecovery = (float64(birdsHarvestedCount) / float64(initialBirdCount)) * 100
-	}
+	if initialBirdCount > 0 { report.ExecutiveSummary.HarvestRecovery = (float64(birdsHarvestedCount) / float64(initialBirdCount)) * 100 }
 	
-	// Financial Breakdown
 	if initialBirdCount > 0 {
 		var breakdown []FinancialBreakdownItem
 		perBirdDivisor := float64(initialBirdCount)
 		breakdown = append(breakdown, FinancialBreakdownItem{"Total Revenue", totalRevenue, 0, totalRevenue / perBirdDivisor})
 		breakdown = append(breakdown, FinancialBreakdownItem{"Total Costs", -totalCost, 100, -totalCost / perBirdDivisor})
-		if feedUsageCost > 0 {
-			breakdown = append(breakdown, FinancialBreakdownItem{"- Feed Cost", -feedUsageCost, (feedUsageCost / totalCost) * 100, -feedUsageCost / perBirdDivisor})
-		}
+		if feedUsageCost > 0 { breakdown = append(breakdown, FinancialBreakdownItem{"- Feed Cost", -feedUsageCost, (feedUsageCost / totalCost) * 100, -feedUsageCost / perBirdDivisor}) }
 		for _, item := range dynamicCosts {
 			item.Percentage = ((-item.Amount) / totalCost) * 100
 			item.PerBird = item.Amount / perBirdDivisor
 			breakdown = append(breakdown, item)
 		}
-		if chickPurchaseCost > 0 {
-			breakdown = append(breakdown, FinancialBreakdownItem{"- Chick Purchase", -chickPurchaseCost, (chickPurchaseCost / totalCost) * 100, -chickPurchaseCost / perBirdDivisor})
-		}
+		if chickPurchaseCost > 0 { breakdown = append(breakdown, FinancialBreakdownItem{"- Chick Purchase", -chickPurchaseCost, (chickPurchaseCost / totalCost) * 100, -chickPurchaseCost / perBirdDivisor}) }
 		report.FinancialBreakdown = breakdown
 	}
 
-	// --- 3. Respond with the complete report ---
 	respondJSON(w, http.StatusOK, report)
 }
 

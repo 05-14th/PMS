@@ -23,6 +23,7 @@ interface OperationalAnalytics {
   initialBirdCount: number;
   finalBirdCount: number;
   mortalityRate: number;
+  averageHarvestAge: number;
   totalFeedConsumed: number;
   totalWeightHarvested: number;
   averageHarvestWeight: number;
@@ -131,7 +132,7 @@ const BatchReport: React.FC<BatchReportProps> = ({ selectedBatchId }) => {
     const execSummaryData = [
       ["Net Profit", formatCurrency(es.netProfit)],
       ["Feed Conversion Ratio", formatNumber(es.feedConversionRatio)],
-      ["Liveability %", `${formatNumber(es.harvestRecovery)}%`],
+      ["Harvest Recovery %", `${formatNumber(es.harvestRecovery)}%`],
       ["Cost per Kg", formatCurrency(es.costPerKg)],
     ];
     autoTable(doc, {
