@@ -1,7 +1,51 @@
 import React from "react";
 import { Droplets, Pill } from "lucide-react";
+import axios from "axios";
 
 const Feedingandwatering: React.FC = () => {
+  const [relayState, setRelayState] = React.useState<{ relay1: number, relay2: number, relay3: number }>({ relay1: 0, relay2: 0, relay3: 0 });
+  const [waterLevel, setWaterLevel] = React.useState<{ water1: number, water2: number, water3: number }>({ water1: 0, water2: 0, water3: 0  });
+  const [waterState, setWaterState] = React.useState<string>("Empty");
+
+  React.useEffect(() => {
+    // Fetch initial relay states and water level from the backend
+    axios.get('http://192.168.1.56/telemetry')
+      .then(response => {
+        const data = response.data;
+        setRelayState({
+          relay1: data.relay1,
+          relay2: data.relay2, 
+          relay3: data.relay3
+        });
+        setWaterLevel({ water1: data.water1, water2: data.water2, water3: data.water3 });
+        // Calculate percentage
+        const total = (data.water1 || 0) + (data.water2 || 0) + (data.water3 || 0);
+        const percent = Math.round((total / 800) * 100);
+        if (percent < 5) {
+          setWaterState('Empty');
+        } else {
+          setWaterState('Filled');
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching telemetry data:', error);
+      });
+  }, []);
+
+  const handleWaterToggle = (relayNum: number) => {
+    // Toggle the selected relay, others off
+    const newState = { relay1: 0, relay2: 0, relay3: 0 };
+    newState[`relay${relayNum}` as keyof typeof newState] = relayState[`relay${relayNum}` as keyof typeof relayState] ? 0 : 1;
+    setRelayState(newState);
+    axios.post('http://192.168.1.56/set-relays', newState)
+      .then(response => {
+        console.log('Watering successful:', response.data);
+      })
+      .catch(error => {
+        console.error('Error watering:', error);
+      });
+  };
+
   return (
     <div className="w-full max-w-4xl mx-auto p-4">
       <div className="flex flex-col items-center gap-4">
@@ -29,7 +73,7 @@ const Feedingandwatering: React.FC = () => {
             </div>
             <span className="text-sm font-medium text-gray-700 mb-1">Water</span>
             <div className="w-full h-20 sm:h-28 bg-white border-2 border-pink-200 shadow-sm rounded-xl flex items-center justify-center">
-              {/* Content can go here */}
+              {`Water Level: ${waterState}`}
             </div>
           </div>
           
@@ -57,7 +101,8 @@ const Feedingandwatering: React.FC = () => {
               {[1, 2, 3].map((num) => (
                 <button
                   key={num}
-                  className="aspect-square w-full flex items-center justify-center text-lg font-semibold text-green-700 transition border-2 border-pink-200 rounded-full hover:bg-green-100 active:bg-green-200"
+                  className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${relayState[`relay${num}` as keyof typeof relayState] ? 'bg-green-200 border-green-500 text-green-900' : 'bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200'}`}
+                  onClick={() => handleWaterToggle(num)}
                 >
                   {num}
                 </button>
