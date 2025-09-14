@@ -33,18 +33,18 @@ const Feedingandwatering: React.FC = () => {
   }, []);
 
   const handleWaterToggle = (relayNum: number) => {
-    // Toggle the selected relay, others off
-    const newState = { relay1: 0, relay2: 0, relay3: 0 };
-    newState[`relay${relayNum}` as keyof typeof newState] = relayState[`relay${relayNum}` as keyof typeof relayState] ? 0 : 1;
-    setRelayState(newState);
-    axios.post('http://192.168.1.56/set-relays', newState)
-      .then(response => {
-        console.log('Watering successful:', response.data);
-      })
-      .catch(error => {
-        console.error('Error watering:', error);
-      });
-  };
+  // Toggle only the selected relay, others stay as is
+  const newState = { ...relayState };
+  newState[`relay${relayNum}` as keyof typeof newState] = relayState[`relay${relayNum}` as keyof typeof relayState] ? 0 : 1;
+  setRelayState(newState);
+  axios.post('http://192.168.1.56/set-relays', newState)
+    .then(response => {
+      console.log('Watering successful:', response.data);
+    })
+    .catch(error => {
+      console.error('Error watering:', error);
+    });
+};
 
   return (
     <div className="w-full max-w-4xl mx-auto p-4">
