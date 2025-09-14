@@ -5,6 +5,8 @@ import axios from "axios";
 const Feedingandwatering: React.FC = () => {
   const [relayState, setRelayState] = React.useState<{ relay1: number, relay2: number, relay3: number }>({ relay1: 0, relay2: 0, relay3: 0 });
   const [waterLevel, setWaterLevel] = React.useState<{ water1: number, water2: number, water3: number }>({ water1: 0, water2: 0, water3: 0  });
+  const [medRelayState, setMedRelayState] = React.useState<{ relay_med1: number, relay_med2: number, relay_med3: number }>({ relay_med1: 0, relay_med2: 0, relay_med3: 0 });
+  const [medicine, setMedicine] = React.useState<{ med1: number, med2: number, med3: number }>({ med1: 0, med2: 0, med3: 0  });
   const [waterState, setWaterState] = React.useState<string>("Empty");
 
   React.useEffect(() => {
@@ -45,6 +47,20 @@ const Feedingandwatering: React.FC = () => {
       console.error('Error watering:', error);
     });
 };
+
+  const handleMedecine = (relayNum: number) => {
+    // Toggle only the selected medicine relay, others stay as is
+    const newState = { ...medRelayState };
+    newState[`relay_med${relayNum}` as keyof typeof newState] = medRelayState[`relay_med${relayNum}` as keyof typeof medRelayState] ? 0 : 1;
+    setMedRelayState(newState);
+    axios.post('http://192.168.1.58/set-relays', newState)
+      .then(response => {
+        console.log('Medicine relay toggled:', response.data);
+      })
+      .catch(error => {
+        console.error('Error toggling medicine relay:', error);
+      });
+  };
 
   return (
     <div className="w-full max-w-4xl mx-auto p-4">
@@ -120,7 +136,8 @@ const Feedingandwatering: React.FC = () => {
               {[1, 2, 3].map((num) => (
                 <button
                   key={num}
-                  className="aspect-square w-full flex items-center justify-center text-lg font-semibold text-green-700 transition border-2 border-pink-200 rounded-full hover:bg-green-100 active:bg-green-200"
+                  className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${medRelayState[`relay_med${num}` as keyof typeof medRelayState] ? 'bg-green-200 border-green-500 text-green-900' : 'bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200'}`}
+                  onClick={() => handleMedecine(num)}
                 >
                   {num}
                 </button>
