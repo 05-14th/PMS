@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -387,7 +388,6 @@ type ExecutiveSummary struct {
 	FeedConversionRatio float64 `json:"feedConversionRatio"`
 	HarvestRecovery     float64 `json:"harvestRecovery"`
 	CostPerKg           float64 `json:"costPerKg"`
-	
 }
 
 type FinancialBreakdownItem struct {
@@ -398,18 +398,18 @@ type FinancialBreakdownItem struct {
 }
 
 type OperationalAnalytics struct {
-	InitialBirdCount    int     `json:"initialBirdCount"`
-	FinalBirdCount      int     `json:"finalBirdCount"`
-	MortalityRate       float64 `json:"mortalityRate"`
-	AverageHarvestAge int	 `json:"averageHarvestAge"`
-	TotalFeedConsumed   float64 `json:"totalFeedConsumed"`
+	InitialBirdCount     int     `json:"initialBirdCount"`
+	FinalBirdCount       int     `json:"finalBirdCount"`
+	MortalityRate        float64 `json:"mortalityRate"`
+	AverageHarvestAge    int     `json:"averageHarvestAge"`
+	TotalFeedConsumed    float64 `json:"totalFeedConsumed"`
 	TotalWeightHarvested float64 `json:"totalWeightHarvested"`
 	AverageHarvestWeight float64 `json:"averageHarvestWeight"`
 }
 
 type BatchReportData struct {
-	BatchName			string                   `json:"batchName"`
-	DurationDays		int                      `json:"durationDays"`	
+	BatchName            string                   `json:"batchName"`
+	DurationDays         int                      `json:"durationDays"`
 	ExecutiveSummary     ExecutiveSummary         `json:"executiveSummary"`
 	FinancialBreakdown   []FinancialBreakdownItem `json:"financialBreakdown"`
 	OperationalAnalytics OperationalAnalytics     `json:"operationalAnalytics"`
@@ -426,11 +426,11 @@ type Transaction struct {
 // for dashboard data ---------------------------------
 // For the main dashboard data structure
 type DashboardData struct {
-	AtAGlance     AtAGlanceData      `json:"atAGlance"`
-	ActiveBatches []ActiveBatch      `json:"activeBatches"`
-	StockItems    []StockStatus      `json:"stockItems"`
-	Charts        ChartsData         `json:"charts"`
-	Alerts        []Alert            `json:"alerts"`
+	AtAGlance          AtAGlanceData           `json:"atAGlance"`
+	ActiveBatches      []ActiveBatch           `json:"activeBatches"`
+	StockItems         []StockStatus           `json:"stockItems"`
+	Charts             ChartsData              `json:"charts"`
+	Alerts             []Alert                 `json:"alerts"`
 	FinancialForecasts []FinancialForecastData `json:"financialForecasts"`
 }
 
@@ -440,7 +440,7 @@ type AtAGlanceData struct {
 	CurrentPopulation int     `json:"currentPopulation"`
 	MonthlyRevenue    float64 `json:"monthlyRevenue"`
 	SellableInventory int     `json:"sellableInventory"`
-	TotalBirds   int     `json:"totalBirds"`
+	TotalBirds        int     `json:"totalBirds"`
 }
 
 // For the "Active Batches" list
@@ -454,7 +454,7 @@ type ActiveBatch struct {
 type StockStatus struct {
 	ID       string `json:"id"`
 	Name     string `json:"name"`
-	Level    int    `json:"level"` // Percentage for progress bar
+	Level    int    `json:"level"`  // Percentage for progress bar
 	Status   string `json:"status"` // "low", "adequate"
 	Quantity string `json:"quantity"`
 }
@@ -502,6 +502,30 @@ type DhtData struct {
 	CageNum     int     `json:"temp_cage_num"`
 	CreatedAt   string  `json:"created_at"`
 }
+
+// In-memory registry and state - resets on server restart
+type Device struct {
+	ID      string `json:"id"`
+	Name    string `json:"name,omitempty"`
+	BaseURL string `json:"baseUrl"` // ESP endpoint, example: http://192.168.1.123
+}
+
+type Telemetry struct {
+	Water1 int       `json:"water1"`
+	Water2 int       `json:"water2"`
+	Water3 int       `json:"water3"`
+	Relay1 int       `json:"relay1"`
+	Relay2 int       `json:"relay2"`
+	Relay3 int       `json:"relay3"`
+	At     time.Time `json:"at"`
+}
+
+var (
+	devMu    sync.RWMutex
+	devices  = make(map[string]Device)    // id -> device
+	readings = make(map[string]Telemetry) // id -> last telemetry
+	httpc    = &http.Client{Timeout: 3 * time.Second}
+)
 
 /* ===========================
     Globals
@@ -1979,7 +2003,7 @@ func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to start transaction", err)
 		return
 	}
-	
+
 	defer tx.Rollback()
 
 	type saleItem struct {
@@ -2010,16 +2034,16 @@ func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, item := range itemsToRevert {
-	
+
 		_, err := tx.ExecContext(ctx, `
 			UPDATE cm_harvest_products 
 			SET 
 				QuantityRemaining = QuantityRemaining + ?, 
 				WeightRemainingKg = WeightRemainingKg + ?,
 				IsActive = 1
-			WHERE HarvestProductID = ?`, 
+			WHERE HarvestProductID = ?`,
 			item.QuantitySold, item.TotalWeightKg, item.HarvestProductID)
-		
+
 		if err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to revert stock for product", err)
 			return
@@ -2031,7 +2055,6 @@ func deleteSaleHistory(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to deactivate sale order", err)
 		return
 	}
-
 
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
@@ -2466,7 +2489,7 @@ func createMortalityRecord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tx.Rollback()
-	
+
 	var currentChicken int
 	checkQuery := "SELECT CurrentChicken FROM cm_batches WHERE BatchID = ? FOR UPDATE"
 	if err := tx.QueryRowContext(ctx, checkQuery, payload.BatchID).Scan(&currentChicken); err != nil {
@@ -2484,7 +2507,6 @@ func createMortalityRecord(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to insert mortality record", err)
 		return
 	}
-	
 
 	newPopulation := currentChicken - payload.BirdsLoss
 	updateQuery := "UPDATE cm_batches SET CurrentChicken = ? WHERE BatchID = ?"
@@ -2493,14 +2515,13 @@ func createMortalityRecord(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to update batch population", err)
 		return
 	}
-	
+
 	if newPopulation <= 0 {
 		if _, err := tx.ExecContext(ctx, "UPDATE cm_batches SET Status = 'Sold' WHERE BatchID = ?", payload.BatchID); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to update batch status to sold", err)
 			return
 		}
 	}
-   
 
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
@@ -2790,8 +2811,7 @@ func createHarvest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	
-	
+
 	harvestNote := fmt.Sprintf("%d %s chickens harvested.", payload.QuantityHarvested, payload.ProductType)
 	harvestQuery := "INSERT INTO cm_harvest (BatchID, HarvestDate, Notes) VALUES (?, ?, ?)"
 	res, err := tx.ExecContext(ctx, harvestQuery, payload.BatchID, payload.HarvestDate, harvestNote)
@@ -2806,7 +2826,7 @@ func createHarvest(w http.ResponseWriter, r *http.Request) {
 		productQuery := `
 			INSERT INTO cm_harvest_products 
 			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg, IsActive) 
-			VALUES (?, ?, ?, ?, 0, 0.00, 0)` 
+			VALUES (?, ?, ?, ?, 0, 0.00, 0)`
 		res, err = tx.ExecContext(ctx, productQuery, harvestID, payload.ProductType, payload.QuantityHarvested, payload.TotalWeightKg)
 		if err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to create harvested product record for sale", err)
@@ -3356,8 +3376,8 @@ func getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
 		FROM cm_harvest_products hp
 		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
 		JOIN cm_batches b ON h.BatchID = b.BatchID
-		WHERE 1=1` 
-	
+		WHERE 1=1`
+
 	var args []interface{}
 	if productTypeFilter != "" && productTypeFilter != "All" {
 		query += " AND hp.ProductType = ?"
@@ -3397,7 +3417,7 @@ func getHarvestedSummary(w http.ResponseWriter, r *http.Request) {
 	batchIDFilter := r.URL.Query().Get("batchId")
 
 	// Base WHERE clause and arguments that apply to all queries
-		whereClause := "WHERE 1=1" 
+	whereClause := "WHERE 1=1"
 	var baseArgs []interface{}
 
 	if batchIDFilter != "" && batchIDFilter != "All" {
@@ -3416,7 +3436,7 @@ func getHarvestedSummary(w http.ResponseWriter, r *http.Request) {
 			FROM cm_harvest_products hp
 			JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
 			%s AND hp.ProductType = 'Dressed'`, whereClause)
-		
+
 		db.QueryRowContext(ctx, query, baseArgs...).Scan(&totalDressed)
 	}
 
@@ -3444,7 +3464,7 @@ func getHarvestedSummary(w http.ResponseWriter, r *http.Request) {
 		} else {
 			byproductWhereClause = " AND hp.ProductType NOT IN ('Live', 'Dressed')"
 		}
-		
+
 		query := fmt.Sprintf(`
 			SELECT COALESCE(SUM(hp.WeightRemainingKg), 0)
 			FROM cm_harvest_products hp
@@ -3461,7 +3481,6 @@ func getHarvestedSummary(w http.ResponseWriter, r *http.Request) {
 	}
 	respondJSON(w, http.StatusOK, summary)
 }
-
 
 func getBatchListForFilter(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
@@ -3502,7 +3521,6 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 	var totalRevenue, totalWeightHarvested, totalFeedConsumed float64
 	var chickPurchaseCost, feedUsageCost, dynamicCostsTotal float64
 
-	
 	var batchName, startDateStr, status string
 	err := db.QueryRowContext(ctx, "SELECT BatchName, StartDate, Status, COALESCE(TotalChicken, 0) FROM cm_batches WHERE BatchID = ?", batchID).Scan(&batchName, &startDateStr, &status, &initialBirdCount)
 	if err != nil {
@@ -3512,7 +3530,6 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 	report.BatchName = batchName
 	startDate, _ := time.Parse("2006-01-02", startDateStr)
 
-
 	if status == "Sold" {
 		var lastHarvestDateStr sql.NullString
 		db.QueryRowContext(ctx, "SELECT MAX(HarvestDate) FROM cm_harvest WHERE BatchID = ?", batchID).Scan(&lastHarvestDateStr)
@@ -3520,29 +3537,32 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 			lastHarvestDate, _ := time.Parse("2006-01-02", lastHarvestDateStr.String)
 			report.DurationDays = int(lastHarvestDate.Sub(startDate).Hours() / 24)
 		}
-	} else { 
+	} else {
 		report.DurationDays = int(time.Since(startDate).Hours() / 24)
 	}
 	report.OperationalAnalytics.AverageHarvestAge = report.DurationDays
-	
+
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(BirdsLoss), 0) FROM cm_mortality WHERE BatchID = ?", batchID).Scan(&totalMortality)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(QuantityHarvested), 0) FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)", batchID).Scan(&birdsHarvestedCount)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(WeightHarvestedKg), 0) FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)", batchID).Scan(&totalWeightHarvested)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(iu.QuantityUsed), 0) FROM cm_inventory_usage iu JOIN cm_items i ON iu.ItemID = i.ItemID WHERE iu.BatchID = ? AND i.Category = 'Feed'", batchID).Scan(&totalFeedConsumed)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleID IN (SELECT SaleID FROM cm_sales_details WHERE HarvestProductID IN (SELECT HarvestProductID FROM cm_harvest_products WHERE HarvestID IN (SELECT HarvestID FROM cm_harvest WHERE BatchID = ?)))", batchID).Scan(&totalRevenue)
 	db.QueryRowContext(ctx, "SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE BatchID = ? AND CostType = 'Chick Purchase'", batchID).Scan(&chickPurchaseCost)
-	
+
 	feedCostQuery := `SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0) FROM cm_inventory_usage iu JOIN cm_inventory_usage_details iud ON iu.UsageID = iud.UsageID JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID WHERE iu.BatchID = ?`
 	db.QueryRowContext(ctx, feedCostQuery, batchID).Scan(&feedUsageCost)
-	
+
 	var dynamicCosts []FinancialBreakdownItem
 	dynamicCostQuery := `SELECT CostType, COALESCE(SUM(Amount), 0) as TotalAmount FROM cm_production_cost WHERE BatchID = ? AND CostType != 'Chick Purchase' GROUP BY CostType`
 	rows, _ := db.QueryContext(ctx, dynamicCostQuery, batchID)
 	defer rows.Close()
 	for rows.Next() {
-		var item FinancialBreakdownItem; var costType string; var amount float64
+		var item FinancialBreakdownItem
+		var costType string
+		var amount float64
 		rows.Scan(&costType, &amount)
-		item.Category = "- " + costType; item.Amount = -amount
+		item.Category = "- " + costType
+		item.Amount = -amount
 		dynamicCosts = append(dynamicCosts, item)
 		dynamicCostsTotal += amount
 	}
@@ -3551,30 +3571,44 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 	finalBirdCount := initialBirdCount - totalMortality
 	report.OperationalAnalytics.InitialBirdCount = initialBirdCount
 	report.OperationalAnalytics.FinalBirdCount = finalBirdCount
-	if initialBirdCount > 0 { report.OperationalAnalytics.MortalityRate = (float64(totalMortality) / float64(initialBirdCount)) * 100 }
-	if birdsHarvestedCount > 0 { report.OperationalAnalytics.AverageHarvestWeight = totalWeightHarvested / float64(birdsHarvestedCount) }
+	if initialBirdCount > 0 {
+		report.OperationalAnalytics.MortalityRate = (float64(totalMortality) / float64(initialBirdCount)) * 100
+	}
+	if birdsHarvestedCount > 0 {
+		report.OperationalAnalytics.AverageHarvestWeight = totalWeightHarvested / float64(birdsHarvestedCount)
+	}
 	report.OperationalAnalytics.TotalFeedConsumed = totalFeedConsumed
 	report.OperationalAnalytics.TotalWeightHarvested = totalWeightHarvested
 	report.ExecutiveSummary.NetProfit = totalRevenue - totalCost
-	if totalCost > 0 { report.ExecutiveSummary.ROI = (report.ExecutiveSummary.NetProfit / totalCost) * 100 }
+	if totalCost > 0 {
+		report.ExecutiveSummary.ROI = (report.ExecutiveSummary.NetProfit / totalCost) * 100
+	}
 	if totalWeightHarvested > 0 {
 		report.ExecutiveSummary.CostPerKg = totalCost / totalWeightHarvested
-		if totalFeedConsumed > 0 { report.ExecutiveSummary.FeedConversionRatio = totalFeedConsumed / totalWeightHarvested }
+		if totalFeedConsumed > 0 {
+			report.ExecutiveSummary.FeedConversionRatio = totalFeedConsumed / totalWeightHarvested
+		}
 	}
-	if initialBirdCount > 0 { report.ExecutiveSummary.HarvestRecovery = (float64(birdsHarvestedCount) / float64(initialBirdCount)) * 100 }
-	
+	if initialBirdCount > 0 {
+		report.ExecutiveSummary.HarvestRecovery = (float64(birdsHarvestedCount) / float64(initialBirdCount)) * 100
+	}
+
 	if initialBirdCount > 0 {
 		var breakdown []FinancialBreakdownItem
 		perBirdDivisor := float64(initialBirdCount)
 		breakdown = append(breakdown, FinancialBreakdownItem{"Total Revenue", totalRevenue, 0, totalRevenue / perBirdDivisor})
 		breakdown = append(breakdown, FinancialBreakdownItem{"Total Costs", -totalCost, 100, -totalCost / perBirdDivisor})
-		if feedUsageCost > 0 { breakdown = append(breakdown, FinancialBreakdownItem{"- Feed Cost", -feedUsageCost, (feedUsageCost / totalCost) * 100, -feedUsageCost / perBirdDivisor}) }
+		if feedUsageCost > 0 {
+			breakdown = append(breakdown, FinancialBreakdownItem{"- Feed Cost", -feedUsageCost, (feedUsageCost / totalCost) * 100, -feedUsageCost / perBirdDivisor})
+		}
 		for _, item := range dynamicCosts {
 			item.Percentage = ((-item.Amount) / totalCost) * 100
 			item.PerBird = item.Amount / perBirdDivisor
 			breakdown = append(breakdown, item)
 		}
-		if chickPurchaseCost > 0 { breakdown = append(breakdown, FinancialBreakdownItem{"- Chick Purchase", -chickPurchaseCost, (chickPurchaseCost / totalCost) * 100, -chickPurchaseCost / perBirdDivisor}) }
+		if chickPurchaseCost > 0 {
+			breakdown = append(breakdown, FinancialBreakdownItem{"- Chick Purchase", -chickPurchaseCost, (chickPurchaseCost / totalCost) * 100, -chickPurchaseCost / perBirdDivisor})
+		}
 		report.FinancialBreakdown = breakdown
 	}
 
@@ -3646,7 +3680,7 @@ func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 	var transactions []Transaction
 	for rows.Next() {
 		var t Transaction
-		
+
 		var amount sql.NullFloat64
 		if err := rows.Scan(&t.Date, &t.Type, &t.Description, &amount); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan transaction", err)
@@ -3655,10 +3689,9 @@ func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 		if amount.Valid {
 			t.Amount = amount.Float64
 		} else {
-			t.Amount = 0 
+			t.Amount = 0
 		}
 
-	
 		parsedDate, err := time.Parse("2006-01-02 15:04:05", t.Date)
 		if err == nil {
 			t.Date = parsedDate.Format("2006-01-02")
@@ -3668,8 +3701,6 @@ func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, transactions)
 }
-
-
 
 func getDashboardData(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
@@ -3684,7 +3715,11 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_harvest_products WHERE ProductType IN ('Live', 'Dressed') AND IsActive = 1`).Scan(&data.AtAGlance.SellableInventory)
 
 	// --- 2. Active Batches Panel (No changes) ---
-	type activeBatchInfo struct { ID int; Name, StartDate, EndDate string; Population int }
+	type activeBatchInfo struct {
+		ID                       int
+		Name, StartDate, EndDate string
+		Population               int
+	}
 	var activeBatchList []activeBatchInfo
 	rows, _ := db.QueryContext(ctx, `SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, CurrentChicken FROM cm_batches WHERE Status = 'Active' ORDER BY StartDate ASC`)
 	defer rows.Close()
@@ -3698,7 +3733,10 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- 3. REVISED: Fully Dynamic Stock Status & Smart Alerts by Category and Unit ---
-	type itemStock struct { Name, Unit, Category string; Quantity float64 }
+	type itemStock struct {
+		Name, Unit, Category string
+		Quantity             float64
+	}
 	var allItemStocks []itemStock
 	stockRows, err := db.QueryContext(ctx, `
 		SELECT i.ItemName, i.Unit, i.Category, COALESCE(SUM(p.QuantityRemaining), 0) as TotalStock
@@ -3740,36 +3778,49 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 		if categoryThresholds, ok := thresholds[stock.Category]; ok {
 			// Check if a threshold exists for the specific unit within that category
 			if threshold, ok := categoryThresholds[stock.Unit]; ok {
-				
+
 				// Always add the item to the Stock Status panel
 				status := StockStatus{
 					ID:       strings.ToLower(strings.ReplaceAll(stock.Name, " ", "-")),
 					Name:     stock.Name,
 					Quantity: fmt.Sprintf("%.2f %s left", stock.Quantity, stock.Unit),
 				}
-				if stock.Quantity < threshold { 
-					status.Level = 15; status.Status = "low";
+				if stock.Quantity < threshold {
+					status.Level = 15
+					status.Status = "low"
 					// Generate a specific alert if below the threshold
 					alertMsg := fmt.Sprintf("%s stock is low (%.2f %s remaining).", stock.Name, stock.Quantity, stock.Unit)
 					data.Alerts = append(data.Alerts, Alert{Type: "warning", Message: alertMsg})
 				} else if stock.Quantity < (threshold * 3) { // "Adequate" if it's less than 3x the low threshold
-					status.Level = 50; status.Status = "adequate";
+					status.Level = 50
+					status.Status = "adequate"
 				} else { // "Good" if it's well above the threshold
-					status.Level = 85; status.Status = "good"; 
+					status.Level = 85
+					status.Status = "good"
 				}
 				data.StockItems = append(data.StockItems, status)
 			}
 		}
 	}
 
-
 	// --- 4. Chart Data (No changes) ---
 	revenueRows, _ := db.QueryContext(ctx, `SELECT DATE(SaleDate), SUM(TotalAmount) FROM cm_sales_orders WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY AND IsActive = 1 GROUP BY DATE(SaleDate) ORDER BY DATE(SaleDate) ASC`)
 	defer revenueRows.Close()
 	revenueMap := make(map[string]float64)
-	for i := 0; i < 30; i++ { day := time.Now().AddDate(0, 0, -i).Format("2006-01-02"); revenueMap[day] = 0 }
-	for revenueRows.Next() { var date string; var revenue float64; revenueRows.Scan(&date, &revenue); revenueMap[date] = revenue }
-	for i := 29; i >= 0; i-- { day := time.Now().AddDate(0, 0, -i).Format("2006-01-02"); data.Charts.RevenueTimeline = append(data.Charts.RevenueTimeline, RevenueDataPoint{Date: day, Revenue: revenueMap[day]}) }
+	for i := 0; i < 30; i++ {
+		day := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		revenueMap[day] = 0
+	}
+	for revenueRows.Next() {
+		var date string
+		var revenue float64
+		revenueRows.Scan(&date, &revenue)
+		revenueMap[date] = revenue
+	}
+	for i := 29; i >= 0; i-- {
+		day := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
+		data.Charts.RevenueTimeline = append(data.Charts.RevenueTimeline, RevenueDataPoint{Date: day, Revenue: revenueMap[day]})
+	}
 	var feedCost, chickCost, otherCost float64
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0) FROM cm_inventory_usage_details iud JOIN cm_inventory_usage iu ON iud.UsageID = iu.UsageID JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID WHERE iu.BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')`).Scan(&feedCost)
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType = 'Chick Purchase' AND BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')`).Scan(&chickCost)
@@ -3778,27 +3829,230 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 
 	// --- 5. Financial Forecast Calculation (No changes) ---
 	for _, batch := range activeBatchList {
-		var forecast FinancialForecastData; forecast.BatchID = strconv.Itoa(batch.ID); forecast.BatchName = batch.Name; forecast.StartDate = batch.StartDate; forecast.EndDate = batch.EndDate
+		var forecast FinancialForecastData
+		forecast.BatchID = strconv.Itoa(batch.ID)
+		forecast.BatchName = batch.Name
+		forecast.StartDate = batch.StartDate
+		forecast.EndDate = batch.EndDate
 		var batchFeedCost, batchChickCost, batchOtherCost float64
 		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0) FROM cm_inventory_usage_details iud JOIN cm_inventory_usage iu ON iud.UsageID = iu.UsageID JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID WHERE iu.BatchID = ?`, batch.ID).Scan(&batchFeedCost)
 		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType = 'Chick Purchase' AND BatchID = ?`, batch.ID).Scan(&batchChickCost)
 		db.QueryRowContext(ctx, `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE CostType != 'Chick Purchase' AND BatchID = ?`, batch.ID).Scan(&batchOtherCost)
 		forecast.AccruedCost = batchFeedCost + batchChickCost + batchOtherCost
-		var initialPop int; db.QueryRowContext(ctx, "SELECT TotalChicken FROM cm_batches WHERE BatchID = ?", batch.ID).Scan(&initialPop); forecast.EstimatedRevenue = float64(initialPop) * 1.8 * 200
-		start, _ := time.Parse("2006-01-02", batch.StartDate); end, _ := time.Parse("2006-01-02", batch.EndDate); totalDuration := end.Sub(start).Hours() / 24; currentDuration := time.Since(start).Hours() / 24
-		if totalDuration > 0 { forecast.Progress = int((currentDuration / totalDuration) * 100); if forecast.Progress > 100 { forecast.Progress = 100 } }
+		var initialPop int
+		db.QueryRowContext(ctx, "SELECT TotalChicken FROM cm_batches WHERE BatchID = ?", batch.ID).Scan(&initialPop)
+		forecast.EstimatedRevenue = float64(initialPop) * 1.8 * 200
+		start, _ := time.Parse("2006-01-02", batch.StartDate)
+		end, _ := time.Parse("2006-01-02", batch.EndDate)
+		totalDuration := end.Sub(start).Hours() / 24
+		currentDuration := time.Since(start).Hours() / 24
+		if totalDuration > 0 {
+			forecast.Progress = int((currentDuration / totalDuration) * 100)
+			if forecast.Progress > 100 {
+				forecast.Progress = 100
+			}
+		}
 		data.FinancialForecasts = append(data.FinancialForecasts, forecast)
 	}
 
 	// --- 6. Final Response (No changes) ---
-	if data.ActiveBatches == nil { data.ActiveBatches = make([]ActiveBatch, 0) }
-	if data.StockItems == nil { data.StockItems = make([]StockStatus, 0) }
-	if data.Charts.RevenueTimeline == nil { data.Charts.RevenueTimeline = make([]RevenueDataPoint, 0) }
-	if data.Charts.CostBreakdown == nil { data.Charts.CostBreakdown = make([]CostBreakdownPoint, 0) }
-	if data.Alerts == nil { data.Alerts = make([]Alert, 0) }
-	if data.FinancialForecasts == nil { data.FinancialForecasts = make([]FinancialForecastData, 0) }
+	if data.ActiveBatches == nil {
+		data.ActiveBatches = make([]ActiveBatch, 0)
+	}
+	if data.StockItems == nil {
+		data.StockItems = make([]StockStatus, 0)
+	}
+	if data.Charts.RevenueTimeline == nil {
+		data.Charts.RevenueTimeline = make([]RevenueDataPoint, 0)
+	}
+	if data.Charts.CostBreakdown == nil {
+		data.Charts.CostBreakdown = make([]CostBreakdownPoint, 0)
+	}
+	if data.Alerts == nil {
+		data.Alerts = make([]Alert, 0)
+	}
+	if data.FinancialForecasts == nil {
+		data.FinancialForecasts = make([]FinancialForecastData, 0)
+	}
 
 	respondJSON(w, http.StatusOK, data)
+}
+
+/* ===========================
+	IoT Data Handling
+=========================== */
+
+// POST /api/iot/devices
+// Body: { "id":"client1", "baseUrl":"http://<esp-ip>", "name":"Brooder 1"}
+func registerDevice(w http.ResponseWriter, r *http.Request) {
+	var d Device
+	if !decodeJSONBody(w, r, &d) {
+		return
+	}
+	if d.ID == "" || d.BaseURL == "" {
+		handleError(w, http.StatusBadRequest, "id and baseUrl are required", nil)
+		return
+	}
+	devMu.Lock()
+	devices[d.ID] = d
+	devMu.Unlock()
+	respondJSON(w, http.StatusOK, map[string]any{"success": true, "device": d})
+}
+
+// POST /api/iot/{id}/relays
+// Body: { "relay1":0|1, "relay2":0|1, "relay3":0|1 }
+// If device is registered with a BaseURL, this forwards the command to ESP: POST <baseUrl>/command
+// It also updates the cached relay state.
+func setRelays(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		handleError(w, http.StatusBadRequest, "device id is required", nil)
+		return
+	}
+	var body struct {
+		Relay1 *int `json:"relay1"`
+		Relay2 *int `json:"relay2"`
+		Relay3 *int `json:"relay3"`
+	}
+	if !decodeJSONBody(w, r, &body) {
+		return
+	}
+
+	devMu.RLock()
+	d, ok := devices[id]
+	devMu.RUnlock()
+	if !ok {
+		handleError(w, http.StatusNotFound, "device not registered", nil)
+		return
+	}
+
+	// Prepare command payload
+	cmd := map[string]any{}
+	if body.Relay1 != nil {
+		cmd["relay1"] = *body.Relay1
+	}
+	if body.Relay2 != nil {
+		cmd["relay2"] = *body.Relay2
+	}
+	if body.Relay3 != nil {
+		cmd["relay3"] = *body.Relay3
+	}
+
+	// Forward to ESP if BaseURL exists
+	var forwardErr error
+	if d.BaseURL != "" {
+		buf, _ := json.Marshal(cmd)
+		req, _ := http.NewRequest(http.MethodPost, strings.TrimRight(d.BaseURL, "/")+"/command", strings.NewReader(string(buf)))
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := httpc.Do(req)
+		if err != nil {
+			forwardErr = err
+		} else {
+			io.Copy(io.Discard, resp.Body)
+			resp.Body.Close()
+			if resp.StatusCode < 200 || resp.StatusCode > 299 {
+				forwardErr = fmt.Errorf("ESP responded %d", resp.StatusCode)
+			}
+		}
+	}
+
+	// Update cached relay state if we have previous telemetry or create a new record
+	devMu.Lock()
+	t := readings[id]
+	if body.Relay1 != nil {
+		t.Relay1 = *body.Relay1
+	}
+	if body.Relay2 != nil {
+		t.Relay2 = *body.Relay2
+	}
+	if body.Relay3 != nil {
+		t.Relay3 = *body.Relay3
+	}
+	t.At = time.Now()
+	readings[id] = t
+	devMu.Unlock()
+
+	if forwardErr != nil {
+		respondJSON(w, http.StatusAccepted, map[string]any{
+			"success": false,
+			"message": "cached and attempted to forward to device",
+			"error":   forwardErr.Error(),
+		})
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+// POST /api/iot/{id}/telemetry
+// Body from ESP: { "water1":0|1, "water2":0|1, "water3":0|1, "relay1":0|1, "relay2":0|1, "relay3":0|1}
+func postTelemetry(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		handleError(w, http.StatusBadRequest, "device id is required", nil)
+		return
+	}
+	var t Telemetry
+	var incoming map[string]any
+	dec := json.NewDecoder(r.Body)
+	if err := dec.Decode(&incoming); err != nil {
+		handleError(w, http.StatusBadRequest, "Invalid JSON body", err)
+		return
+	}
+
+	// Extract ints with defaults
+	toInt := func(v any) int {
+		switch x := v.(type) {
+		case float64:
+			return int(x)
+		case int:
+			return x
+		default:
+			return 0
+		}
+	}
+	t.Water1 = toInt(incoming["water1"])
+	t.Water2 = toInt(incoming["water2"])
+	t.Water3 = toInt(incoming["water3"])
+	t.Relay1 = toInt(incoming["relay1"])
+	t.Relay2 = toInt(incoming["relay2"])
+	t.Relay3 = toInt(incoming["relay3"])
+	t.At = time.Now()
+
+	devMu.Lock()
+	readings[id] = t
+	devMu.Unlock()
+	respondJSON(w, http.StatusOK, map[string]any{"success": true})
+}
+
+// GET /api/iot/{id}/water-level
+// Returns the last reported water levels from cache
+func getWaterLevel(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		handleError(w, http.StatusBadRequest, "device id is required", nil)
+		return
+	}
+	devMu.RLock()
+	t, ok := readings[id]
+	devMu.RUnlock()
+	if !ok {
+		handleError(w, http.StatusNotFound, "no telemetry yet", nil)
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]any{
+		"device": id,
+		"at":     t.At.Format(time.RFC3339),
+		"water": map[string]int{
+			"water1": t.Water1,
+			"water2": t.Water2,
+			"water3": t.Water3,
+		},
+		"relays": map[string]int{
+			"relay1": t.Relay1,
+			"relay2": t.Relay2,
+			"relay3": t.Relay3,
+		},
+	})
 }
 
 /* ===========================
@@ -3820,7 +4074,7 @@ func buildRouter() http.Handler {
 
 	r.Route("/api", func(r chi.Router) {
 		// --- Standalone routes ---
-		r.Get("/dashboard", getDashboardData) 
+		r.Get("/dashboard", getDashboardData)
 		r.Post("/dht22-data", handleDhtData)
 		r.Post("/login", loginHandler)
 		r.Post("/register", registerHandler)
@@ -3912,6 +4166,13 @@ func buildRouter() http.Handler {
 		//for reports tab
 		r.Get("/reports/batch/{id}", getBatchReport)
 
+		//IoT device management
+		r.Route("/iot", func(r chi.Router) {
+			r.Post("/devices", registerDevice)
+			r.Post("/{id}/relays", setRelays)
+			r.Post("/{id}/telemetry", postTelemetry)
+			r.Get("/{id}/water-level", getWaterLevel)
+		})
 	})
 
 	return r
