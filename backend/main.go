@@ -970,6 +970,7 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	var data struct {
 		Temperature float64 `json:"temperature"`
 		Humidity    float64 `json:"humidity"`
+		GasSensor   float64 `json:"gas_value"`
 		CageNum     int     `json:"cage_num"`
 	}
 	if !decodeJSONBody(w, r, &data) {
@@ -979,8 +980,18 @@ func handleDhtData(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
 
-	stmt := `INSERT INTO cm_temperature (temp_temperature, temp_humidity, temp_cage_num) VALUES (?, ?, ?)`
-	res, err := db.ExecContext(ctx, stmt, data.Temperature, data.Humidity, data.CageNum)
+	// Limit database entries to 10 per cage
+	const limitPerCage = 10
+	cleanupStmt := `DELETE FROM cm_temperature WHERE temp_id NOT IN (SELECT temp_id FROM (SELECT temp_id FROM cm_temperature WHERE temp_cage_num = ? ORDER BY created_at DESC LIMIT ?) AS keep);`
+
+	_, err := db.ExecContext(ctx, cleanupStmt, data.CageNum, limitPerCage)
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to cleanup old temperature data", err)
+		return
+	}
+
+	stmt := `INSERT INTO cm_temperature (temp_temperature, temp_humidity, gas_sensor, temp_cage_num) VALUES (?, ?, ?, ?)`
+	res, err := db.ExecContext(ctx, stmt, data.Temperature, data.Humidity, data.GasSensor, data.CageNum)
 	if err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to insert temperature data", err)
 		return
