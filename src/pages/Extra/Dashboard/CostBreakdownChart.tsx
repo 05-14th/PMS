@@ -18,7 +18,7 @@ const CostBreakdownChart = ({ data }: { data: CostBreakdownPoint[] }) => {
   const filteredData = data.filter((item) => item.value > 0);
 
   return (
-    <div className="bg-white rounded-lg shadow p-6 border border-gray-100 h-80">
+    <div className="bg-white rounded-lg shadow p-6 border border-gray-100 h-148 flex flex-col items-center">
       <h3 className="text-lg font-semibold text-gray-800 mb-4">
         Cost Breakdown (Active Batches)
       </h3>
@@ -57,6 +57,8 @@ const CostBreakdownChart = ({ data }: { data: CostBreakdownPoint[] }) => {
           </Pie>
         </PieChart>
       </ResponsiveContainer>
+
+
     </div>
   );
 };

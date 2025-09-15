@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import ControlBody from "../components/ControlBody";
 import Feedingandwatering from "./Extra/Control/Feedingandwatering";
+import Environmental from "./Extra/Control/Environmental";
 import GuideModal from "./Extra/Control/GuideModal";
 
 const SubTabsPage: React.FC<{ onShowGuide: () => void }> = ({ onShowGuide }) => {
@@ -43,10 +44,7 @@ const SubTabsPage: React.FC<{ onShowGuide: () => void }> = ({ onShowGuide }) => 
 
         {activeTab === "environmental" && (
           <div>
-            <h2 className="mb-2 text-xl font-semibold">Environmental</h2>
-            <p className="text-gray-700">
-              Monitor and control temperature, humidity, and air quality.
-            </p>
+            <Environmental />
           </div>
         )}
       </div>

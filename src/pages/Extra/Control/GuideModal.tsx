@@ -47,6 +47,8 @@ const GuideModal: React.FC<GuideModalProps> = ({ onClose }) => {
               <p className="mb-4">
                 Every cage has a fan control and a light control for the specified cage level in environmental control.
               </p>
+              Additionally, switch to Auto mode if you want to automatically control both environmental and feeding and watering.
+              <p></p>
             </div>
           )}
           
