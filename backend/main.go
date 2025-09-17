@@ -3995,6 +3995,44 @@ func setRelays(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/iot/{id}/telemetry
+// POST /api/iot/{id}/rotate-servo
+// Body: { "angle": 90 }
+func rotateServoHandler(w http.ResponseWriter, r *http.Request) {
+	deviceID := chi.URLParam(r, "id")
+	var payload struct {
+		Angle int `json:"angle"`
+	}
+	if !decodeJSONBody(w, r, &payload) {
+		return
+	}
+	devMu.RLock()
+	dev, ok := devices[deviceID]
+	devMu.RUnlock()
+	if !ok {
+		handleError(w, http.StatusNotFound, "Device not found", nil)
+		return
+	}
+	// Forward to ESP8266 endpoint
+	espURL := fmt.Sprintf("%s/rotate-servo", dev.BaseURL)
+	reqBody, _ := json.Marshal(map[string]int{"angle": payload.Angle})
+	req, err := http.NewRequest("POST", espURL, strings.NewReader(string(reqBody)))
+	if err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to create request", err)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+	resp, err := httpc.Do(req)
+	if err != nil {
+		handleError(w, http.StatusBadGateway, "Failed to reach device", err)
+		return
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
+}
+
 // Body from ESP: { "water1":0|1, "water2":0|1, "water3":0|1, "relay1":0|1, "relay2":0|1, "relay3":0|1}
 func postTelemetry(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
@@ -4183,6 +4221,7 @@ func buildRouter() http.Handler {
 			r.Post("/{id}/relays", setRelays)
 			r.Post("/{id}/telemetry", postTelemetry)
 			r.Get("/{id}/water-level", getWaterLevel)
+			r.Post("/{id}/rotate-servo", rotateServoHandler)
 		})
 	})
 
