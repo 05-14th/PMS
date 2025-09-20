@@ -3564,13 +3564,22 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 
 	var dynamicCosts []FinancialBreakdownItem
 	dynamicCostQuery := `SELECT CostType, COALESCE(SUM(Amount), 0) as TotalAmount FROM cm_production_cost WHERE BatchID = ? AND CostType != 'Chick Purchase' GROUP BY CostType`
-	rows, _ := db.QueryContext(ctx, dynamicCostQuery, batchID)
+	rows, err := db.QueryContext(ctx, dynamicCostQuery, batchID)
+	if err != nil {
+		// If the query fails, log the error and stop execution for this request.
+		handleError(w, http.StatusInternalServerError, "Failed to fetch dynamic costs", err)
+		return
+	}
 	defer rows.Close()
 	for rows.Next() {
 		var item FinancialBreakdownItem
 		var costType string
 		var amount float64
-		rows.Scan(&costType, &amount)
+		
+		if scanErr := rows.Scan(&costType, &amount); scanErr != nil {
+			handleError(w, http.StatusInternalServerError, "Failed to scan dynamic cost item", scanErr)
+			return // Exit if scanning fails
+		}
 		item.Category = "- " + costType
 		item.Amount = -amount
 		dynamicCosts = append(dynamicCosts, item)
@@ -3622,8 +3631,14 @@ func getBatchReport(w http.ResponseWriter, r *http.Request) {
 		report.FinancialBreakdown = breakdown
 	}
 
+	if err = rows.Err(); err != nil {
+        handleError(w, http.StatusInternalServerError, "Error iterating dynamic cost rows", err)
+        return
+    }
+
 	respondJSON(w, http.StatusOK, report)
 }
+
 
 func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 	batchID := chi.URLParam(r, "id")
@@ -3674,7 +3689,7 @@ func getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 		JOIN cm_customers c ON so.CustomerID = c.CustomerID
 		JOIN cm_harvest_products hp ON sd.HarvestProductID = hp.HarvestProductID
 		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-		WHERE h.BatchID = ?
+		WHERE h.BatchID = ? AND so.IsActive = 1 -- <-- THIS IS THE FIX
 		GROUP BY so.SaleID, DATE(so.SaleDate), c.Name
 
 		ORDER BY Date DESC;
@@ -3721,6 +3736,7 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 	// --- 1. At a Glance Metrics (No changes) ---
 	db.QueryRowContext(ctx, `SELECT COALESCE(COUNT(BatchID), 0), COALESCE(SUM(CurrentChicken), 0) FROM cm_batches WHERE Status = 'Active'`).Scan(&data.AtAGlance.ActiveBatchCount, &data.AtAGlance.CurrentPopulation)
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(TotalChicken), 0) FROM cm_batches`).Scan(&data.AtAGlance.TotalBirds)
+	//change here the days for revenue chart to display to 30 later
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY AND IsActive = 1`).Scan(&data.AtAGlance.MonthlyRevenue)
 	db.QueryRowContext(ctx, `SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_harvest_products WHERE ProductType IN ('Live', 'Dressed') AND IsActive = 1`).Scan(&data.AtAGlance.SellableInventory)
 
