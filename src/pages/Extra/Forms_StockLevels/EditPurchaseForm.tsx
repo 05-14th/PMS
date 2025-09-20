@@ -1,5 +1,13 @@
 import React, { useEffect } from 'react';
-import { Form, InputNumber, DatePicker, Select, Modal, Button } from 'antd';
+import {
+    Form,
+    Input,
+    InputNumber,
+    DatePicker,
+    Select,
+    Modal,
+    Button,
+} from 'antd';
 import dayjs from 'dayjs';
 
 const { Option } = Select;
@@ -34,6 +42,8 @@ const EditPurchaseForm: React.FC<EditPurchaseFormProps> = ({
                 ...initialValues,
                 PurchaseDate: dayjs(initialValues.PurchaseDate),
                 TotalCost: initialValues.UnitCost,
+                // MODIFICATION: pre-fill the receipt info
+                ReceiptInfo: initialValues.ReceiptInfo,
             });
         }
     }, [visible, initialValues, form]);
@@ -69,6 +79,7 @@ const EditPurchaseForm: React.FC<EditPurchaseFormProps> = ({
                 </Button>,
             ]}
             width={600}
+            destroyOnClose
         >
             <Form
                 form={form}
@@ -121,6 +132,14 @@ const EditPurchaseForm: React.FC<EditPurchaseFormProps> = ({
                             </Option>
                         ))}
                     </Select>
+                </Form.Item>
+
+                {/* MODIFICATION: Added optional Receipt Info field */}
+                <Form.Item
+                    name='ReceiptInfo'
+                    label='Receipt Info / Ref # (Optional)'
+                >
+                    <Input placeholder='e.g., OR# 12345, or a note' />
                 </Form.Item>
             </Form>
         </Modal>

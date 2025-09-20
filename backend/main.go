@@ -156,6 +156,7 @@ type HarvestedInventoryItem struct {
 }
 
 type PurchaseHistoryDetail struct {
+	ReceiptInfo       *string `json:"ReceiptInfo"`
 	PurchaseID        int     `json:"PurchaseID"`
 	PurchaseDate      string  `json:"PurchaseDate"`
 	QuantityRemaining float64 `json:"QuantityRemaining"`
@@ -170,6 +171,7 @@ type PurchasePayload struct {
 	PurchaseDate      string  `json:"PurchaseDate"`
 	QuantityPurchased float64 `json:"QuantityPurchased"`
 	UnitCost          float64 `json:"UnitCost"`
+	ReceiptInfo        *string `json:"ReceiptInfo"`
 }
 
 type NewStockItemPayload struct {
@@ -179,6 +181,7 @@ type NewStockItemPayload struct {
 	Category string `json:"Category"`
 
 	// Initial Purchase Details
+	ReceiptInfo        *string `json:"ReceiptInfo"`
 	PurchaseDate      string  `json:"PurchaseDate"`
 	QuantityPurchased float64 `json:"QuantityPurchased"`
 	AmountPaid        float64 `json:"AmountPaid"`
@@ -1609,8 +1612,10 @@ func deleteInventoryItem(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := withTimeout(r.Context())
 	defer cancel()
+
 	var totalStock float64
-	stockQuery := "SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_inventory_purchases WHERE ItemID = ?"
+	// MODIFICATION: Added "AND IsActive = 1" to make this check consistent with the UI
+	stockQuery := "SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_inventory_purchases WHERE ItemID = ? AND IsActive = 1"
 	if err := db.QueryRowContext(ctx, stockQuery, itemID).Scan(&totalStock); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to check item stock", err)
 		return
@@ -1684,27 +1689,21 @@ func getPurchaseHistory(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 
 	query := `
-		SELECT
-			p.PurchaseID, -- ADDED
-			p.PurchaseDate,
-			p.QuantityPurchased, 
-			p.QuantityRemaining,
-			p.UnitCost,
-			s.SupplierName
+		SELECT p.PurchaseID, p.PurchaseDate, p.QuantityPurchased, p.QuantityRemaining, p.UnitCost, s.SupplierName, p.ReceiptInfo
 		FROM cm_inventory_purchases p
 		JOIN cm_suppliers s ON p.SupplierID = s.SupplierID
-		WHERE p.ItemID = ? AND p.IsActive = 1 -- CHANGED
+		WHERE p.ItemID = ? AND p.IsActive = 1
 		ORDER BY p.PurchaseDate DESC;`
 
 	rows, err := db.QueryContext(ctx, query, itemID)
-	if err != nil { /* ... */
-	}
+	if err != nil { handleError(w, http.StatusInternalServerError, "Failed to fetch purchase history", err); return }
 	defer rows.Close()
 
-	var details []PurchaseHistoryDetail
+	var details []PurchaseHistoryDetail // Make sure this struct in your code has ReceiptInfo
 	for rows.Next() {
 		var d PurchaseHistoryDetail
-		if err := rows.Scan(&d.PurchaseID, &d.PurchaseDate, &d.QuantityPurchased, &d.QuantityRemaining, &d.UnitCost, &d.SupplierName); err != nil { // CHANGED
+		// Updated scan to include ReceiptInfo
+		if err := rows.Scan(&d.PurchaseID, &d.PurchaseDate, &d.QuantityPurchased, &d.QuantityRemaining, &d.UnitCost, &d.SupplierName, &d.ReceiptInfo); err != nil {
 			handleError(w, http.StatusInternalServerError, "Failed to scan purchase history", err)
 			return
 		}
@@ -1735,16 +1734,12 @@ func createPurchase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	purchaseQuery := `
+purchaseQuery := `
 		INSERT INTO cm_inventory_purchases 
-		(ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining) 
-		VALUES (?, ?, ?, ?, ?, ?)`
-
-	res, err := tx.ExecContext(ctx, purchaseQuery, p.ItemID, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to insert purchase", err)
-		return
-	}
+		(ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining, ReceiptInfo) 
+		VALUES (?, ?, ?, ?, ?, ?, ?)`
+	res, err := tx.ExecContext(ctx, purchaseQuery, p.ItemID, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased, p.ReceiptInfo)
+	if err != nil { handleError(w, http.StatusInternalServerError, "Failed to insert purchase", err); return }
 
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
@@ -1783,12 +1778,9 @@ func updatePurchase(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	updateQuery := "UPDATE cm_inventory_purchases SET SupplierID = ?, PurchaseDate = ?, QuantityPurchased = ?, UnitCost = ?, QuantityRemaining = ? WHERE PurchaseID = ?"
-	_, err = db.ExecContext(ctx, updateQuery, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased, purchaseID)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to update purchase", err)
-		return
-	}
+	updateQuery := "UPDATE cm_inventory_purchases SET SupplierID = ?, PurchaseDate = ?, QuantityPurchased = ?, UnitCost = ?, QuantityRemaining = ?, ReceiptInfo = ? WHERE PurchaseID = ?"
+	_, err = db.ExecContext(ctx, updateQuery, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased, p.ReceiptInfo, purchaseID)
+	if err != nil { handleError(w, http.StatusInternalServerError, "Failed to update purchase", err); return }
 	respondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
 
@@ -1864,12 +1856,9 @@ func createStockItem(w http.ResponseWriter, r *http.Request) {
 	}
 	itemID, _ := res.LastInsertId()
 
-	purchaseQuery := "INSERT INTO cm_inventory_purchases (ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining) VALUES (?, ?, ?, ?, ?, ?)"
-	_, err = tx.ExecContext(ctx, purchaseQuery, itemID, supplierID, payload.PurchaseDate, payload.QuantityPurchased, payload.AmountPaid, payload.QuantityPurchased)
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to insert initial purchase", err)
-		return
-	}
+purchaseQuery := "INSERT INTO cm_inventory_purchases (ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining, ReceiptInfo) VALUES (?, ?, ?, ?, ?, ?, ?)"
+	_, err = tx.ExecContext(ctx, purchaseQuery, itemID, supplierID, payload.PurchaseDate, payload.QuantityPurchased, payload.AmountPaid, payload.QuantityPurchased, payload.ReceiptInfo)
+	if err != nil { handleError(w, http.StatusInternalServerError, "Failed to insert initial purchase", err); return }
 
 	if err := tx.Commit(); err != nil {
 		handleError(w, http.StatusInternalServerError, "Failed to commit transaction", err)
@@ -3083,19 +3072,26 @@ func deleteHarvestProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	var batchID, quantityHarvested, quantityRemaining int
-	infoQuery := `
-		SELECT h.BatchID, hp.QuantityHarvested, hp.QuantityRemaining
-		FROM cm_harvest_products hp
-		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-		WHERE hp.HarvestProductID = ? FOR UPDATE`
-	if err := tx.QueryRowContext(ctx, infoQuery, harvestProductID).Scan(&batchID, &quantityHarvested, &quantityRemaining); err != nil {
-		handleError(w, http.StatusNotFound, "Harvest product not found", err)
+
+	var saleCount int
+	saleCheckQuery := "SELECT COUNT(*) FROM cm_sales_details WHERE HarvestProductID = ?"
+	if err := tx.QueryRowContext(ctx, saleCheckQuery, harvestProductID).Scan(&saleCount); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to check for existing sales", err)
+		return
+	}
+	if saleCount > 0 {
+		handleError(w, http.StatusBadRequest, "Cannot delete a harvested product that is already part of a sale.", nil)
 		return
 	}
 
-	if quantityRemaining < quantityHarvested {
-		handleError(w, http.StatusBadRequest, "Cannot delete a harvest that has already been sold.", nil)
+	var batchID, quantityHarvested int
+	infoQuery := `
+		SELECT h.BatchID, hp.QuantityHarvested 
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE hp.HarvestProductID = ?`
+	if err := tx.QueryRowContext(ctx, infoQuery, harvestProductID).Scan(&batchID, &quantityHarvested); err != nil {
+		handleError(w, http.StatusNotFound, "Harvest product not found", err)
 		return
 	}
 
@@ -3140,19 +3136,23 @@ func updateHarvestProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	var oldQtyHarvested, oldQtyRemaining, batchID int
-	checkQuery := `
-		SELECT h.BatchID, hp.QuantityHarvested, hp.QuantityRemaining
-		FROM cm_harvest_products hp
-		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-		WHERE hp.HarvestProductID = ? FOR UPDATE`
-	if err := tx.QueryRowContext(ctx, checkQuery, harvestProductID).Scan(&batchID, &oldQtyHarvested, &oldQtyRemaining); err != nil {
-		handleError(w, http.StatusNotFound, "Harvest product not found", err)
+	// MODIFICATION: Use the more reliable sales check to prevent editing sold items.
+	var saleCount int
+	saleCheckQuery := "SELECT COUNT(*) FROM cm_sales_details WHERE HarvestProductID = ?"
+	if err := tx.QueryRowContext(ctx, saleCheckQuery, harvestProductID).Scan(&saleCount); err != nil {
+		handleError(w, http.StatusInternalServerError, "Failed to check for existing sales", err)
 		return
 	}
-
-	if oldQtyRemaining < oldQtyHarvested {
-		handleError(w, http.StatusBadRequest, "Cannot edit a harvest that has already been sold.", nil)
+	if saleCount > 0 {
+		handleError(w, http.StatusBadRequest, "Cannot edit a harvested product that is already part of a sale.", nil)
+		return
+	}
+	
+	// If check passes, proceed with the update.
+	var oldQtyHarvested, batchID int
+	infoQuery := "SELECT h.BatchID, hp.QuantityHarvested FROM cm_harvest_products hp JOIN cm_harvest h ON hp.HarvestID = h.HarvestID WHERE hp.HarvestProductID = ?"
+	if err := tx.QueryRowContext(ctx, infoQuery, harvestProductID).Scan(&batchID, &oldQtyHarvested); err != nil {
+		handleError(w, http.StatusNotFound, "Harvest product not found", err)
 		return
 	}
 
@@ -3172,8 +3172,7 @@ func updateHarvestProduct(w http.ResponseWriter, r *http.Request) {
 		handleError(w, http.StatusInternalServerError, "Failed to update harvest date", err)
 		return
 	}
-
-	// Adjust the batch's chicken count based on the change in harvested quantity
+	
 	qtyDifference := payload.QuantityHarvested - oldQtyHarvested
 	updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken - ? WHERE BatchID = ?"
 	if _, err := tx.ExecContext(ctx, updateBatchQuery, qtyDifference, batchID); err != nil {
