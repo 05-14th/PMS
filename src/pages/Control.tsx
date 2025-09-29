@@ -80,7 +80,7 @@ function Control() {
   return (
     <div className={`min-h-screen bg-black ${showGuide ? 'overflow-hidden' : ''}`}>
       <ControlBody className="relative">
-        <div className="w-full px-4 flex flex-col md:flex-row justify-between relative">
+        <div className="w-full px-4 flex flex-col lg:flex-row justify-between relative">
           {/* Main content */}
           <div className="flex-1" ref={tabContainerRef}>
             <SubTabsPage onShowGuide={() => setShowGuide(true)} />
@@ -105,69 +105,69 @@ function Control() {
             )}
           </div>
           
-          {/* Three Icon Containers - Sidebar */}
-          <div className="hidden md:flex flex-col space-y-4 w-64 ml-8 sticky top-24 h-0">
-            {/* Water Container */}
-            <div className="bg-white p-3 rounded-lg shadow-md flex items-center space-x-3">
-              <div className="bg-green-100 p-2 rounded-full">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
+          {/* Right sidebar - Desktop only */}
+          <div className="hidden lg:flex flex-col w-80 ml-12 mt-40 space-y-8">
+            {/* Status Containers */}
+            <div className="space-y-4">
+              {/* Water Container */}
+              <div className="bg-white p-3 rounded-lg shadow-md flex items-center space-x-3">
+                <div className="bg-green-100 p-2 rounded-full">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-gray-800">Water Level</h3>
+                  <p className="text-xs text-gray-500">Monitor water supply</p>
+                </div>
               </div>
-              <div>
-                <h3 className="font-medium text-sm text-gray-800">Water Level</h3>
-                <p className="text-xs text-gray-500">Monitor water supply</p>
+
+              {/* Medicine Container */}
+              <div className="bg-white p-3 rounded-lg shadow-md flex items-center space-x-3">
+                <div className="bg-green-100 p-2 rounded-full">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-gray-800">Medicine</h3>
+                  <p className="text-xs text-gray-500">Manage distribution</p>
+                </div>
+              </div>
+
+              {/* Feed Supply Container */}
+              <div className="bg-white p-3 rounded-lg shadow-md flex items-center space-x-3">
+                <div className="bg-green-100 p-2 rounded-full">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="font-medium text-sm text-gray-800">Feed Supply</h3>
+                  <p className="text-xs text-gray-500">Check feed levels</p>
+                </div>
               </div>
             </div>
 
-            {/* Medicine Container */}
-            <div className="bg-white p-3 rounded-lg shadow-md flex items-center space-x-3">
-              <div className="bg-green-100 p-2 rounded-full">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-medium text-sm text-gray-800">Medicine</h3>
-                <p className="text-xs text-gray-500">Manage distribution</p>
-              </div>
-            </div>
-
-            {/* Feed Supply Container */}
-            <div className="bg-white p-3 rounded-lg shadow-md flex items-center space-x-3">
-              <div className="bg-green-100 p-2 rounded-full">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <div>
-                <h3 className="font-medium text-sm text-gray-800">Feed Supply</h3>
-                <p className="text-xs text-gray-500">Check feed levels</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Mrs. Chick help section - Desktop only */}
-          {!isMobile && (
-            <div className="ml-8 flex flex-col items-center sticky top-24 mt-12">
+            {/* Mrs. Chick help section */}
+            <div className="flex flex-col items-center mt-4">
               <img 
                 src="/Extras/Mr_Chick.png" 
                 alt="Mr. Chick" 
-                className="w-64 h-64 object-contain mb-4"
+                className="w-48 h-48 object-contain"
               />
-              <div className="text-center mt-8">
-                <p className="text-green-800 font-semibold text-xl mb-2">I'm Mrs. Chick your mate!</p>
-                <p className="text-lg text-green-700 mb-8">Need some help?
-                  Click " Guide me "</p>
+              <div className="text-center mt-4">
+                <p className="text-green-800 font-semibold text-lg mb-2">I'm Mrs. Chick your mate!</p>
+                <p className="text-md text-green-700 mb-4">Need some help?<br />Click "Guide me"</p>
                 <button 
-                  className="bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-10 rounded-full transition-all duration-200 text-lg transform hover:scale-105 mt-4"
+                  className="bg-green-700 hover:bg-green-800 text-white font-bold py-2 px-6 rounded-full transition-all duration-200 text-md transform hover:scale-105"
                   onClick={() => setShowGuide(true)}
                 >
                   Guide me
                 </button>
               </div>
             </div>
-          )}
+          </div>
 
           {/* Mobile floating guide button */}
           {isMobile && (
