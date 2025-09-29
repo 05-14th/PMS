@@ -30,7 +30,6 @@ export default function LiveOperation({
   batches,
   stockItems,
 }: LiveOperationProps) {
-  // --- UPDATED: This handles both null and undefined safely ---
   const safeBatches = batches || [];
   const safeStockItems = stockItems || [];
 

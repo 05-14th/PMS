@@ -22,10 +22,9 @@ const formatYAxis = (tickItem: number) => {
 };
 
 const RevenueChart = ({ data }: { data: RevenueDataPoint[] }) => {
-  // Format date for display on the X-axis
   const formattedData = data.map((d) => ({
     ...d,
-    // Extracts month and day, e.g., "Sep 10"
+
     formattedDate: new Date(d.date).toLocaleDateString("en-US", {
       month: "short",
       day: "numeric",

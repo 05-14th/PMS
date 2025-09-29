@@ -45,8 +45,6 @@ const HomePage = () => {
     window.location.reload();
   };
 
-  // --- THIS IS THE FIX ---
-  // Guard Clause 1: Handle the loading state.
   if (isLoading) {
     return (
       <MainBody>
@@ -55,9 +53,6 @@ const HomePage = () => {
     );
   }
 
-  // Guard Clause 2: Handle the case where data failed to load.
-  // This check proves to TypeScript that if the code proceeds past this point,
-  // 'dashboardData' CANNOT be null.
   if (!dashboardData) {
     return (
       <MainBody>
@@ -66,7 +61,6 @@ const HomePage = () => {
     );
   }
 
-  // By the time we get here, TypeScript knows 'dashboardData' is safe to use.
   return (
     <MainBody>
       <div className="min-h-screen bg-gray-50 p-4 md:p-6 w-full">
