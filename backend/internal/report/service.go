@@ -8,6 +8,7 @@ import (
 	"chickmate-api/internal/models"
 	"chickmate-api/internal/sales"
 	"context"
+	"sync"
 )
 
 type Service struct {
@@ -29,50 +30,91 @@ func NewService(r *Repository, br *batch.Repository, sr *sales.Repository, ir *i
 }
 
 func (s *Service) GenerateBatchReport(ctx context.Context, batchID int) (*models.BatchReportData, error) {
-	// 1. Fetch all the raw data (no changes here)
-	baseBatch, err := s.batchRepo.GetBatchForReport(ctx, batchID)
-	if err != nil { return nil, err }
+	var wg sync.WaitGroup
+	errs := make(chan error, 5)
+
+	// Variables to hold the data fetched concurrently
+	var baseBatch *models.Batch
+	var vitals *models.BatchVitals
+	var costs []map[string]interface{}
+	var totalRevenue, totalFeedCost, totalFeedConsumed, totalWeightHarvested float64
+
+	// 1. Fetch Base Batch Data
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		baseBatch, err = s.batchRepo.GetBatchForReport(ctx, batchID)
+		if err != nil { errs <- err }
+	}()
+
+	// 2. Fetch Vitals
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		vitals, err = s.batchRepo.GetBatchVitals(ctx, batchID)
+		if err != nil { errs <- err }
+	}()
+
+	// 3. Fetch All Costs
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		costs, err = s.batchRepo.GetBatchCosts(ctx, batchID)
+		if err != nil { errs <- err }
+	}()
 	
-	vitals, err := s.batchRepo.GetBatchVitals(ctx, batchID)
-	if err != nil { return nil, err }
+	// 4. Fetch Sales, Inventory, and Harvest data
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		totalRevenue, err = s.salesRepo.GetTotalRevenueForBatch(ctx, batchID)
+		if err != nil { errs <- err; return }
+		
+		totalFeedCost, err = s.inventoryRepo.GetTotalFeedCostForBatch(ctx, batchID)
+		if err != nil { errs <- err; return }
+		
+		totalFeedConsumed, err = s.inventoryRepo.GetTotalFeedConsumedForBatch(ctx, batchID)
+		if err != nil { errs <- err; return }
+
+		totalWeightHarvested, err = s.harvestRepo.GetTotalWeightHarvestedForBatch(ctx, batchID)
+		if err != nil { errs <- err }
+	}()
 	
-	costs, err := s.batchRepo.GetBatchCosts(ctx, batchID)
-	if err != nil { return nil, err }
+	// Wait for all concurrent fetches to complete
+	wg.Wait()
+	close(errs)
+
+	for err := range errs {
+		if err != nil {
+			return nil, err // Return the first error found
+		}
+	}
+
+	// ---- ALL DATA IS NOW FETCHED, PROCEED WITH CALCULATIONS ----
 	
-	totalRevenue, err := s.salesRepo.GetTotalRevenueForBatch(ctx, batchID)
-	if err != nil { return nil, err }
-
-	totalFeedCost, err := s.inventoryRepo.GetTotalFeedCostForBatch(ctx, batchID)
-	if err != nil { return nil, err }
-
-	totalFeedConsumed, err := s.inventoryRepo.GetTotalFeedConsumedForBatch(ctx, batchID)
-	if err != nil { return nil, err }
-
-	totalWeightHarvested, err := s.harvestRepo.GetTotalWeightHarvestedForBatch(ctx, batchID)
-	if err != nil { return nil, err }
-
-	// 2. Perform Calculations
 	var report models.BatchReportData
+	// (The calculation logic is the same as before, just using the concurrently fetched variables)
 	report.BatchName = baseBatch.BatchName
 	report.DurationDays = vitals.AgeInDays
-
+	
 	op := &report.OperationalAnalytics
 	op.InitialBirdCount = baseBatch.TotalChicken
 	op.FinalBirdCount = op.InitialBirdCount - vitals.TotalMortality
 	op.TotalFeedConsumed = totalFeedConsumed
 	op.TotalWeightHarvested = totalWeightHarvested
 	
-	// Use vitals.TotalMortality directly for calculations
 	birdsHarvested := op.FinalBirdCount - baseBatch.CurrentChicken
-	
 	if birdsHarvested > 0 {
-	op.AverageHarvestWeight = totalWeightHarvested / float64(birdsHarvested)
-}
+		op.AverageHarvestWeight = totalWeightHarvested / float64(birdsHarvested)
+	}
 	if op.InitialBirdCount > 0 {
 		op.MortalityRate = (float64(vitals.TotalMortality) / float64(op.InitialBirdCount)) * 100
 	}
 
-	// Financial Calculations
 	var chickPurchaseCost, otherCostsTotal float64
 	for _, cost := range costs {
 		if cost["type"] == "Chick Purchase" {
@@ -98,7 +140,6 @@ func (s *Service) GenerateBatchReport(ctx context.Context, batchID int) (*models
 		exec.HarvestRecovery = (float64(birdsHarvested) / float64(op.InitialBirdCount)) * 100
 	}
 	
-	// Financial Breakdown
 	if totalCost > 0 && op.InitialBirdCount > 0 {
 		var breakdown []models.FinancialBreakdownItem
 		perBirdDivisor := float64(op.InitialBirdCount)
