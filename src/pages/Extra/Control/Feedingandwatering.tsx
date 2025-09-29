@@ -23,7 +23,7 @@ const Feedingandwatering: React.FC = () => {
   };
 
   React.useEffect(() => {
-    axios.get("http://192.168.1.56/telemetry")
+    axios.get("http://192.168.1.16/telemetry")
       .then(response => {
         const data = response.data;
         setRelayState({
@@ -39,6 +39,30 @@ const Feedingandwatering: React.FC = () => {
 
   const handleToggleMode = (isAuto: boolean) => {
     setIsAutoMode(isAuto);
+    if (isAuto) {
+      postModeChange("automatic");
+    }else{
+      postModeChange("manual");
+    }
+    
+  };
+
+  const postModeChange = (mode: string) => {
+    axios.post("http://192.168.1.9/set-relays", {
+      "relay1": 0,
+      "relay2": 0,
+      "relay3": 0,
+      "mode": mode}
+  )
+      .then(response => console.log("Mode changed:", response.data))
+      .catch(error => console.error("Error changing mode:", error));
+  }
+  
+  // Rotate servo for feed buttons
+  const handleFeedRotate = (angle: number) => {
+    axios.post("http://localhost:8080/api/iot/client-2/rotate-servo", { angle })
+      .then(response => console.log("Servo rotated:", response.data))
+      .catch(error => console.error("Error rotating servo:", error));
   };
 
   const handleWaterToggle = (relayNum: number) => {
@@ -47,7 +71,7 @@ const Feedingandwatering: React.FC = () => {
     newState[`relay${relayNum}` as keyof typeof newState] =
       relayState[`relay${relayNum}` as keyof typeof newState] ? 0 : 1;
     setRelayState(newState);
-    axios.post("http://192.168.1.56/set-relays", newState)
+    axios.post("http://192.168.1.16/set-relays", newState)
       .then(response => console.log("Watering successful:", response.data))
       .catch(error => console.error("Error watering:", error));
   };
@@ -58,7 +82,7 @@ const Feedingandwatering: React.FC = () => {
     newState[`relay_med${relayNum}` as keyof typeof newState] =
       medRelayState[`relay_med${relayNum}` as keyof typeof newState] ? 0 : 1;
     setMedRelayState(newState);
-    axios.post("http://192.168.1.58/set-relays", newState)
+    axios.post("http://192.168.1.16/set-relays", newState)
       .then(response => console.log("Medicine relay toggled:", response.data))
       .catch(error => console.error("Error toggling medicine relay:", error));
   };
@@ -105,20 +129,42 @@ const Feedingandwatering: React.FC = () => {
           </div>
           <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
             <div className="grid grid-cols-3 gap-3">
-              {["Starter", "Grower", "Finisher"].map((label) => (
-                <button
-                  key={label}
-                  className={`py-3 text-sm sm:text-base font-semibold transition border-2 shadow-sm rounded-lg ${
-                    isAutoMode
-                      ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
-                      : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
-                  }`}
-                  disabled={isAutoMode}
-                  aria-disabled={isAutoMode}
-                >
-                  {label}
-                </button>
-              ))}
+              <button
+                className={`py-3 text-sm sm:text-base font-semibold transition border-2 shadow-sm rounded-lg ${
+                  isAutoMode
+                    ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
+                    : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
+                }`}
+                disabled={isAutoMode}
+                aria-disabled={isAutoMode}
+                onClick={() => handleFeedRotate(90)}
+              >
+                Starter
+              </button>
+              <button
+                className={`py-3 text-sm sm:text-base font-semibold transition border-2 shadow-sm rounded-lg ${
+                  isAutoMode
+                    ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
+                    : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
+                }`}
+                disabled={isAutoMode}
+                aria-disabled={isAutoMode}
+                onClick={() => handleFeedRotate(60)}
+              >
+                Grower
+              </button>
+              <button
+                className={`py-3 text-sm sm:text-base font-semibold transition border-2 shadow-sm rounded-lg ${
+                  isAutoMode
+                    ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
+                    : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
+                }`}
+                disabled={isAutoMode}
+                aria-disabled={isAutoMode}
+                onClick={() => handleFeedRotate(120)}
+              >
+                Finisher
+              </button>
             </div>
           </div>
         </div>
