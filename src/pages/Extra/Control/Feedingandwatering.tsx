@@ -178,7 +178,7 @@ const Feedingandwatering: React.FC = () => {
               {[1, 2, 3].map((num) => (
                 <div key={num} className="flex flex-col">
                   <div className="mb-2 p-2 bg-gray-0 border border-pink-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-600 text-center">
-                    Put the Water level Sensor Monitoring Here
+                    Put the Water level Sensor Monitoring Here para sa bahogan 
                   </div>
                   <button
                     className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
@@ -211,7 +211,7 @@ const Feedingandwatering: React.FC = () => {
               {[1, 2, 3].map((num) => (
                 <div key={num} className="flex flex-col">
                   <div className="mb-2 p-2 bg-gray-0  border border-pink-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-600 text-center">
-                    Put the Medicine level Sensor Monitoring Here
+                    Put the Medicine level Sensor Monitoring Here para sa bahogan
                   </div>
                   <button
                     className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${

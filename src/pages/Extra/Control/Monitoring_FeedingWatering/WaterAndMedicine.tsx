@@ -13,7 +13,7 @@ const WaterAndMedicine: React.FC = () => {
           </div>
           <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
             <div className="h-32 bg-gray-50 rounded flex items-center justify-center text-gray-400">
-              Water monitoring content
+              Water monitoring content para sa main tank ng tubig
             </div>
           </div>
         </div>
@@ -26,7 +26,7 @@ const WaterAndMedicine: React.FC = () => {
           </div>
           <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
             <div className="h-32 bg-gray-50 rounded flex items-center justify-center text-gray-400">
-              Medicine monitoring content
+              Medicine monitoring content para sa main tank ng medicine
             </div>
           </div>
         </div>
