@@ -2,9 +2,8 @@ import React, { useState } from "react";
 import { Droplets, Pill, Utensils } from "lucide-react";
 import axios from "axios";
 import ToggleManualAutoMode from "./Toggle_Manual_Auto_Mode";
-import Cage_1 from  "./Monitoring_FeedingWatering/Cage_1";
-import Cage_2 from "./Monitoring_FeedingWatering/Cage_2";
-import Cage_3 from  "./Monitoring_FeedingWatering/Cage_3";
+import Feeding from "./Monitoring_FeedingWatering/Feeding";
+import WaterAndMedicine from "./Monitoring_FeedingWatering/WaterAndMedicine";
 
 const Feedingandwatering: React.FC = () => {
   const [relayState, setRelayState] = useState<{ relay1: number, relay2: number, relay3: number }>({ relay1: 0, relay2: 0, relay3: 0 });
@@ -13,13 +12,12 @@ const Feedingandwatering: React.FC = () => {
   const [medicine, setMedicine] = useState<{ med1: number, med2: number, med3: number }>({ med1: 0, med2: 0, med3: 0 });
   const [waterState, setWaterState] = useState<string>("Empty");
   const [isAutoMode, setIsAutoMode] = useState<boolean>(true);
-  const [activeCage, setActiveCage] = useState<string>("Cage 1");
+  const [activeTab, setActiveTab] = useState<string>("Feeding");
 
-  // Map cage names to components
-  const cageComponents: { [key: string]: React.ReactNode } = {
-    "Cage 1": <Cage_1 />,
-    "Cage 2": <Cage_2 />,
-    "Cage 3": <Cage_3 />
+  // Map tab names to components
+  const tabComponents: { [key: string]: React.ReactNode } = {
+    "Feeding": <Feeding />,
+    "Water & Medicine": <WaterAndMedicine />
   };
 
   React.useEffect(() => {
@@ -95,27 +93,27 @@ const Feedingandwatering: React.FC = () => {
         className="absolute right-4 top-4"
       />
 
-      {/* Cage Tabs */}
+      {/* Tabs */}
       <div className="w-full max-w-2xl mb-6">
         <div className="flex justify-center border-b border-gray-300">
-          {["Cage 1", "Cage 2", "Cage 3"].map((cage) => (
+          {["Feeding", "Water & Medicine"].map((tab) => (
             <button
-              key={cage}
+              key={tab}
               className={`px-4 py-2 text-sm font-semibold transition ${
-                activeCage === cage
+                activeTab === tab
                   ? "text-green-700 border-b-2 border-green-500"
                   : "text-gray-500 hover:text-green-600"
               }`}
-              onClick={() => setActiveCage(cage)}
+              onClick={() => setActiveTab(tab)}
             >
-              {cage}
+              {tab}
             </button>
           ))}
         </div>
 
-        {/* Selected Cage Component */}
+        {/* Selected Tab Component */}
         <div className="mt-6">
-          {cageComponents[activeCage]}
+          {tabComponents[activeTab]}
         </div>
       </div>
 
@@ -177,22 +175,30 @@ const Feedingandwatering: React.FC = () => {
           </div>
           <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
             <div className="grid grid-cols-3 gap-3">
+              {/* Map through water buttons 1-3 */}
               {[1, 2, 3].map((num) => (
-                <button
-                  key={num}
-                  className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
-                    isAutoMode
-                      ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
-                      : relayState[`relay${num}` as keyof typeof relayState]
-                      ? "bg-green-200 border-green-500 text-green-900"
-                      : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
-                  }`}
-                  onClick={() => handleWaterToggle(num)}
-                  disabled={isAutoMode}
-                  aria-disabled={isAutoMode}
-                >
-                  {num}
-                </button>
+                // Container for each water button group (container + button)
+                <div key={num} className="flex flex-col">
+                  {/* Empty container above water button */}
+                  <div className="mb-2 p-2 bg-gray-100 border border-gray-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-400">
+                    Water {num} container
+                  </div>
+                  {/* Water button */}
+                  <button
+                    className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
+                      isAutoMode
+                        ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
+                        : relayState[`relay${num}` as keyof typeof relayState]
+                        ? "bg-green-200 border-green-500 text-green-900"
+                        : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
+                    }`}
+                    onClick={() => handleWaterToggle(num)}
+                    disabled={isAutoMode}
+                    aria-disabled={isAutoMode}
+                  >
+                    {num}
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -206,22 +212,30 @@ const Feedingandwatering: React.FC = () => {
           </div>
           <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
             <div className="grid grid-cols-3 gap-3">
+              {/* Map through medicine buttons 1-3 */}
               {[1, 2, 3].map((num) => (
-                <button
-                  key={num}
-                  className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
-                    isAutoMode
-                      ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
-                      : medRelayState[`relay_med${num}` as keyof typeof medRelayState]
-                      ? "bg-green-200 border-green-500 text-green-900"
-                      : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
-                  }`}
-                  onClick={() => handleMedecine(num)}
-                  disabled={isAutoMode}
-                  aria-disabled={isAutoMode}
-                >
-                  {num}
-                </button>
+                // Container for each medicine button group (container + button)
+                <div key={num} className="flex flex-col">
+                  {/* Empty container above medicine button */}
+                  <div className="mb-2 p-2 bg-gray-100 border border-gray-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-400">
+                    Medicine {num} container
+                  </div>
+                  {/* Medicine button */}
+                  <button
+                    className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
+                      isAutoMode
+                        ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
+                        : medRelayState[`relay_med${num}` as keyof typeof medRelayState]
+                        ? "bg-green-200 border-green-500 text-green-900"
+                        : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
+                    }`}
+                    onClick={() => handleMedecine(num)}
+                    disabled={isAutoMode}
+                    aria-disabled={isAutoMode}
+                  >
+                    {num}
+                  </button>
+                </div>
               ))}
             </div>
           </div>

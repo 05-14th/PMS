@@ -1,24 +1,10 @@
 import React from 'react';
-import { Droplets, Pill, Utensils } from "lucide-react";
+import { Droplets, Pill } from "lucide-react";
 
-const Cage_3: React.FC = () => {
+const WaterAndMedicine: React.FC = () => {
   return (
     <div className="w-full p-4">
- 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Feed Section */}
-        <div className="w-full">
-          <div className="flex items-center justify-center gap-2 mb-2">
-            <Utensils className="w-5 h-5 text-green-600" />
-            <span className="font-semibold text-green-700 text-lg">Feed</span>
-          </div>
-          <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
-            <div className="h-32 bg-gray-50 rounded flex items-center justify-center text-gray-400">
-              Feed monitoring content
-            </div>
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Water Section */}
         <div className="w-full">
           <div className="flex items-center justify-center gap-2 mb-2">
@@ -49,4 +35,4 @@ const Cage_3: React.FC = () => {
   );
 };
 
-export default Cage_3;
+export default WaterAndMedicine;
