@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar } from 'lucide-react';
+import { Calendar, Plus } from 'lucide-react';
 import Automation_Form from './Automation/Automation_Form';
+import Add_Device from './Device_Forms/Add_Device';
 
 interface ToggleManualAutoModeProps {
   isAuto: boolean;
@@ -19,6 +20,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
 }) => {
   const [isAuto, setIsAuto] = useState(externalIsAuto);
   const [showSchedule, setShowSchedule] = useState(false);
+  const [showAddDevice, setShowAddDevice] = useState(false);
 
   // Sync with external state
   useEffect(() => {
@@ -41,11 +43,25 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
     setShowSchedule(false);
   };
 
+  const handleAddDeviceClick = () => {
+    setShowAddDevice(true);
+  };
+
+  const handleCloseAddDevice = () => {
+    setShowAddDevice(false);
+  };
+
+  const handleAddDevice = (ipAddress: string, deviceType: string) => {
+    console.log('Adding device:', { ipAddress, deviceType });
+    // Here you can add the logic to handle the new device
+    // For example, update state or make an API call
+  };
+
   return (
     <>
       <div className={`fixed right-4 z-50 bg-white p-3 rounded-lg shadow-lg border border-gray-200 ${className} 
-        top-20 sm:top-4 transition-all duration-300`}>
-        <div className="flex flex-col space-y-3">
+        top-20 sm:top-4 transition-all duration-300 w-auto`}>
+        <div className="flex flex-col sm:flex-row items-center space-y-3 sm:space-y-0 sm:space-x-3">
           <div className="flex items-center">
             <span className="mr-3 text-sm font-medium text-gray-700">
               {label}:
@@ -70,20 +86,56 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
             </button>
           </div>
           
-          <button
-            onClick={handleScheduleClick}
-            disabled={!isAuto || disabled}
-            className={`flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors ${
-              isAuto && !disabled
-                ? 'bg-green-500 text-white hover:bg-green-600 focus:ring-blue-500'
-                : 'bg-gray-300 text-gray-500 cursor-not-allowed'
-            }`}
-          >
-            <Calendar className="w-4 h-4 mr-2" />
-            Schedule
-          </button>
+          <div className="flex space-x-2">
+            <button
+              onClick={handleAddDeviceClick}
+              className="flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors
+                       bg-green-500 text-white hover:bg-green-600 focus:ring-green-500 whitespace-nowrap"
+            >
+              <Plus className="w-4 h-4 mr-1" />
+              <span className="sm:hidden">Add</span>
+              <span className="hidden sm:inline">Add Device</span>
+            </button>
+            
+            <button
+              onClick={handleScheduleClick}
+              disabled={!isAuto || disabled}
+              className={`flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors whitespace-nowrap ${
+                isAuto && !disabled
+                  ? 'bg-green-500 text-white hover:bg-green-600 focus:ring-blue-500'
+                  : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+              }`}
+            >
+              <Calendar className="w-4 h-4 mr-1" />
+              <span className="sm:hidden">Sched</span>
+              <span className="hidden sm:inline">Schedule</span>
+            </button>
+          </div>
         </div>
       </div>
+
+      {/* Add Device Modal */}
+      {showAddDevice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center backdrop-blur-sm">
+          <div className="bg-white/90 rounded-lg p-6 w-full max-w-2xl mx-4 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h2 className="text-xl font-semibold">Add New Device</h2>
+              <button 
+                onClick={handleCloseAddDevice}
+                className="text-gray-500 hover:text-gray-700"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <Add_Device 
+              isOpen={showAddDevice} 
+              onClose={handleCloseAddDevice} 
+              onAddDevice={handleAddDevice}
+            />
+          </div>
+        </div>
+      )}
 
       {/* Schedule Modal */}
       {showSchedule && (

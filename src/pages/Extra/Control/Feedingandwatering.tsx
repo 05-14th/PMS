@@ -12,12 +12,12 @@ const Feedingandwatering: React.FC = () => {
   const [medicine, setMedicine] = useState<{ med1: number, med2: number, med3: number }>({ med1: 0, med2: 0, med3: 0 });
   const [waterState, setWaterState] = useState<string>("Empty");
   const [isAutoMode, setIsAutoMode] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<string>("Feeding");
+  const [activeTab, setActiveTab] = useState<string>("Control");
 
   // Map tab names to components
   const tabComponents: { [key: string]: React.ReactNode } = {
-    "Feeding": <Feeding />,
-    "Water & Medicine": <WaterAndMedicine />
+    "Control": <Feeding />,
+    "Monitoring": <WaterAndMedicine />
   };
 
   React.useEffect(() => {
@@ -106,7 +106,7 @@ const Feedingandwatering: React.FC = () => {
       {/* Tabs */}
       <div className="w-full max-w-2xl mb-6">
         <div className="flex justify-center border-b border-gray-300">
-          {["Feeding", "Water & Medicine"].map((tab) => (
+          {["Control", "Monitoring"].map((tab) => (
             <button
               key={tab}
               className={`px-4 py-2 text-sm font-semibold transition ${
