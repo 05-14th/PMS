@@ -175,15 +175,11 @@ const Feedingandwatering: React.FC = () => {
           </div>
           <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
             <div className="grid grid-cols-3 gap-3">
-              {/* Map through water buttons 1-3 */}
               {[1, 2, 3].map((num) => (
-                // Container for each water button group (container + button)
                 <div key={num} className="flex flex-col">
-                  {/* Empty container above water button */}
-                  <div className="mb-2 p-2 bg-gray-100 border border-gray-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-400">
-                    Water {num} container
+                  <div className="mb-2 p-2 bg-gray-0 border border-pink-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-600 text-center">
+                    Put the Water level Sensor Monitoring Here
                   </div>
-                  {/* Water button */}
                   <button
                     className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
                       isAutoMode
@@ -212,15 +208,11 @@ const Feedingandwatering: React.FC = () => {
           </div>
           <div className="p-4 bg-white border-2 border-pink-200 shadow-sm rounded-xl">
             <div className="grid grid-cols-3 gap-3">
-              {/* Map through medicine buttons 1-3 */}
               {[1, 2, 3].map((num) => (
-                // Container for each medicine button group (container + button)
                 <div key={num} className="flex flex-col">
-                  {/* Empty container above medicine button */}
-                  <div className="mb-2 p-2 bg-gray-100 border border-gray-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-400">
-                    Medicine {num} container
+                  <div className="mb-2 p-2 bg-gray-0  border border-pink-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-600 text-center">
+                    Put the Medicine level Sensor Monitoring Here
                   </div>
-                  {/* Medicine button */}
                   <button
                     className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
                       isAutoMode
