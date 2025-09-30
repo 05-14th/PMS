@@ -57,11 +57,21 @@ const Feedingandwatering: React.FC = () => {
   }
   
   // Rotate servo for feed buttons
-  const handleFeedRotate = (angle: number) => {
-    axios.post("http://localhost:8080/api/iot/client-2/rotate-servo", { angle })
-      .then(response => console.log("Servo rotated:", response.data))
-      .catch(error => console.error("Error rotating servo:", error));
+  const handleFeedRotate = async (relay: number) => {
+    try {
+      const { data } = await axios.post(
+        "http://192.168.1.17/rotate-servo",
+        { relay },
+        { headers: { "Content-Type": "application/json" }, timeout: 3000 }
+      );
+      console.log("Relay triggered:", data); // { success: true, relay: n }
+    } catch (err: any) {
+      if (err.response) console.error("HTTP error", err.response.status, err.response.data);
+      else if (err.request) console.error("No response from ESP", err.message);
+      else console.error("Request setup error", err.message);
+    }
   };
+
 
   const handleWaterToggle = (relayNum: number) => {
     if (isAutoMode) return;
@@ -135,7 +145,7 @@ const Feedingandwatering: React.FC = () => {
                 }`}
                 disabled={isAutoMode}
                 aria-disabled={isAutoMode}
-                onClick={() => handleFeedRotate(90)}
+                onClick={() => handleFeedRotate(1)}
               >
                 Starter
               </button>
@@ -147,7 +157,7 @@ const Feedingandwatering: React.FC = () => {
                 }`}
                 disabled={isAutoMode}
                 aria-disabled={isAutoMode}
-                onClick={() => handleFeedRotate(60)}
+                onClick={() => handleFeedRotate(2)}
               >
                 Grower
               </button>
@@ -159,7 +169,7 @@ const Feedingandwatering: React.FC = () => {
                 }`}
                 disabled={isAutoMode}
                 aria-disabled={isAutoMode}
-                onClick={() => handleFeedRotate(120)}
+                onClick={() => handleFeedRotate(3)}
               >
                 Finisher
               </button>
