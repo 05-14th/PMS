@@ -28,7 +28,6 @@ interface AddStockFormProps {
   suppliers: Supplier[];
   categories: Array<{ value: string; label: string }>;
   units: Array<{ value: string; label: string }>;
-  // --- FIX 1: Accept the new subCategories prop ---
   subCategories: Array<{ value: string; label: string }>;
 }
 
@@ -40,16 +39,13 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
   suppliers,
   categories,
   units,
-  // --- FIX 1 (cont.): Destructure the new prop ---
   subCategories,
 }) => {
   const [form] = Form.useForm();
   const [isNewSupplier, setIsNewSupplier] = useState(false);
-  // --- FIX 2: Add state to track the selected category ---
   const [selectedCategory, setSelectedCategory] = useState("");
 
   useEffect(() => {
-    // Reset state when the modal is closed
     if (!visible) {
       form.resetFields();
       setIsNewSupplier(false);
@@ -67,12 +63,19 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
     }
   };
 
-  // --- FIX 3: Add a handler to react to category changes ---
   const handleCategoryChange = (value: string) => {
     setSelectedCategory(value);
-    // If the new category is not 'Feed', clear the SubCategory field
     if (value !== "Feed") {
       form.setFieldsValue({ SubCategory: null });
+    }
+  };
+
+  // --- FIX 1: Add a function to handle form value changes ---
+  const handleValuesChange = (changedValues: any, allValues: any) => {
+    const { QuantityPurchased, UnitCost } = allValues;
+    if (typeof QuantityPurchased === "number" && typeof UnitCost === "number") {
+      const totalAmount = QuantityPurchased * UnitCost;
+      form.setFieldsValue({ AmountPaid: totalAmount });
     }
   };
 
@@ -97,7 +100,8 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
       ]}
       destroyOnClose
     >
-      <Form form={form} layout="vertical">
+      {/* --- FIX 2: Attach the onValuesChange handler to the Form --- */}
+      <Form form={form} layout="vertical" onValuesChange={handleValuesChange}>
         <Form.Item
           name="ItemName"
           label="Item Name"
@@ -112,7 +116,6 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
               label="Category"
               rules={[{ required: true }]}
             >
-              {/* --- FIX 4: Attach the onChange handler to the Category Select --- */}
               <Select onChange={handleCategoryChange}>
                 {(categories || []).map((c) => (
                   <Option key={c.value} value={c.value}>
@@ -135,7 +138,6 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
           </Col>
         </Row>
 
-        {/* --- FIX 5: Conditionally render the SubCategory dropdown --- */}
         {selectedCategory === "Feed" && (
           <Form.Item
             name="SubCategory"
@@ -175,13 +177,36 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
             </Form.Item>
           </Col>
         </Row>
-        <Form.Item
-          name="AmountPaid"
-          label="Amount Paid"
-          rules={[{ required: true }]}
-        >
-          <InputNumber min={0} style={{ width: "100%" }} prefix="₱" />
-        </Form.Item>
+
+        {/* --- FIX 3: Add the new "Cost per Unit" field --- */}
+        <Row gutter={16}>
+          <Col span={12}>
+            <Form.Item
+              name="UnitCost"
+              label="Cost per Unit (e.g., per kg)"
+              rules={[
+                { required: true, message: "Cost per unit is required." },
+              ]}
+            >
+              <InputNumber min={0} style={{ width: "100%" }} prefix="₱" />
+            </Form.Item>
+          </Col>
+          <Col span={12}>
+            {/* --- FIX 4: Make "Amount Paid" disabled and update label --- */}
+            <Form.Item
+              name="AmountPaid"
+              label="Total Amount Paid"
+              rules={[{ required: true }]}
+            >
+              <InputNumber
+                min={0}
+                style={{ width: "100%" }}
+                prefix="₱"
+                disabled // This field is now calculated automatically
+              />
+            </Form.Item>
+          </Col>
+        </Row>
 
         <Form.Item name="ReceiptInfo" label="Receipt Info / Ref # (Optional)">
           <Input placeholder="e.g., OR# 12345, or a note" />

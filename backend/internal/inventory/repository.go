@@ -56,7 +56,9 @@ func (r *Repository) CreateStockItem(ctx context.Context, payload models.NewStoc
 	itemID, _ := res.LastInsertId()
 
 	purchaseQuery := "INSERT INTO cm_inventory_purchases (ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining, ReceiptInfo) VALUES (?, ?, ?, ?, ?, ?, ?)"
-	_, err = tx.ExecContext(ctx, purchaseQuery, itemID, supplierID, payload.PurchaseDate, payload.QuantityPurchased, payload.AmountPaid, payload.QuantityPurchased, payload.ReceiptInfo)
+	
+    // --- FIX: Use payload.UnitCost instead of payload.AmountPaid ---
+	_, err = tx.ExecContext(ctx, purchaseQuery, itemID, supplierID, payload.PurchaseDate, payload.QuantityPurchased, payload.UnitCost, payload.QuantityPurchased, payload.ReceiptInfo)
 	if err != nil {
 		tx.Rollback()
 		return 0, err
@@ -69,6 +71,7 @@ func (r *Repository) CreateStockItem(ctx context.Context, payload models.NewStoc
 
 	return itemID, nil
 }
+
 
 // CreatePurchase adds a new purchase record for an existing item.
 func (r *Repository) CreatePurchase(ctx context.Context, p models.PurchasePayload) (int64, error) {

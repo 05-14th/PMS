@@ -158,6 +158,7 @@ type NewStockItemPayload struct {
 	SubCategory        *string `json:"SubCategory"`
 	PurchaseDate       string  `json:"PurchaseDate"`
 	QuantityPurchased  float64 `json:"QuantityPurchased"`
+	UnitCost           float64 `json:"UnitCost"`
 	AmountPaid         float64 `json:"AmountPaid"`
 	ReceiptInfo        *string `json:"ReceiptInfo"`
 	ExistingSupplierID *int    `json:"ExistingSupplierID"`
