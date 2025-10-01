@@ -1,21 +1,23 @@
 // File: src/pages/Extra/Batches/ProcurementListModal.tsx
 import React from "react";
-import { Modal, Button, Table, Typography, Card } from "antd";
+import { Modal, Button, Table, Typography, Card, Empty } from "antd";
 
 const { Title, Text, Paragraph } = Typography;
 
 interface Item {
   itemName: string;
   quantity: number;
+  unit: string;
 }
-interface Phase {
-  phase: string;
+interface CategoryPlan {
+  category: string;
   items: Item[];
 }
 interface ProcurementData {
-  plan: Phase[];
+  plan: CategoryPlan[];
   batchName: string;
   averageDuration: number;
+  chickenCount: number;
 }
 
 const ProcurementListModal: React.FC<{
@@ -26,17 +28,32 @@ const ProcurementListModal: React.FC<{
   if (!data) return null;
 
   const columns = [
-    { title: "Item Name", dataIndex: "itemName", key: "itemName" },
+    {
+      title: "Item Name",
+      dataIndex: "itemName",
+      key: "itemName",
+    },
     {
       title: "Recommended Quantity",
       dataIndex: "quantity",
       key: "quantity",
-
-      render: (qty: number, record: any) => `${qty.toFixed(2)} ${record.unit}`,
+      render: (qty: number, record: Item) => `${qty.toFixed(2)} ${record.unit}`,
+    },
+    {
+      title: "In Sacks (50kg)",
+      key: "sacks",
+      render: (_: any, record: Item) => {
+        if (record.unit === "kg") {
+          const sacks = Math.round(record.quantity / 50.0);
+          return `${sacks} sacks`;
+        }
+        return null;
+      },
     },
   ];
 
   const handlePrint = () => window.print();
+
   return (
     <Modal
       title="Procurement Suggestion"
@@ -53,36 +70,46 @@ const ProcurementListModal: React.FC<{
       ]}
     >
       <div className="printable-content">
-        <Title level={4}>Procurement Plan for "{data.batchName}"</Title>
+        {/* --- MODIFIED TITLE: Now correctly displays the chicken count --- */}
+        <Title level={4}>
+          Procurement Plan for "{data.batchName}" ({data.chickenCount} chickens)
+        </Title>
         <Paragraph type="secondary">
-          This plan is based on a historical average lifecycle of{" "}
-          <strong>{data.averageDuration.toFixed(0)} days</strong> from your
-          completed batches.
+          This plan is based on industry standards and a historical average
+          lifecycle of <strong>{data.averageDuration.toFixed(0)} days</strong>{" "}
+          from your completed batches.
         </Paragraph>
 
         <div className="space-y-4">
-          {data.plan.map(
-            (phase) =>
-              phase.items &&
-              phase.items.length > 0 && (
-                <Card key={phase.phase} type="inner" title={phase.phase}>
-                  <Table
-                    columns={columns}
-                    dataSource={phase.items}
-                    rowKey="itemName"
-                    pagination={false}
-                    size="small"
-                  />
-                </Card>
-              )
+          {data.plan && data.plan.length > 0 ? (
+            data.plan.map((categoryPlan) => (
+              <div key={categoryPlan.category}>
+                <Title
+                  level={5}
+                  style={{ marginTop: "16px", marginBottom: "8px" }}
+                >
+                  {categoryPlan.category}
+                </Title>
+                <Table
+                  columns={columns}
+                  dataSource={categoryPlan.items}
+                  rowKey="itemName"
+                  pagination={false}
+                  size="small"
+                />
+              </div>
+            ))
+          ) : (
+            <Empty description="No procurement suggestions could be generated." />
           )}
         </div>
+
         <style>{`
                     @media print {
                         body * { visibility: hidden; }
                         .printable-content, .printable-content * { visibility: visible; }
                         .printable-content { position: absolute; left: 0; top: 0; width: 100%; }
-                        .ant-modal-footer { display: none; }
+                        .ant-modal-footer, .ant-modal-close { display: none; }
                     }
                 `}</style>
       </div>

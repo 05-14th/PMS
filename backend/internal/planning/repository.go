@@ -39,6 +39,33 @@ func (r *Repository) GetBatchStatus(ctx context.Context, batchID int) (string, e
     return status, err
 }
 
+// NEW FUNCTION: Gets the name of the most used finisher feed from completed batches.
+func (r *Repository) GetHistoricalFinisherFeedName(ctx context.Context) (string, error) {
+	var itemName string
+	query := `
+		SELECT i.ItemName
+		FROM cm_inventory_usage iu
+		JOIN cm_items i ON iu.ItemID = i.ItemID
+		JOIN cm_batches b ON iu.BatchID = b.BatchID
+		WHERE b.Status = 'Sold'
+		  AND i.Category = 'Feed'
+		  AND i.SubCategory = 'Finisher'
+		GROUP BY i.ItemName
+		ORDER BY SUM(iu.QuantityUsed) DESC
+		LIMIT 1;
+	`
+	err := r.db.QueryRowContext(ctx, query).Scan(&itemName)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			// It's not an error if no finisher was used, just return empty.
+			return "", nil
+		}
+		return "", err
+	}
+	return itemName, nil
+}
+
+
 // This simpler query gets the total lifetime consumption per bird for each feed type.
 func (r *Repository) GetHistoricalConsumptionPerBird(ctx context.Context) ([]ConsumptionRate, error) {
 	// 3. UPDATE the query to SELECT the unit and rename the final column

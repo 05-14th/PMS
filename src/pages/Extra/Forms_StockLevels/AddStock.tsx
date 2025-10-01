@@ -28,6 +28,8 @@ interface AddStockFormProps {
   suppliers: Supplier[];
   categories: Array<{ value: string; label: string }>;
   units: Array<{ value: string; label: string }>;
+  // --- FIX 1: Accept the new subCategories prop ---
+  subCategories: Array<{ value: string; label: string }>;
 }
 
 const AddStockForm: React.FC<AddStockFormProps> = ({
@@ -38,14 +40,20 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
   suppliers,
   categories,
   units,
+  // --- FIX 1 (cont.): Destructure the new prop ---
+  subCategories,
 }) => {
   const [form] = Form.useForm();
   const [isNewSupplier, setIsNewSupplier] = useState(false);
+  // --- FIX 2: Add state to track the selected category ---
+  const [selectedCategory, setSelectedCategory] = useState("");
 
   useEffect(() => {
+    // Reset state when the modal is closed
     if (!visible) {
       form.resetFields();
       setIsNewSupplier(false);
+      setSelectedCategory("");
     }
   }, [visible, form]);
 
@@ -56,6 +64,15 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
       onAdd(payload);
     } catch (error) {
       console.error("Validation failed:", error);
+    }
+  };
+
+  // --- FIX 3: Add a handler to react to category changes ---
+  const handleCategoryChange = (value: string) => {
+    setSelectedCategory(value);
+    // If the new category is not 'Feed', clear the SubCategory field
+    if (value !== "Feed") {
+      form.setFieldsValue({ SubCategory: null });
     }
   };
 
@@ -84,7 +101,7 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
         <Form.Item
           name="ItemName"
           label="Item Name"
-          rules={[{ required: true }]}
+          rules={[{ required: true, message: "'ItemName' is required" }]}
         >
           <Input />
         </Form.Item>
@@ -95,8 +112,9 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
               label="Category"
               rules={[{ required: true }]}
             >
-              <Select>
-                {categories.map((c) => (
+              {/* --- FIX 4: Attach the onChange handler to the Category Select --- */}
+              <Select onChange={handleCategoryChange}>
+                {(categories || []).map((c) => (
                   <Option key={c.value} value={c.value}>
                     {c.label}
                   </Option>
@@ -107,7 +125,7 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
           <Col span={12}>
             <Form.Item name="Unit" label="Unit" rules={[{ required: true }]}>
               <Select>
-                {units.map((u) => (
+                {(units || []).map((u) => (
                   <Option key={u.value} value={u.value}>
                     {u.label}
                   </Option>
@@ -116,6 +134,26 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
             </Form.Item>
           </Col>
         </Row>
+
+        {/* --- FIX 5: Conditionally render the SubCategory dropdown --- */}
+        {selectedCategory === "Feed" && (
+          <Form.Item
+            name="SubCategory"
+            label="Feed Type (SubCategory)"
+            rules={[
+              { required: true, message: "Please select the feed type!" },
+            ]}
+          >
+            <Select placeholder="Select a feed type">
+              {(subCategories || []).map((sub) => (
+                <Option key={sub.value} value={sub.value}>
+                  {sub.label}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+        )}
+
         <Row gutter={16}>
           <Col span={12}>
             <Form.Item
@@ -145,7 +183,6 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
           <InputNumber min={0} style={{ width: "100%" }} prefix="₱" />
         </Form.Item>
 
-        {/* MODIFICATION: Added optional Receipt Info field */}
         <Form.Item name="ReceiptInfo" label="Receipt Info / Ref # (Optional)">
           <Input placeholder="e.g., OR# 12345, or a note" />
         </Form.Item>
@@ -168,7 +205,7 @@ const AddStockForm: React.FC<AddStockFormProps> = ({
               showSearch
               optionFilterProp="label"
             >
-              {suppliers.map((s) => (
+              {(suppliers || []).map((s) => (
                 <Option
                   key={s.SupplierID}
                   value={s.SupplierID}

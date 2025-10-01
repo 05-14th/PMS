@@ -100,11 +100,13 @@ type SimpleSales struct {
 
 // for inventory items list
 type InventoryItem struct {
-	ItemID                 int     `json:"ItemID,omitempty"`
+	ItemID                 int     `json:"ItemID"`
 	ItemName               string  `json:"ItemName"`
 	Category               string  `json:"Category"`
 	Unit                   string  `json:"Unit"`
-	TotalQuantityRemaining float64 `json:"TotalQuantityRemaining"`
+	SubCategory            *string `json:"SubCategory"` 
+	TotalQuantityRemaining float64 `json:"TotalQuantityRemaining,omitempty"`
+	IsActive               bool    `json:"IsActive,omitempty"`
 }
 
 // for inventory stock levels
@@ -150,25 +152,21 @@ type PurchasePayload struct {
 }
 
 type NewStockItemPayload struct {
-	// New Item Details
-	ItemName string `json:"ItemName"`
-	Unit     string `json:"Unit"`
-	Category string `json:"Category"`
-
-	// Initial Purchase Details
+	ItemName           string  `json:"ItemName"`
+	Category           string  `json:"Category"`
+	Unit               string  `json:"Unit"`
+	SubCategory        *string `json:"SubCategory"`
+	PurchaseDate       string  `json:"PurchaseDate"`
+	QuantityPurchased  float64 `json:"QuantityPurchased"`
+	AmountPaid         float64 `json:"AmountPaid"`
 	ReceiptInfo        *string `json:"ReceiptInfo"`
-	PurchaseDate      string  `json:"PurchaseDate"`
-	QuantityPurchased float64 `json:"QuantityPurchased"`
-	AmountPaid        float64 `json:"AmountPaid"`
-
-	// Supplier Details (one of these will be provided)
-	ExistingSupplierID *int    `json:"ExistingSupplierID,omitempty"`
-	NewSupplierName    *string `json:"NewSupplierName,omitempty"`
-	ContactPerson      *string `json:"ContactPerson,omitempty"`
-	PhoneNumber        *string `json:"PhoneNumber,omitempty"`
-	Email              *string `json:"Email,omitempty"`
-	Address            *string `json:"Address,omitempty"`
-	Notes              *string `json:"Notes,omitempty"`
+	ExistingSupplierID *int    `json:"ExistingSupplierID"`
+	NewSupplierName    *string `json:"NewSupplierName"`
+	ContactPerson      *string `json:"ContactPerson"`
+	PhoneNumber        *string `json:"PhoneNumber"`
+	Email              *string `json:"Email"`
+	Address            *string `json:"Address"`
+	Notes              *string `json:"Notes"`
 }
 
 //for sales tab customer info

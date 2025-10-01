@@ -1,155 +1,146 @@
-import React from 'react';
-import { Form, Input, Select, Modal, Button, message } from 'antd';
-import axios from 'axios';
+// src/pages/Extra/Inventory/AddForm.tsx
+
+import React, { useState } from "react";
+import { Form, Input, Select, Modal, Button, message } from "antd";
+import axios from "axios";
 
 const { Option } = Select;
 
 interface AddFormProps {
-    visible: boolean;
-    onSuccess: () => void;
-    onCancel: () => void;
-    categories: Array<{ value: string; label: string }>;
-    units: Array<{ value: string; label: string }>;
+  visible: boolean;
+  onSuccess: () => void;
+  onCancel: () => void;
+  categories: Array<{ value: string; label: string }>;
+  units: Array<{ value: string; label: string }>;
+  subCategories: Array<{ value: string; label: string }>;
 }
 
 const AddForm: React.FC<AddFormProps> = ({
-    visible,
-    onSuccess,
-    onCancel,
-    categories,
-    units,
+  visible,
+  onSuccess,
+  onCancel,
+  categories,
+  units,
+  subCategories,
 }) => {
-    const [form] = Form.useForm();
+  const [form] = Form.useForm();
+  const [selectedCategory, setSelectedCategory] = useState<string>("");
 
-    const handleAddItem = async (values: any) => {
-        try {
-            const api = axios.create({
-                baseURL: import.meta.env.VITE_APP_SERVERHOST,
-                timeout: 10000,
-            });
+  const handleAddItem = async (values: any) => {
+    try {
+      const api = axios.create({
+        baseURL: import.meta.env.VITE_APP_SERVERHOST,
+        timeout: 10000,
+      });
+      const response = await api.post("/api/items", {
+        ItemName: values.ItemName,
+        Category: values.Category,
+        Unit: values.Unit,
+        SubCategory: values.SubCategory,
+      });
 
-            // Step 3: Use the correct RESTful endpoint for creating an item
-            const response = await api.post('/api/items', {
-                ItemName: values.ItemName,
-                Category: values.Category,
-                Unit: values.Unit,
-            });
+      if (response.data.success) {
+        onSuccess();
+      } else {
+        message.error("An unknown error occurred.");
+      }
+    } catch (err) {
+      message.error("Failed to add item. Please try again.");
+    }
+  };
 
-            // After a successful API call, call the onSuccess prop to trigger a refresh
-            if (response.data.success) {
-                onSuccess();
-            } else {
-                message.error(
-                    'An unknown error occurred while adding the item.'
-                );
-            }
-        } catch (err) {
-            message.error('Failed to add item. Please try again.');
-            console.error('Failed to add item', err);
-        }
-    };
+  const handleCategoryChange = (value: string) => {
+    setSelectedCategory(value);
+    if (value !== "Feed") {
+      form.setFieldsValue({ SubCategory: null });
+    }
+  };
 
-    return (
-        <Modal
-            title='Add New Item'
-            open={visible}
-            onCancel={onCancel}
-            closable={false}
-            footer={[
-                <Button
-                    key='cancel'
-                    onClick={onCancel}
-                    style={{
-                        background: '#fff',
-                        border: '1px solid #d9d9d9',
-                        transition: 'all 0.3s',
-                    }}
-                    className='hover:bg-gray-100'
-                >
-                    Cancel
-                </Button>,
-                <Button
-                    key='submit'
-                    type='primary' // Changed to primary for better UI convention
-                    onClick={() => {
-                        form.validateFields()
-                            .then((values) => {
-                                // We no longer reset fields here, the parent will close the modal
-                                handleAddItem(values);
-                            })
-                            .catch((info) => {
-                                console.log('Validate Failed:', info);
-                            });
-                    }}
-                >
-                    Add Item
-                </Button>,
-            ]}
+  return (
+    <Modal
+      title="Add New Item"
+      open={visible}
+      onCancel={onCancel}
+      afterClose={() => setSelectedCategory("")}
+      closable={false}
+      footer={[
+        <Button key="cancel" onClick={onCancel}>
+          Cancel
+        </Button>,
+        <Button
+          key="submit"
+          type="primary"
+          onClick={() => form.validateFields().then(handleAddItem)}
         >
-            <Form
-                form={form}
-                layout='vertical'
-                name='add_item_form'
-                initialValues={{ modifier: 'public' }}
-            >
-                <Form.Item
-                    name='ItemName'
-                    label='Item Name'
-                    rules={[
-                        {
-                            required: true,
-                            message: 'Please input the item name!',
-                        },
-                    ]}
-                >
-                    <Input placeholder='Enter item name' />
-                </Form.Item>
+          Add Item
+        </Button>,
+      ]}
+    >
+      <Form form={form} layout="vertical" name="add_item_form">
+        <Form.Item
+          name="ItemName"
+          label="Item Name"
+          rules={[{ required: true, message: "Please input the item name!" }]}
+        >
+          <Input placeholder="Enter item name" />
+        </Form.Item>
 
-                <Form.Item
-                    name='Category'
-                    label='Category'
-                    rules={[
-                        {
-                            required: true,
-                            message: 'Please select a category!',
-                        },
-                    ]}
-                >
-                    <Select placeholder='Select a category'>
-                        {categories
-                            .filter((cat) => cat.value !== 'all')
-                            .map((category) => (
-                                <Option
-                                    key={category.value}
-                                    value={category.value}
-                                >
-                                    {category.label}
-                                </Option>
-                            ))}
-                    </Select>
-                </Form.Item>
+        <Form.Item
+          name="Category"
+          label="Category"
+          rules={[{ required: true, message: "Please select a category!" }]}
+        >
+          <Select
+            placeholder="Select a category"
+            onChange={handleCategoryChange}
+          >
+            {/* FIX: Use (categories || []) to prevent crash */}
+            {(categories || [])
+              .filter((cat) => cat.value !== "all")
+              .map((category) => (
+                <Option key={category.value} value={category.value}>
+                  {category.label}
+                </Option>
+              ))}
+          </Select>
+        </Form.Item>
 
-                <Form.Item
-                    name='Unit'
-                    label='Unit'
-                    rules={[
-                        { required: true, message: 'Please select the unit!' },
-                    ]}
-                >
-                    <Select placeholder='Select a unit'>
-                        {units.map((unit) => (
-                            <Option
-                                key={unit.value}
-                                value={unit.value}
-                            >
-                                {unit.label}
-                            </Option>
-                        ))}
-                    </Select>
-                </Form.Item>
-            </Form>
-        </Modal>
-    );
+        {selectedCategory === "Feed" && (
+          <Form.Item
+            name="SubCategory"
+            label="Feed Type (SubCategory)"
+            rules={[
+              { required: true, message: "Please select the feed type!" },
+            ]}
+          >
+            <Select placeholder="Select a feed type">
+              {/* FIX: Use (subCategories || []) to prevent crash */}
+              {(subCategories || []).map((sub) => (
+                <Option key={sub.value} value={sub.value}>
+                  {sub.label}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+        )}
+
+        <Form.Item
+          name="Unit"
+          label="Unit"
+          rules={[{ required: true, message: "Please select the unit!" }]}
+        >
+          <Select placeholder="Select a unit">
+            {/* FIX: Use (units || []) to prevent crash */}
+            {(units || []).map((unit) => (
+              <Option key={unit.value} value={unit.value}>
+                {unit.label}
+              </Option>
+            ))}
+          </Select>
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
 };
 
 export default AddForm;

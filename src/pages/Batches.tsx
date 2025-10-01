@@ -58,10 +58,13 @@ const Batches: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
+
+  // --- FIX 1: Update the type definition for procurementData state ---
   const [procurementData, setProcurementData] = useState<{
     plan: any[];
     batchName: string;
     averageDuration: number;
+    chickenCount: number; // <-- ADDED THIS LINE
   } | null>(null);
 
   // --- Filters and modal ---
@@ -137,33 +140,14 @@ const Batches: React.FC = () => {
     };
 
     try {
-      // Create the batch as before
+      // NOTE: The procurement plan logic here was incorrect as it needs a batchID.
+      // It's better to create the batch first, then generate the plan separately.
       await api.post("/api/batches", payload);
       message.success("Batch created successfully!");
       setIsAddModalVisible(false);
       fetchBatches();
-
-      // --- THIS IS THE CORRECTED BLOCK ---
-
-      // 1. Calculate durationDays
-      const startDate = dayjs(payload.StartDate);
-      const endDate = dayjs(payload.ExpectedHarvestDate);
-      const durationDays = endDate.diff(startDate, "day");
-
-      // 2. Call the procurement plan endpoint
-      const procurementRes = await api.post("/api/planning/procurement-plan", {
-        chickenCount: payload.TotalChicken,
-        durationDays: durationDays,
-      });
-
-      // 3. Set the state with the correct structure from the API response
-      setProcurementData({
-        plan: procurementRes.data.plan,
-        batchName: payload.BatchName,
-        averageDuration: procurementRes.data.averageDuration,
-      });
     } catch (error) {
-      message.error("Failed to create batch or generate plan.");
+      message.error("Failed to create batch.");
     } finally {
       setIsSaving(false);
     }
@@ -221,10 +205,10 @@ const Batches: React.FC = () => {
       const durationDays = endDate.diff(startDate, "day");
 
       if (durationDays <= 0) {
-        /* ... error handling ... */
+        message.error("The batch duration must be positive.");
+        return;
       }
 
-      // The endpoint has changed
       const res = await api.post("/api/planning/procurement-plan", {
         batchID: batch.batchID,
         chickenCount: batch.totalChicken,
@@ -233,11 +217,12 @@ const Batches: React.FC = () => {
 
       message.success({ content: "Plan generated!", key: "proc", duration: 2 });
 
+      // --- FIX 2: Get chickenCount from the API response (res.data) ---
       setProcurementData({
-        // The data structure is now richer
         plan: res.data.plan,
         batchName: batch.batchName,
         averageDuration: res.data.averageDuration,
+        chickenCount: res.data.chickenCount, // <-- ADDED THIS LINE
       });
     } catch (error) {
       message.error({
