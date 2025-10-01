@@ -31,7 +31,8 @@ const ProcurementListModal: React.FC<{
       title: "Recommended Quantity",
       dataIndex: "quantity",
       key: "quantity",
-      render: (qty: number) => `${qty.toFixed(2)} kg`,
+
+      render: (qty: number, record: any) => `${qty.toFixed(2)} ${record.unit}`,
     },
   ];
 

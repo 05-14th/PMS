@@ -3,6 +3,7 @@ package planning
 
 import (
 	"context"
+	"fmt"
 	"math"
 )
 
@@ -14,15 +15,16 @@ type Service struct {
 type ProcurementItem struct {
 	ItemName string  `json:"itemName"`
 	Quantity float64 `json:"quantity"`
+	Unit     string  `json:"unit"`
 }
 type PhasePlan struct {
-	Phase string            `json:"phase"`
-	Items []ProcurementItem `json:"items"`
-}
+		Phase string            `json:"phase"`
+		Items []ProcurementItem `json:"items"`
+	}
 type ProcurementPlan struct {
-	AverageDuration float64     `json:"averageDuration"`
-	Plan            []PhasePlan `json:"plan"`
-}
+		AverageDuration float64     `json:"averageDuration"`
+		Plan            []PhasePlan `json:"plan"`
+	}
 
 func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
@@ -37,56 +39,86 @@ func (s *Service) GenerateProcurementPlan(ctx context.Context, chickenCount int,
 	avgDuration, err := s.repo.GetHistoricalAvgDuration(ctx)
 	if err != nil { return nil, err }
 
-	// --- Industry Standards from Ross 308 PDF (Daily Intake in Grams per Bird) ---
-	// Data extracted directly from the "Daily Intake (g)" column on page 4 of the PDF
-	dailyIntakeGrams := []float64{
-		0, 12, 16, 20, 24, 27, 31, 35, 39, 44, 48,  // Days 0-10
-		52, 57, 62, 67, 72, 77, 83, 88, 94, 100, // Days 11-20
-		105, 111, 117, 122, 128, 134, 139, 145, 150, 156, // Days 21-30
-		161, 166, 171, 176, 180, 185, 189, 193, 197, 201, // Days 31-40
-		204, 207, 211, 213, 216, 219, 221, 223, 225, 227, // Days 41-50
-		229, 230, 231, 233, 233, 234, // Days 51-56
-	}
+	historicalRates, err := s.repo.GetHistoricalConsumptionPerBird(ctx)
+	if err != nil { return nil, err }
 
 	var finalPlan []PhasePlan
+	var generalItems []ProcurementItem
+
+	// --- Process historical data for General Supplies ---
+	for _, rate := range historicalRates {
+		if rate.Category != "Feed" {
+			totalQtyNeeded := rate.AmountPerBird * float64(chickenCount)
+			
+			// Round up non-kg items
+			if rate.Unit != "kg" {
+				totalQtyNeeded = math.Ceil(totalQtyNeeded)
+			}
+			
+			generalItems = append(generalItems, ProcurementItem{
+				ItemName: rate.ItemName,
+				Quantity: totalQtyNeeded,
+				Unit:     rate.Unit,
+			})
+		}
+	}
 	
-	// Helper function to sum up daily values for a phase
+	// --- Feed Calculation (using Ross 308 standards) ---
+	dailyIntakeGrams := []float64{
+		0, 12, 16, 20, 24, 27, 31, 35, 39, 44, 48, 
+		52, 57, 62, 67, 72, 77, 83, 88, 94, 100,
+		105, 111, 117, 122, 128, 134, 139, 145, 150, 156,
+		161, 166, 171, 176, 180, 185, 189, 193, 197, 201,
+		204, 207, 211, 213, 216, 219, 221, 223, 225, 227,
+		229, 230, 231, 233, 233, 234,
+	}
+
 	calculatePhaseConsumption := func(startDay, endDay int) float64 {
 		var totalGramsPerBird float64
-		// Loop from startDay to endDay, capping at the batch duration and available data
 		for day := startDay; day <= int(math.Min(float64(endDay), float64(durationDays))); day++ {
 			if day < len(dailyIntakeGrams) {
 				totalGramsPerBird += dailyIntakeGrams[day]
 			}
 		}
-		// Return total consumption for the whole batch in KG
-		return (totalGramsPerBird * float64(chickenCount)) / 1000.0
+		return (totalGramsPerBird * float64(chickenCount)) / 1000.0 // Result in KG
 	}
 
-	// --- STARTER CALCULATION (Days 1-14) ---
+	// --- Assemble Feed Plan ---
 	starterQtyKg := calculatePhaseConsumption(1, 14)
 	if starterQtyKg > 0 {
+		sacks := math.Ceil(starterQtyKg / 50.0) // Calculate sacks
+		itemName := fmt.Sprintf("Starter Feed (e.g., Integra 1000) (approx. %.0f sacks)", sacks)
 		finalPlan = append(finalPlan, PhasePlan{
 			Phase: "Starter (Week 1-2)",
-			Items: []ProcurementItem{{ItemName: "Starter Feed (e.g., Integra 1000)", Quantity: starterQtyKg}},
+			Items: []ProcurementItem{{ItemName: itemName, Quantity: starterQtyKg, Unit: "kg"}},
 		})
 	}
 
-	// --- GROWER CALCULATION (Days 15-21) ---
 	growerQtyKg := calculatePhaseConsumption(15, 21)
 	if growerQtyKg > 0 {
+		sacks := math.Ceil(growerQtyKg / 50.0) // Calculate sacks
+		itemName := fmt.Sprintf("Grower Feed (e.g., Integra 2000) (approx. %.0f sacks)", sacks)
 		finalPlan = append(finalPlan, PhasePlan{
 			Phase: "Grower (Week 3)",
-			Items: []ProcurementItem{{ItemName: "Grower Feed (e.g., Integra 2000)", Quantity: growerQtyKg}},
+			Items: []ProcurementItem{{ItemName: itemName, Quantity: growerQtyKg, Unit: "kg"}},
 		})
 	}
 
-	// --- FINISHER CALCULATION (Days 22+) ---
 	finisherQtyKg := calculatePhaseConsumption(22, durationDays)
 	if finisherQtyKg > 0 {
+		sacks := math.Ceil(finisherQtyKg / 50.0) // Calculate sacks
+		itemName := fmt.Sprintf("Finisher Feed (or Grower) (approx. %.0f sacks)", sacks)
 		finalPlan = append(finalPlan, PhasePlan{
 			Phase: "Finisher (Week 4+)",
-			Items: []ProcurementItem{{ItemName: "Finisher Feed (or Grower)", Quantity: finisherQtyKg}},
+			Items: []ProcurementItem{{ItemName: itemName, Quantity: finisherQtyKg, Unit: "kg"}},
+		})
+	}
+
+	// --- Add General Supplies to the plan ---
+	if len(generalItems) > 0 {
+		finalPlan = append(finalPlan, PhasePlan{
+			Phase: "General Supplies (Vitamins, Medicine, etc.)",
+			Items: generalItems,
 		})
 	}
 
