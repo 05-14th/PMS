@@ -5,7 +5,7 @@ import LiveOperation from "./Extra/Dashboard/LiveOperation";
 import RevenueChart from "./Extra/Dashboard/RevenueChart";
 import CostBreakdownChart from "./Extra/Dashboard/CostBreakdownChart";
 import AlertsPanel from "./Extra/Dashboard/AlertsPanel";
-import FinancialForecast from "./Extra/Dashboard/FinancialForecast";
+import FinancialForecast from "./Extra/Dashboard/Financialforecast";
 
 // Define the main data type
 interface DashboardApiData {

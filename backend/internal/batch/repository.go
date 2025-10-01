@@ -465,7 +465,7 @@ func (r *Repository) GetBatchForReport(ctx context.Context, batchID int) (*model
 
 func (r *Repository) GetDashboardMetrics(ctx context.Context) (models.AtAGlanceData, []models.ActiveBatchInternal, error) {
 	var glance models.AtAGlanceData
-	var activeBatches []models.ActiveBatchInternal // <-- Returns our new internal struct
+	var activeBatches []models.ActiveBatchInternal
 
 	// At a Glance metrics
 	err := r.db.QueryRowContext(ctx, `
@@ -480,16 +480,26 @@ func (r *Repository) GetDashboardMetrics(ctx context.Context) (models.AtAGlanceD
 	}
 
 	// Active Batches List
-	rows, err := r.db.QueryContext(ctx, `SELECT BatchID, BatchName, StartDate, ExpectedHarvestDate, CurrentChicken FROM cm_batches WHERE Status = 'Active' ORDER BY StartDate ASC`)
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT 
+			b.BatchID, b.BatchName, b.StartDate, b.ExpectedHarvestDate, 
+			b.CurrentChicken, b.TotalChicken, COALESCE(m.TotalMortality, 0)
+		FROM cm_batches b
+		LEFT JOIN (
+			SELECT BatchID, SUM(BirdsLoss) as TotalMortality 
+			FROM cm_mortality 
+			GROUP BY BatchID
+		) m ON b.BatchID = m.BatchID
+		WHERE b.Status = 'Active' 
+		ORDER BY b.StartDate ASC`)
 	if err != nil {
 		return glance, activeBatches, err
 	}
 	defer rows.Close()
 
 	for rows.Next() {
-		var b models.ActiveBatchInternal 
-		// Scan into its fields
-		if err := rows.Scan(&b.BatchID, &b.Name, &b.StartDate, &b.ExpectedHarvestDate, &b.Population); err != nil {
+		var b models.ActiveBatchInternal
+		if err := rows.Scan(&b.BatchID, &b.Name, &b.StartDate, &b.ExpectedHarvestDate, &b.Population, &b.InitialPopulation, &b.TotalMortality); err != nil {
 			return glance, activeBatches, err
 		}
 		activeBatches = append(activeBatches, b)
@@ -556,4 +566,29 @@ func (r *Repository) DeleteBatch(ctx context.Context, batchID int) error {
 	}
 
 	return tx.Commit()
+}
+
+func (r *Repository) GetTotalProductionCostsForBatch(ctx context.Context, batchID int) (float64, error) {
+	var totalCost float64
+	query := `SELECT COALESCE(SUM(Amount), 0) FROM cm_production_cost WHERE BatchID = ?`
+	err := r.db.QueryRowContext(ctx, query, batchID).Scan(&totalCost)
+	return totalCost, err
+}
+
+func (r *Repository) GetHistoricalAvgHarvestWeight(ctx context.Context) (float64, error) { 
+	var avgWeight sql.NullFloat64
+	query := `
+		SELECT SUM(hp.WeightHarvestedKg) / NULLIF(SUM(hp.QuantityHarvested), 0)
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		JOIN cm_batches b ON h.BatchID = b.BatchID
+		WHERE b.Status = 'Sold'`
+	err := r.db.QueryRowContext(ctx, query).Scan(&avgWeight) 
+	if err != nil && err != sql.ErrNoRows {
+		return 1.8, err // Return default on error
+	}
+	if !avgWeight.Valid {
+		return 1.8, nil // Return default if there's no historical data
+	}
+	return avgWeight.Float64, nil
 }

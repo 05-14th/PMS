@@ -24,6 +24,7 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 	router.Post("/api/sales", h.createSale)
 	router.Get("/api/sales/{id}", h.getSaleDetails)
 	router.Get("/api/payment-methods", h.getPaymentMethods)
+	router.Delete("/api/sales/{id}", h.deleteSale)
 
 }
 
@@ -84,4 +85,19 @@ func (h *Handler) getPaymentMethods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	util.RespondJSON(w, http.StatusOK, methods)
+}
+
+func (h *Handler) deleteSale(w http.ResponseWriter, r *http.Request) {
+	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, "Invalid sale ID", err)
+		return
+	}
+	
+	err = h.service.DeleteSale(r.Context(), saleID)
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to delete sale", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }

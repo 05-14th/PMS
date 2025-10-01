@@ -28,23 +28,27 @@ func NewService(br *batch.Repository, sr *sales.Repository, ir *inventory.Reposi
 // GenerateDashboardData fetches all dashboard components concurrently.
 func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardData, error) {
 	var wg sync.WaitGroup
-	errs := make(chan error, 5)
+	errs := make(chan error, 6)
 
-	// --- Local variables ("notepads") to hold results from each goroutine ---
+	// Local variables to hold results from each goroutine
 	var glanceData models.AtAGlanceData
-	var activeBatches []models.ActiveBatchInternal
+	var activeBatchesInternal []models.ActiveBatchInternal
 	var stockItems []models.StockStatus
 	var alerts []models.Alert
 	var monthlyRevenue float64
 	var revenueTimeline []models.RevenueDataPoint
 	var feedCost, chickCost, otherCost float64
+	var histAvgWeight, histAvgPrice float64
+	var sellableInventory int
+
+	// --- ALL GOROUTINES ARE LAUNCHED FIRST ---
 
 	// 1. Fetch Batch Metrics
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
 		var err error
-		glanceData, activeBatches, err = s.batchRepo.GetDashboardMetrics(ctx)
+		glanceData, activeBatchesInternal, err = s.batchRepo.GetDashboardMetrics(ctx)
 		if err != nil { errs <- err }
 	}()
 
@@ -54,13 +58,16 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 		defer wg.Done()
 		revenueMap, err := s.salesRepo.GetRevenueTimeline(ctx)
 		if err != nil { errs <- err; return }
-		
+		var totalMonthlyRevenue float64
+		var timeline []models.RevenueDataPoint
 		for i := 29; i >= 0; i-- {
 			day := time.Now().AddDate(0, 0, -i).Format("2006-01-02")
 			revenue := revenueMap[day]
-			monthlyRevenue += revenue
-			revenueTimeline = append(revenueTimeline, models.RevenueDataPoint{Date: day, Revenue: revenue})
+			totalMonthlyRevenue += revenue
+			timeline = append(timeline, models.RevenueDataPoint{Date: day, Revenue: revenue})
 		}
+		monthlyRevenue = totalMonthlyRevenue
+		revenueTimeline = timeline
 	}()
 
 	// 3. Fetch Harvest Metrics
@@ -68,7 +75,8 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 	go func() {
 		defer wg.Done()
 		var err error
-		glanceData.SellableInventory, err = s.harvestRepo.GetSellableInventory(ctx)
+	
+		sellableInventory, err = s.harvestRepo.GetSellableInventory(ctx)
 		if err != nil { errs <- err }
 	}()
 
@@ -79,16 +87,21 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 		var err error
 		stockItems, err = s.inventoryRepo.GetStockStatus(ctx)
 		if err != nil { errs <- err; return }
-
-		thresholds := map[string]float64{"Feed": 50.0, "Vitamins": 10.0, "Medicine": 15.0}
+		lowThresholds := map[string]float64{"Feed": 50.0, "Vitamins": 10.0, "Medicine": 15.0}
+		plentyThresholdMultiplier := 5.0
 		for i, item := range stockItems {
-			if threshold, ok := thresholds[item.Category]; ok {
-				if item.RawQty < threshold {
-					stockItems[i].Level, stockItems[i].Status = 15, "low"
-					alertMsg := fmt.Sprintf("%s stock is low (%.2f %s remaining).", item.Name, item.RawQty, item.Unit)
-					alerts = append(alerts, models.Alert{Type: "warning", Message: alertMsg})
+			if lowThreshold, ok := lowThresholds[item.Category]; ok {
+				plentyThreshold := lowThreshold * plentyThresholdMultiplier
+				if item.RawQty <= 0 {
+					stockItems[i].Level, stockItems[i].Status = 0, "Out of Stock"
+					alerts = append(alerts, models.Alert{Type: "critical", Message: fmt.Sprintf("%s is out of stock.", item.Name)})
+				} else if item.RawQty < lowThreshold {
+					stockItems[i].Level, stockItems[i].Status = 25, "Low"
+					alerts = append(alerts, models.Alert{Type: "warning", Message: fmt.Sprintf("%s stock is low (%.2f %s remaining).", item.Name, item.RawQty, item.Unit)})
+				} else if item.RawQty >= plentyThreshold {
+					stockItems[i].Level, stockItems[i].Status = 100, "Plenty"
 				} else {
-					stockItems[i].Level, stockItems[i].Status = 85, "good"
+					stockItems[i].Level, stockItems[i].Status = 75, "Good"
 				}
 			}
 		}
@@ -103,7 +116,18 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 		if err != nil { errs <- err }
 	}()
 	
-	// ---- WAIT FOR ALL GOROUTINES TO FINISH ----
+	// 6. Fetch Historical Averages for Smart Forecast
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		histAvgWeight, err = s.batchRepo.GetHistoricalAvgHarvestWeight(ctx)
+		if err != nil { errs <- err; return }
+		histAvgPrice, err = s.salesRepo.GetHistoricalAvgPricePerKg(ctx)
+		if err != nil { errs <- err }
+	}()
+
+	// ---- WAIT FOR ALL CONCURRENT FETCHING TO FINISH (ONLY ONCE) ----
 	wg.Wait()
 	close(errs)
 
@@ -113,7 +137,7 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 		}
 	}
 	
-	// ---- ASSEMBLE THE FINAL DATA STRUCTURE (The "Whiteboard") ----
+	// --- ASSEMBLE THE FINAL DATA STRUCTURE ---
 	var data models.DashboardData
 	
 	glanceData.MonthlyRevenue = monthlyRevenue
@@ -127,25 +151,47 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 		models.CostBreakdownPoint{Name: "Other Costs", Value: otherCost},
 	)
 
-	for _, b := range activeBatches {
+	// Convert internal batch data to frontend-facing model
+	for _, b := range activeBatchesInternal {
 		parsedStartDate, _ := time.Parse("2006-01-02", b.StartDate)
 		age := int(time.Since(parsedStartDate).Hours() / 24)
-		data.ActiveBatches = append(data.ActiveBatches, models.ActiveBatch{ ID: b.Name, Age: age, Population: b.Population })
-		
-		var forecast models.FinancialForecastData
-		forecast.BatchID, forecast.BatchName = strconv.Itoa(b.BatchID), b.Name
-		if len(activeBatches) > 0 {
-			forecast.AccruedCost = (feedCost + chickCost + otherCost) / float64(len(activeBatches))
-		}
-		forecast.EstimatedRevenue = float64(b.Population) * 1.8 * 160
-		
-		start, _ := time.Parse("2006-01-02", b.StartDate)
-		end, _ := time.Parse("2006-01-02", b.ExpectedHarvestDate)
-		totalDuration, currentDuration := end.Sub(start).Hours()/24, float64(age)
+		data.ActiveBatches = append(data.ActiveBatches, models.ActiveBatch{
+			ID: b.Name, Age: age, Population: b.Population, Mortality: b.TotalMortality,
+		})
+	}
 
-		if totalDuration > 0 {
-			forecast.Progress = int((currentDuration / totalDuration) * 100)
-			if forecast.Progress > 100 { forecast.Progress = 100 }
+	// Financial Forecast Calculation
+for _, batch := range activeBatchesInternal {
+		var forecast models.FinancialForecastData
+		forecast.BatchID = strconv.Itoa(batch.BatchID)
+		forecast.BatchName = batch.Name
+
+		// --- THIS IS THE NEW, CORRECT LOGIC ---
+		// 1. Get costs already accrued for THIS specific batch
+		productionCosts, err := s.batchRepo.GetTotalProductionCostsForBatch(ctx, batch.BatchID)
+		if err != nil { continue }
+		feedCostForBatch, err := s.inventoryRepo.GetTotalFeedCostForBatch(ctx, batch.BatchID)
+		if err != nil { continue }
+		forecast.AccruedCost = productionCosts + feedCostForBatch
+
+		// 2. Get revenue ALREADY earned from this batch
+		revenueAlreadyEarned, err := s.salesRepo.GetTotalRevenueForBatch(ctx, batch.BatchID)
+		if err != nil { continue }
+
+		// 3. Estimate revenue from the REMAINING birds
+		estimatedRevenueFromRemaining := float64(batch.Population) * histAvgWeight * histAvgPrice
+
+		// 4. The final Est. Revenue is the sum of what's earned and what's estimated
+		forecast.EstimatedRevenue = revenueAlreadyEarned + estimatedRevenueFromRemaining
+
+
+		birdsAvailable := batch.InitialPopulation - batch.TotalMortality
+		birdsHarvested := batch.InitialPopulation - batch.Population - batch.TotalMortality
+		
+		if birdsAvailable > 0 {
+			forecast.Progress = int((float64(birdsHarvested) / float64(birdsAvailable)) * 100)
+		} else {
+			forecast.Progress = 0
 		}
 		data.FinancialForecasts = append(data.FinancialForecasts, forecast)
 	}
@@ -158,5 +204,9 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 	if data.FinancialForecasts == nil { data.FinancialForecasts = make([]models.FinancialForecastData, 0) }
 	if data.Charts.RevenueTimeline == nil { data.Charts.RevenueTimeline = make([]models.RevenueDataPoint, 0) }
 
+	//glanceData.MonthlyRevenue = monthlyRevenue
+	glanceData.SellableInventory = sellableInventory
+	data.AtAGlance = glanceData
+	
 	return &data, nil
 }

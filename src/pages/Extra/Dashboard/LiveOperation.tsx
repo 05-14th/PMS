@@ -5,13 +5,14 @@ interface Batch {
   age: number;
   population: number;
   daysToHarvest?: number;
+  mortality: number;
 }
 
 interface StockItem {
   id: string;
   name: string;
   level: number;
-  status: "low" | "adequate" | "good";
+  status: string; // "Low", "Good", "Plenty", "Out of Stock"
   quantity: string;
 }
 
@@ -20,10 +21,12 @@ interface LiveOperationProps {
   stockItems: StockItem[];
 }
 
-const statusColors = {
-  low: "bg-amber-100 text-amber-800",
-  adequate: "bg-blue-100 text-blue-800",
-  good: "bg-green-100 text-green-800",
+const statusStyles = {
+  "out of stock": { bar: "bg-red-500", text: "bg-red-100 text-red-800" },
+  low: { bar: "bg-amber-500", text: "bg-amber-100 text-amber-800" },
+  good: { bar: "bg-green-500", text: "bg-green-100 text-green-800" },
+  plenty: { bar: "bg-blue-500", text: "bg-blue-100 text-blue-800" },
+  default: { bar: "bg-gray-500", text: "bg-gray-100 text-gray-800" },
 };
 
 export default function LiveOperation({
@@ -33,14 +36,14 @@ export default function LiveOperation({
   const safeBatches = batches || [];
   const safeStockItems = stockItems || [];
 
-  const getHarvestStatus = (days: number = 0) => ({
+  /*const getHarvestStatus = (days: number = 0) => ({
     bg: days <= 3 ? "bg-blue-50" : "bg-green-50",
     text: days <= 3 ? "text-blue-800" : "text-green-800",
   });
 
   const upcomingHarvests = safeBatches.filter(
     (batch) => batch.daysToHarvest !== undefined
-  );
+  );*/
 
   return (
     <div className="space-y-6">
@@ -58,10 +61,13 @@ export default function LiveOperation({
                     Batch
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
-                    Age (days)
+                    Age (Days)
                   </th>
                   <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
                     Population
+                  </th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">
+                    Mortality
                   </th>
                 </tr>
               </thead>
@@ -76,6 +82,9 @@ export default function LiveOperation({
                     </td>
                     <td className="px-4 py-3 text-sm text-gray-700">
                       {batch.population.toLocaleString()}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-red-600">
+                      {batch.mortality.toLocaleString()}
                     </td>
                   </tr>
                 ))}
@@ -94,31 +103,30 @@ export default function LiveOperation({
         </h3>
         <div className="space-y-4">
           {safeStockItems.length > 0 ? (
-            safeStockItems.map((item) => (
-              <div key={item.id}>
-                <div className="flex justify-between text-sm mb-1">
-                  <span className="text-gray-700">{item.name}</span>
-                  <span
-                    className={`px-2 py-1 text-xs rounded-full ${statusColors[item.status]}`}
-                  >
-                    {item.status.charAt(0).toUpperCase() + item.status.slice(1)}
-                    {item.quantity && ` (${item.quantity})`}
-                  </span>
+            safeStockItems.map((item) => {
+              const style =
+                statusStyles[
+                  item.status.toLowerCase() as keyof typeof statusStyles
+                ] || statusStyles.default;
+              return (
+                <div key={item.id}>
+                  <div className="flex justify-between text-sm mb-1">
+                    <span className="text-gray-700">{item.name}</span>
+                    <span
+                      className={`px-2 py-1 text-xs rounded-full ${style.text}`}
+                    >
+                      {item.status} ({item.quantity})
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className={`h-2 rounded-full ${style.bar}`}
+                      style={{ width: `${item.level}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className={`h-2 rounded-full ${
-                      item.status === "low"
-                        ? "bg-amber-500"
-                        : item.status === "adequate"
-                          ? "bg-blue-500"
-                          : "bg-green-500"
-                    }`}
-                    style={{ width: `${item.level}%` }}
-                  />
-                </div>
-              </div>
-            ))
+              );
+            })
           ) : (
             <p className="text-center text-gray-500 py-4">
               No stock items to display.

@@ -426,6 +426,7 @@ type ActiveBatch struct {
 	ID         string `json:"id"`
 	Age        int    `json:"age"`
 	Population int    `json:"population"`
+	Mortality  int    `json:"mortality"`
 }
 
 // For the "Stock Status" panel
@@ -478,4 +479,6 @@ type ActiveBatchInternal struct {
 	StartDate           string
 	ExpectedHarvestDate string
 	Population          int
+	InitialPopulation   int    
+	TotalMortality      int    
 }

@@ -39,3 +39,7 @@ func (s *Service) CreateSale(ctx context.Context, payload models.SalePayload) (i
 func (s *Service) GetPaymentMethods(ctx context.Context) ([]string, error) {
 	return s.repo.GetPaymentMethods(ctx)
 }
+
+func (s *Service) DeleteSale(ctx context.Context, saleID int) error {
+	return s.repo.DeleteSale(ctx, saleID)
+}

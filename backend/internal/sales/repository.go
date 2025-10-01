@@ -200,3 +200,71 @@ func (r *Repository) GetRevenueTimeline(ctx context.Context) (map[string]float64
 	}
 	return revenueMap, nil
 }
+
+func (r *Repository) GetHistoricalAvgPricePerKg(ctx context.Context) (float64, error) { 
+	var avgPrice sql.NullFloat64
+	query := `
+		SELECT SUM(sd.TotalWeightKg * sd.PricePerKg) / NULLIF(SUM(sd.TotalWeightKg), 0)
+		FROM cm_sales_details sd`
+	err := r.db.QueryRowContext(ctx, query).Scan(&avgPrice) // Now 'ctx' is defined
+	if err != nil && err != sql.ErrNoRows {
+		return 160.0, err // Return default on error
+	}
+	if !avgPrice.Valid {
+		return 160.0, nil // Return default if there's no historical data
+	}
+	return avgPrice.Float64, nil
+}
+
+func (r *Repository) DeleteSale(ctx context.Context, saleID int) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// 1. Find all items that were part of this sale
+	type itemToRevert struct {
+		HarvestProductID int
+		QuantitySold     int
+		TotalWeightKg    float64
+	}
+	var itemsToRevert []itemToRevert
+
+	rows, err := tx.QueryContext(ctx, "SELECT HarvestProductID, QuantitySold, TotalWeightKg FROM cm_sales_details WHERE SaleID = ?", saleID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var item itemToRevert
+		if err := rows.Scan(&item.HarvestProductID, &item.QuantitySold, &item.TotalWeightKg); err != nil {
+			return err
+		}
+		itemsToRevert = append(itemsToRevert, item)
+	}
+
+	// 2. Add the stock back to the harvested products inventory
+	for _, item := range itemsToRevert {
+		_, err := tx.ExecContext(ctx, `
+			UPDATE cm_harvest_products 
+			SET 
+				QuantityRemaining = QuantityRemaining + ?, 
+				WeightRemainingKg = WeightRemainingKg + ?,
+				IsActive = 1
+			WHERE HarvestProductID = ?`,
+			item.QuantitySold, item.TotalWeightKg, item.HarvestProductID)
+		if err != nil {
+			return err
+		}
+	}
+
+	// 3. Soft-delete the sale by marking it as inactive
+	_, err = tx.ExecContext(ctx, "UPDATE cm_sales_orders SET IsActive = 0 WHERE SaleID = ?", saleID)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
