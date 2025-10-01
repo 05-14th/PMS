@@ -17,13 +17,27 @@ const AddBatchForm: React.FC<AddBatchFormProps> = ({
 }) => {
   const [form] = Form.useForm();
 
-  // MODIFICATION: This function handles the automatic date calculation
-  const handleFormChange = (changedValues: any) => {
+  const handleFormChange = (changedValues: any, allValues: any) => {
+    // Automatically calculate Expected Harvest Date
     if (changedValues.StartDate) {
       const startDate = dayjs(changedValues.StartDate);
       if (startDate.isValid()) {
         const expectedHarvestDate = startDate.add(28, "day");
         form.setFieldsValue({ ExpectedHarvestDate: expectedHarvestDate });
+      }
+    }
+
+    // Automatically calculate Total Chick Cost
+    if (
+      changedValues.TotalChicken !== undefined ||
+      changedValues.CostPerChick !== undefined
+    ) {
+      const { TotalChicken, CostPerChick } = allValues;
+      if (TotalChicken > 0 && CostPerChick > 0) {
+        const totalCost = TotalChicken * CostPerChick;
+        form.setFieldsValue({ TotalChickCost: totalCost });
+      } else {
+        form.setFieldsValue({ TotalChickCost: 0 });
       }
     }
   };
@@ -81,21 +95,32 @@ const AddBatchForm: React.FC<AddBatchFormProps> = ({
         >
           <InputNumber style={{ width: "100%" }} />
         </Form.Item>
-        {/* MODIFICATION: New Chick Cost field */}
+
+        {/* This is the updated input field */}
         <Form.Item
-          name="ChickCost"
-          label="Chick Cost (Total Amount ₱)"
+          name="CostPerChick"
+          label="Cost Per Chick (₱)"
           rules={[
             {
               required: true,
               type: "number",
               min: 0,
-              message: "Please input a valid cost!",
+              message: "Please input a valid cost per chick!",
             },
           ]}
         >
           <InputNumber style={{ width: "100%" }} />
         </Form.Item>
+
+        {/* This is the new, disabled display field */}
+        <Form.Item name="TotalChickCost" label="Total Chick Cost (Calculated)">
+          <InputNumber
+            style={{ width: "100%" }}
+            disabled // This makes the field read-only
+            prefix="₱"
+          />
+        </Form.Item>
+
         <Form.Item
           name="StartDate"
           label="Start Date"

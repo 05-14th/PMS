@@ -592,3 +592,27 @@ func (r *Repository) GetHistoricalAvgHarvestWeight(ctx context.Context) (float64
 	}
 	return avgWeight.Float64, nil
 }
+
+func (r *Repository) GetProductionCostsByActiveBatch(ctx context.Context) (map[int]float64, error) {
+	query := `
+		SELECT BatchID, COALESCE(SUM(Amount), 0) 
+		FROM cm_production_cost 
+		WHERE BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')
+		GROUP BY BatchID`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	costMap := make(map[int]float64)
+	for rows.Next() {
+		var batchID int
+		var totalCost float64
+		if err := rows.Scan(&batchID, &totalCost); err != nil {
+			return nil, err
+		}
+		costMap[batchID] = totalCost
+	}
+	return costMap, nil
+}

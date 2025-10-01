@@ -28,9 +28,9 @@ func NewService(br *batch.Repository, sr *sales.Repository, ir *inventory.Reposi
 // GenerateDashboardData fetches all dashboard components concurrently.
 func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardData, error) {
 	var wg sync.WaitGroup
-	errs := make(chan error, 6)
+	errs := make(chan error, 8) // Increased for new goroutine
 
-	// Local variables to hold results from each goroutine
+	// --- Local variables to hold all concurrent results ---
 	var glanceData models.AtAGlanceData
 	var activeBatchesInternal []models.ActiveBatchInternal
 	var stockItems []models.StockStatus
@@ -40,6 +40,7 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 	var feedCost, chickCost, otherCost float64
 	var histAvgWeight, histAvgPrice float64
 	var sellableInventory int
+	var prodCostsMap, feedCostsMap, revenueByBatchMap map[int]float64
 
 	// --- ALL GOROUTINES ARE LAUNCHED FIRST ---
 
@@ -127,15 +128,31 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 		if err != nil { errs <- err }
 	}()
 
+	// 7. NEW: Fetch all forecast costs at once to fix N+1 problem
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		prodCostsMap, err = s.batchRepo.GetProductionCostsByActiveBatch(ctx)
+		if err != nil { errs <- err; return }
+		feedCostsMap, err = s.inventoryRepo.GetFeedCostsByActiveBatch(ctx)
+		if err != nil { errs <- err }
+	}()
+
+		// 8. NEW: Fetch all forecast revenues at once
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		var err error
+		revenueByBatchMap, err = s.salesRepo.GetRevenueByActiveBatch(ctx)
+		if err != nil { errs <- err }
+	}()
+
 	// ---- WAIT FOR ALL CONCURRENT FETCHING TO FINISH (ONLY ONCE) ----
 	wg.Wait()
 	close(errs)
+	for err := range errs { if err != nil { return nil, err } }
 
-	for err := range errs {
-		if err != nil {
-			return nil, err
-		}
-	}
 	
 	// --- ASSEMBLE THE FINAL DATA STRUCTURE ---
 	var data models.DashboardData
@@ -161,40 +178,30 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 	}
 
 	// Financial Forecast Calculation
-for _, batch := range activeBatchesInternal {
-		var forecast models.FinancialForecastData
-		forecast.BatchID = strconv.Itoa(batch.BatchID)
-		forecast.BatchName = batch.Name
+	for _, batch := range activeBatchesInternal {
+			var forecast models.FinancialForecastData
+			forecast.BatchID = strconv.Itoa(batch.BatchID)
+			forecast.BatchName = batch.Name
 
-		// --- THIS IS THE NEW, CORRECT LOGIC ---
-		// 1. Get costs already accrued for THIS specific batch
-		productionCosts, err := s.batchRepo.GetTotalProductionCostsForBatch(ctx, batch.BatchID)
-		if err != nil { continue }
-		feedCostForBatch, err := s.inventoryRepo.GetTotalFeedCostForBatch(ctx, batch.BatchID)
-		if err != nil { continue }
-		forecast.AccruedCost = productionCosts + feedCostForBatch
-
-		// 2. Get revenue ALREADY earned from this batch
-		revenueAlreadyEarned, err := s.salesRepo.GetTotalRevenueForBatch(ctx, batch.BatchID)
-		if err != nil { continue }
-
-		// 3. Estimate revenue from the REMAINING birds
-		estimatedRevenueFromRemaining := float64(batch.Population) * histAvgWeight * histAvgPrice
-
-		// 4. The final Est. Revenue is the sum of what's earned and what's estimated
-		forecast.EstimatedRevenue = revenueAlreadyEarned + estimatedRevenueFromRemaining
-
-
-		birdsAvailable := batch.InitialPopulation - batch.TotalMortality
-		birdsHarvested := batch.InitialPopulation - batch.Population - batch.TotalMortality
-		
-		if birdsAvailable > 0 {
-			forecast.Progress = int((float64(birdsHarvested) / float64(birdsAvailable)) * 100)
-		} else {
-			forecast.Progress = 0
+			// Fast cost lookup from our maps
+			forecast.AccruedCost = prodCostsMap[batch.BatchID] + feedCostsMap[batch.BatchID]
+			
+			// --- THIS IS THE CORRECTED REVENUE LOGIC ---
+			revenueAlreadyEarned := revenueByBatchMap[batch.BatchID] // Fast lookup
+			estimatedRevenueFromRemaining := float64(batch.Population) * histAvgWeight * histAvgPrice
+			forecast.EstimatedRevenue = revenueAlreadyEarned + estimatedRevenueFromRemaining
+			// --- END OF CORRECTION ---
+			
+			birdsAvailable := batch.InitialPopulation - batch.TotalMortality
+			birdsHarvested := batch.InitialPopulation - batch.Population - batch.TotalMortality
+			
+			if birdsAvailable > 0 {
+				forecast.Progress = int((float64(birdsHarvested) / float64(birdsAvailable)) * 100)
+			} else {
+				forecast.Progress = 0
+			}
+			data.FinancialForecasts = append(data.FinancialForecasts, forecast)
 		}
-		data.FinancialForecasts = append(data.FinancialForecasts, forecast)
-	}
 
 	// Final check to prevent null slices in JSON
 	if data.ActiveBatches == nil { data.ActiveBatches = make([]models.ActiveBatch, 0) }

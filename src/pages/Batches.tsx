@@ -118,19 +118,23 @@ const Batches: React.FC = () => {
 
   const handleAddBatch = async (values: any) => {
     setIsSaving(true);
+
     const payload = {
-      ...values,
+      BatchName: values.BatchName,
+      TotalChicken: values.TotalChicken,
+      ChickCost: values.TotalChickCost,
       StartDate: dayjs(values.StartDate).format("YYYY-MM-DD"),
       ExpectedHarvestDate: dayjs(values.ExpectedHarvestDate).format(
         "YYYY-MM-DD"
       ),
       Notes: values.Notes || "",
     };
+
     try {
       await api.post("/api/batches", payload);
       message.success("Batch created successfully!");
       setIsAddModalVisible(false);
-      fetchBatches();
+      fetchBatches(); // Refresh the list
     } catch (error) {
       message.error("Failed to create batch.");
     } finally {

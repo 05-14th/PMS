@@ -348,3 +348,30 @@ func (r *Repository) CreateStockItem(ctx context.Context, payload models.NewStoc
 
 	return itemID, nil
 }
+
+func (r *Repository) GetFeedCostsByActiveBatch(ctx context.Context) (map[int]float64, error) {
+	query := `
+		SELECT iu.BatchID, COALESCE(SUM(iud.QuantityDrawn / NULLIF(ip.QuantityPurchased, 0) * ip.UnitCost), 0)
+		FROM cm_inventory_usage iu
+		JOIN cm_inventory_usage_details iud ON iu.UsageID = iud.UsageID
+		JOIN cm_inventory_purchases ip ON iud.PurchaseID = ip.PurchaseID
+		JOIN cm_items i ON iu.ItemID = i.ItemID
+		WHERE iu.BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active') AND i.Category = 'Feed'
+		GROUP BY iu.BatchID`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	costMap := make(map[int]float64)
+	for rows.Next() {
+		var batchID int
+		var totalCost float64
+		if err := rows.Scan(&batchID, &totalCost); err != nil {
+			return nil, err
+		}
+		costMap[batchID] = totalCost
+	}
+	return costMap, nil
+}

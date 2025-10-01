@@ -268,3 +268,30 @@ func (r *Repository) DeleteSale(ctx context.Context, saleID int) error {
 
 	return tx.Commit()
 }
+
+func (r *Repository) GetRevenueByActiveBatch(ctx context.Context) (map[int]float64, error) {
+	query := `
+		SELECT h.BatchID, COALESCE(SUM(sd.TotalWeightKg * sd.PricePerKg), 0)
+		FROM cm_sales_details sd
+		JOIN cm_harvest_products hp ON sd.HarvestProductID = hp.HarvestProductID
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE h.BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')
+		GROUP BY h.BatchID`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	revenueMap := make(map[int]float64)
+	for rows.Next() {
+		var batchID int
+		var totalRevenue float64
+		if err := rows.Scan(&batchID, &totalRevenue); err != nil {
+			return nil, err
+		}
+		revenueMap[batchID] = totalRevenue
+	}
+	return revenueMap, nil
+}
