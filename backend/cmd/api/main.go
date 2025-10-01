@@ -17,6 +17,7 @@ import (
 	"chickmate-api/internal/database"
 	"chickmate-api/internal/harvest"
 	"chickmate-api/internal/inventory"
+	"chickmate-api/internal/planning"
 	"chickmate-api/internal/report"
 	"chickmate-api/internal/sales"
 	"chickmate-api/internal/supplier"
@@ -28,7 +29,7 @@ import (
 
 func buildRouter(batchHandler *batch.Handler, supplierHandler *supplier.Handler, inventoryHandler *inventory.Handler, 
 	harvestHandler *harvest.Handler, customerHandler *customer.Handler, salesHandler *sales.Handler, reportHandler *report.Handler,
-	dashboardHandler *dashboard.Handler) http.Handler {
+	dashboardHandler *dashboard.Handler, planningHandler *planning.Handler) http.Handler {
 	r := chi.NewRouter()
 
 	// Setup middleware from our new util package
@@ -48,6 +49,7 @@ func buildRouter(batchHandler *batch.Handler, supplierHandler *supplier.Handler,
 	salesHandler.RegisterRoutes(r)
 	reportHandler.RegisterRoutes(r)
 	dashboardHandler.RegisterRoutes(r)
+	planningHandler.RegisterRoutes(r)
 	
 	/*
 		// TODO: Refactor and re-enable these routes later
@@ -105,7 +107,12 @@ func main() {
 	dashboardService := dashboard.NewService(batchRepo, salesRepo, inventoryRepo, harvestRepo)
 	dashboardHandler := dashboard.NewHandler(dashboardService)
 
-	router := buildRouter(batchHandler, supplierHandler, inventoryHandler, harvestHandler, customerHandler, salesHandler, reportHandler, dashboardHandler)
+	// Initialize layers for the planning feature
+	planningRepo := planning.NewRepository(database.DB)
+	planningService := planning.NewService(planningRepo)
+	planningHandler := planning.NewHandler(planningService)
+
+	router := buildRouter(batchHandler, supplierHandler, inventoryHandler, harvestHandler, customerHandler, salesHandler, reportHandler, dashboardHandler, planningHandler)
 
 	server := &http.Server{
 		Addr:         "0.0.0.0:8080",

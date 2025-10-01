@@ -7,11 +7,13 @@ import {
   FaInfoCircle,
   FaSearch,
   FaPlus,
+  FaClipboardList,
 } from "react-icons/fa";
 import ModalNotes from "./Extra/Batches/Modal_Notes";
 import Detail from "./Extra/Batches/Detail";
 import AddBatchForm from "./Extra/Batches/AddBatchForm";
 import EditBatchForm from "./Extra/Batches/EditBatchForm";
+import ProcurementListModal from "./Extra/Batches/ProcurementListModal";
 import axios from "axios";
 import {
   Button,
@@ -56,6 +58,11 @@ const Batches: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
+  const [procurementData, setProcurementData] = useState<{
+    plan: any[];
+    batchName: string;
+    averageDuration: number;
+  } | null>(null);
 
   // --- Filters and modal ---
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
@@ -118,7 +125,6 @@ const Batches: React.FC = () => {
 
   const handleAddBatch = async (values: any) => {
     setIsSaving(true);
-
     const payload = {
       BatchName: values.BatchName,
       TotalChicken: values.TotalChicken,
@@ -131,12 +137,33 @@ const Batches: React.FC = () => {
     };
 
     try {
+      // Create the batch as before
       await api.post("/api/batches", payload);
       message.success("Batch created successfully!");
       setIsAddModalVisible(false);
-      fetchBatches(); // Refresh the list
+      fetchBatches();
+
+      // --- THIS IS THE CORRECTED BLOCK ---
+
+      // 1. Calculate durationDays
+      const startDate = dayjs(payload.StartDate);
+      const endDate = dayjs(payload.ExpectedHarvestDate);
+      const durationDays = endDate.diff(startDate, "day");
+
+      // 2. Call the procurement plan endpoint
+      const procurementRes = await api.post("/api/planning/procurement-plan", {
+        chickenCount: payload.TotalChicken,
+        durationDays: durationDays,
+      });
+
+      // 3. Set the state with the correct structure from the API response
+      setProcurementData({
+        plan: procurementRes.data.plan,
+        batchName: payload.BatchName,
+        averageDuration: procurementRes.data.averageDuration,
+      });
     } catch (error) {
-      message.error("Failed to create batch.");
+      message.error("Failed to create batch or generate plan.");
     } finally {
       setIsSaving(false);
     }
@@ -186,6 +213,40 @@ const Batches: React.FC = () => {
     });
   };
 
+  const handleViewProcurementPlan = async (batch: Batch) => {
+    try {
+      message.loading({ content: "Generating smart plan...", key: "proc" });
+      const startDate = dayjs(batch.startDate);
+      const endDate = dayjs(batch.expectedHarvestDate);
+      const durationDays = endDate.diff(startDate, "day");
+
+      if (durationDays <= 0) {
+        /* ... error handling ... */
+      }
+
+      // The endpoint has changed
+      const res = await api.post("/api/planning/procurement-plan", {
+        chickenCount: batch.totalChicken,
+        durationDays: durationDays,
+      });
+
+      message.success({ content: "Plan generated!", key: "proc", duration: 2 });
+
+      setProcurementData({
+        // The data structure is now richer
+        plan: res.data.plan,
+        batchName: batch.batchName,
+        averageDuration: res.data.averageDuration,
+      });
+    } catch (error) {
+      message.error({
+        content: "Failed to generate plan.",
+        key: "proc",
+        duration: 2,
+      });
+    }
+  };
+
   const formatDate = (dateString: string) => {
     return dayjs(dateString).format("MMM D, YYYY");
   };
@@ -231,6 +292,12 @@ const Batches: React.FC = () => {
         onCancel={() => setIsEditModalVisible(false)}
         loading={isSaving}
         initialValues={editingBatch}
+      />
+
+      <ProcurementListModal
+        visible={!!procurementData}
+        onClose={() => setProcurementData(null)}
+        data={procurementData}
       />
 
       <div className="space-y-6">
@@ -362,6 +429,14 @@ const Batches: React.FC = () => {
                         >
                           <FaInfoCircle className="mr-1.5 h-4 w-4" />
                           Monitoring
+                        </button>
+
+                        <button
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-purple-700 bg-white hover:bg-gray-50"
+                          onClick={() => handleViewProcurementPlan(batch)}
+                        >
+                          <FaClipboardList className="mr-1.5 h-4 w-4" />
+                          Plan
                         </button>
 
                         <button

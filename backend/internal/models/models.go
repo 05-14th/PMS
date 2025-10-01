@@ -482,3 +482,9 @@ type ActiveBatchInternal struct {
 	InitialPopulation   int    
 	TotalMortality      int    
 }
+
+type PhaseRate struct {
+	ItemName string
+	Phase    string
+	Rate     float64 // Avg consumption per bird per day
+}
