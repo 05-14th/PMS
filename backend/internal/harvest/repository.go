@@ -275,3 +275,124 @@ func (r *Repository) GetSellableInventory(ctx context.Context) (int, error) {
 	err := r.db.QueryRowContext(ctx, query).Scan(&sellableInventory)
 	return sellableInventory, err
 }
+
+// Add this function to backend/internal/harvest/repository.go
+
+func (r *Repository) CreateByproducts(ctx context.Context, payload models.ProcessPayload) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	// 1. Create a single parent harvest event for this processing action
+	harvestNote := fmt.Sprintf("Processed %d Dressed chickens to create byproducts.", payload.QuantityToProcess)
+	harvestQuery := "INSERT INTO cm_harvest (BatchID, HarvestDate, Notes) VALUES (?, ?, ?)"
+	res, err := tx.ExecContext(ctx, harvestQuery, payload.BatchID, payload.ProcessingDate, harvestNote)
+	if err != nil {
+		return 0, err
+	}
+	newHarvestID, _ := res.LastInsertId()
+
+	// 2. Loop through all yielded byproducts and create a record for each
+	for _, yield := range payload.Yields {
+		byproductQuery := `
+			INSERT INTO cm_harvest_products 
+			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg)
+			VALUES (?, ?, 0, ?, 0, ?)`
+		if _, err := tx.ExecContext(ctx, byproductQuery, newHarvestID, yield.ByproductType, yield.ByproductWeightKg, yield.ByproductWeightKg); err != nil {
+			return 0, err
+		}
+	}
+
+	return newHarvestID, tx.Commit()
+}
+
+func (r *Repository) AddProductType(ctx context.Context, newType string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil { return err }
+	defer tx.Rollback()
+
+	var enumStr string
+	query := `
+		SELECT SUBSTRING(COLUMN_TYPE, 6, LENGTH(COLUMN_TYPE) - 6)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cm_harvest_products' AND COLUMN_NAME = 'ProductType'`
+	if err := tx.QueryRowContext(ctx, query).Scan(&enumStr); err != nil {
+		return err
+	}
+
+	cleanedStr := strings.ReplaceAll(enumStr, "'", "")
+	existingTypes := strings.Split(cleanedStr, ",")
+	for _, t := range existingTypes {
+		if strings.EqualFold(t, newType) {
+			return errors.New("this product type already exists")
+		}
+	}
+
+	newEnumList := enumStr + ",'" + newType + "'"
+	alterQuery := fmt.Sprintf("ALTER TABLE cm_harvest_products MODIFY COLUMN ProductType ENUM(%s)", newEnumList)
+	if _, err := tx.ExecContext(ctx, alterQuery); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
+func (r *Repository) GetProductTypeUsage(ctx context.Context) ([]string, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT DISTINCT ProductType FROM cm_harvest_products")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var usedTypes []string
+	for rows.Next() {
+		var productType string
+		if err := rows.Scan(&productType); err != nil {
+			return nil, err
+		}
+		usedTypes = append(usedTypes, productType)
+	}
+	return usedTypes, nil
+}
+
+func (r *Repository) DeleteProductType(ctx context.Context, typeToDelete string) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil { return err }
+	defer tx.Rollback()
+
+	var usageCount int
+	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM cm_harvest_products WHERE ProductType = ?", typeToDelete).Scan(&usageCount)
+	if err != nil { return err }
+	if usageCount > 0 {
+		return errors.New("cannot delete a product type that is currently in use")
+	}
+
+	var enumStr string
+	query := `
+		SELECT SUBSTRING(COLUMN_TYPE, 6, LENGTH(COLUMN_TYPE) - 6)
+		FROM INFORMATION_SCHEMA.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'cm_harvest_products' AND COLUMN_NAME = 'ProductType'`
+	if err := tx.QueryRowContext(ctx, query).Scan(&enumStr); err != nil {
+		return err
+	}
+
+	cleanedStr := strings.ReplaceAll(enumStr, "'", "")
+	existingTypes := strings.Split(cleanedStr, ",")
+	var newTypes []string
+	for _, t := range existingTypes {
+		if !strings.EqualFold(t, typeToDelete) {
+			newTypes = append(newTypes, "'"+t+"'")
+		}
+	}
+	newEnumList := strings.Join(newTypes, ",")
+
+	alterQuery := fmt.Sprintf("ALTER TABLE cm_harvest_products MODIFY COLUMN ProductType ENUM(%s)", newEnumList)
+	if _, err := tx.ExecContext(ctx, alterQuery); err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+

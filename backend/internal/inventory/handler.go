@@ -29,6 +29,12 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 	router.Get("/api/stock-levels", h.getStockLevels)
 	router.Get("/api/categories", h.getCategories)
 	router.Get("/api/units", h.getUnits)
+	router.Post("/api/items", h.createItem)
+	router.Put("/api/items/{id}", h.updateItem)
+	router.Delete("/api/items/{id}", h.deleteItem)
+	router.Put("/api/purchases/{id}", h.updatePurchase)
+	router.Delete("/api/purchases/{id}", h.deletePurchase)
+	router.Post("/api/stock-items", h.createStockItem)
 }
 
 func (h *Handler) getItems(w http.ResponseWriter, r *http.Request) {
@@ -158,4 +164,78 @@ func (r *Repository) DeleteUsage(ctx context.Context, usageID int) error {
 	}
 
 	return tx.Commit()
+}
+
+func (h *Handler) createItem(w http.ResponseWriter, r *http.Request) {
+	var payload models.InventoryItem
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+	itemID, err := h.service.CreateItem(r.Context(), payload)
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to create item", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "insertedId": itemID})
+}
+
+func (h *Handler) updateItem(w http.ResponseWriter, r *http.Request) {
+	itemID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	var payload models.InventoryItem
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+	err := h.service.UpdateItem(r.Context(), payload, itemID)
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to update item", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (h *Handler) deleteItem(w http.ResponseWriter, r *http.Request) {
+	itemID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	err := h.service.DeleteItem(r.Context(), itemID)
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (h *Handler) updatePurchase(w http.ResponseWriter, r *http.Request) {
+	purchaseID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	var payload models.PurchasePayload
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+	err := h.service.UpdatePurchase(r.Context(), payload, purchaseID)
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (h *Handler) deletePurchase(w http.ResponseWriter, r *http.Request) {
+	purchaseID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	err := h.service.DeletePurchase(r.Context(), purchaseID)
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (h *Handler) createStockItem(w http.ResponseWriter, r *http.Request) {
+	var payload models.NewStockItemPayload
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+	itemID, err := h.service.CreateStockItem(r.Context(), payload)
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	util.RespondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "insertedItemId": itemID})
 }

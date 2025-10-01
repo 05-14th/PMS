@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // Service contains the business logic for the batch feature.
@@ -97,4 +98,17 @@ func (s *Service) CreateUsage(ctx context.Context, payload models.InventoryUsage
 
 func (s *Service) GetBatchTransactions(ctx context.Context, batchID int) ([]models.Transaction, error) {
 	return s.repo.GetBatchTransactions(ctx, batchID)
+}
+
+func (s *Service) UpdateBatch(ctx context.Context, p models.UpdateBatchPayload, batchID int) error {
+	if strings.TrimSpace(p.BatchName) == "" {
+		return errors.New("batch name cannot be empty")
+	}
+	return s.repo.UpdateBatch(ctx, p, batchID)
+}
+
+func (s *Service) DeleteBatch(ctx context.Context, batchID int) error {
+	// The complex business rule is handled in the repository's transaction,
+	// so the service just needs to call it.
+	return s.repo.DeleteBatch(ctx, batchID)
 }

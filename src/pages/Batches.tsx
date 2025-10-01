@@ -13,7 +13,16 @@ import Detail from "./Extra/Batches/Detail";
 import AddBatchForm from "./Extra/Batches/AddBatchForm";
 import EditBatchForm from "./Extra/Batches/EditBatchForm";
 import axios from "axios";
-import { Button, Col, Input, message, Modal, Row, Select, Pagination } from "antd";
+import {
+  Button,
+  Col,
+  Input,
+  message,
+  Modal,
+  Row,
+  Select,
+  Pagination,
+} from "antd";
 import dayjs from "dayjs";
 import useDebounce from "../hooks/useDebounce";
 
@@ -112,7 +121,9 @@ const Batches: React.FC = () => {
     const payload = {
       ...values,
       StartDate: dayjs(values.StartDate).format("YYYY-MM-DD"),
-      ExpectedHarvestDate: dayjs(values.ExpectedHarvestDate).format("YYYY-MM-DD"),
+      ExpectedHarvestDate: dayjs(values.ExpectedHarvestDate).format(
+        "YYYY-MM-DD"
+      ),
       Notes: values.Notes || "",
     };
     try {
@@ -132,7 +143,9 @@ const Batches: React.FC = () => {
     setIsSaving(true);
     const payload = {
       ...values,
-      ExpectedHarvestDate: dayjs(values.expectedHarvestDate).format("YYYY-MM-DD"),
+      ExpectedHarvestDate: dayjs(values.expectedHarvestDate).format(
+        "YYYY-MM-DD"
+      ),
       Notes: values.notes || "",
     };
     try {
@@ -161,7 +174,8 @@ const Batches: React.FC = () => {
           message.success("Batch deleted successfully.");
           fetchBatches(); // Refresh list
         } catch (error: any) {
-          const errorMsg = error.response?.data?.error || "Failed to delete batch.";
+          const errorMsg =
+            error.response?.data?.error || "Failed to delete batch.";
           message.error(errorMsg);
         }
       },
@@ -260,9 +274,6 @@ const Batches: React.FC = () => {
               <thead className="bg-gray-50">
                 <tr>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                    Batch ID
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Batch Name
                   </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
@@ -292,9 +303,6 @@ const Batches: React.FC = () => {
               <tbody className="bg-white divide-y divide-gray-200">
                 {batches.map((batch) => (
                   <tr key={batch.batchID} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                      {batch.batchID}
-                    </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {batch.batchName}
                     </td>
@@ -388,7 +396,9 @@ const Batches: React.FC = () => {
                 setPage(p);
                 setPageSize(ps);
               }}
-              showTotal={(t, range) => `${range[0]}-${range[1]} of ${t} batches`}
+              showTotal={(t, range) =>
+                `${range[0]}-${range[1]} of ${t} batches`
+              }
             />
           </div>
         </div>

@@ -252,3 +252,99 @@ func (r *Repository) GetStockStatus(ctx context.Context) ([]models.StockStatus, 
 	}
 	return stockList, nil
 }
+
+func (r *Repository) GetTotalStockForItem(ctx context.Context, itemID int) (float64, error) {
+	var totalStock float64
+	query := "SELECT COALESCE(SUM(QuantityRemaining), 0) FROM cm_inventory_purchases WHERE ItemID = ? AND IsActive = 1"
+	err := r.db.QueryRowContext(ctx, query, itemID).Scan(&totalStock)
+	return totalStock, err
+}
+
+func (r *Repository) CreateItem(ctx context.Context, item models.InventoryItem) (int64, error) {
+	query := "INSERT INTO cm_items (ItemName, Category, Unit) VALUES (?, ?, ?)"
+	res, err := r.db.ExecContext(ctx, query, item.ItemName, item.Category, item.Unit)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+func (r *Repository) UpdateItem(ctx context.Context, item models.InventoryItem, itemID int) error {
+	query := "UPDATE cm_items SET ItemName = ?, Category = ?, Unit = ? WHERE ItemID = ?"
+	_, err := r.db.ExecContext(ctx, query, item.ItemName, item.Category, item.Unit, itemID)
+	return err
+}
+
+// DeleteItem archives an item by setting its IsActive flag to 0.
+func (r *Repository) DeleteItem(ctx context.Context, itemID int) error {
+	query := "UPDATE cm_items SET IsActive = 0 WHERE ItemID = ?"
+	_, err := r.db.ExecContext(ctx, query, itemID)
+	return err
+}
+
+// IsPurchaseUsed checks if a purchase has been drawn from.
+func (r *Repository) IsPurchaseUsed(ctx context.Context, purchaseID int) (bool, error) {
+	var qtyPurchased, qtyRemaining float64
+	query := "SELECT QuantityPurchased, QuantityRemaining FROM cm_inventory_purchases WHERE PurchaseID = ?"
+	err := r.db.QueryRowContext(ctx, query, purchaseID).Scan(&qtyPurchased, &qtyRemaining)
+	if err != nil {
+		return false, err
+	}
+	return qtyPurchased != qtyRemaining, nil
+}
+
+func (r *Repository) UpdatePurchase(ctx context.Context, p models.PurchasePayload, purchaseID int) error {
+	query := "UPDATE cm_inventory_purchases SET SupplierID = ?, PurchaseDate = ?, QuantityPurchased = ?, UnitCost = ?, QuantityRemaining = ?, ReceiptInfo = ? WHERE PurchaseID = ?"
+	_, err := r.db.ExecContext(ctx, query, p.SupplierID, p.PurchaseDate, p.QuantityPurchased, p.UnitCost, p.QuantityPurchased, p.ReceiptInfo, purchaseID)
+	return err
+}
+
+// DeletePurchase soft-deletes a purchase record.
+func (r *Repository) DeletePurchase(ctx context.Context, purchaseID int) error {
+	query := "UPDATE cm_inventory_purchases SET IsActive = 0 WHERE PurchaseID = ?"
+	_, err := r.db.ExecContext(ctx, query, purchaseID)
+	return err
+}
+
+func (r *Repository) CreateStockItem(ctx context.Context, payload models.NewStockItemPayload) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	// 1. Determine the Supplier ID (use existing or create new)
+	var supplierID int64
+	if payload.ExistingSupplierID != nil {
+		supplierID = int64(*payload.ExistingSupplierID)
+	} else if payload.NewSupplierName != nil {
+		supplierQuery := "INSERT INTO cm_suppliers (SupplierName, ContactPerson, PhoneNumber, Email, Address, Notes) VALUES (?, ?, ?, ?, ?, ?)"
+		res, err := tx.ExecContext(ctx, supplierQuery, payload.NewSupplierName, payload.ContactPerson, payload.PhoneNumber, payload.Email, payload.Address, payload.Notes)
+		if err != nil {
+			return 0, err
+		}
+		supplierID, _ = res.LastInsertId()
+	}
+
+	// 2. Create the new item in cm_items
+	itemQuery := "INSERT INTO cm_items (ItemName, Category, Unit) VALUES (?, ?, ?)"
+	res, err := tx.ExecContext(ctx, itemQuery, payload.ItemName, payload.Category, payload.Unit)
+	if err != nil {
+		return 0, err
+	}
+	itemID, _ := res.LastInsertId()
+
+	// 3. Create the initial purchase record in cm_inventory_purchases
+	purchaseQuery := "INSERT INTO cm_inventory_purchases (ItemID, SupplierID, PurchaseDate, QuantityPurchased, UnitCost, QuantityRemaining, ReceiptInfo) VALUES (?, ?, ?, ?, ?, ?, ?)"
+	_, err = tx.ExecContext(ctx, purchaseQuery, itemID, supplierID, payload.PurchaseDate, payload.QuantityPurchased, payload.AmountPaid, payload.QuantityPurchased, payload.ReceiptInfo)
+	if err != nil {
+		return 0, err
+	}
+
+	// If all steps succeed, commit the transaction
+	if err := tx.Commit(); err != nil {
+		return 0, err
+	}
+
+	return itemID, nil
+}

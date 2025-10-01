@@ -20,12 +20,15 @@ func NewHandler(service *Service) *Handler {
 
 func (h *Handler) RegisterRoutes(router *chi.Mux) {
 	router.Get("/api/harvested-products", h.getHarvestedInventory)
+	router.Get("/api/harvested-products/summary", h.getHarvestedSummary)
 	router.Get("/api/product-types", h.getProductTypes)
 	router.Get("/api/batch-list", h.getBatchList)
-	router.Get("/api/harvested-products/summary", h.getHarvestedSummary)
-	router.Post("/api/harvests", h.createHarvest) 
-
+	router.Post("/api/harvests", h.createHarvest)
 	router.Delete("/api/harvest-products/{id}", h.deleteHarvestProduct)
+	router.Post("/api/byproducts", h.createByproducts) 
+	router.Post("/api/product-types", h.addProductType)
+	router.Get("/api/product-types/usage", h.getProductTypeUsage) 
+	router.Delete("/api/product-types", h.deleteProductType)    
 }
 
 func (h *Handler) getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
@@ -102,3 +105,67 @@ func (h *Handler) deleteHarvestProduct(w http.ResponseWriter, r *http.Request) {
 
 	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
+
+func (h *Handler) createByproducts(w http.ResponseWriter, r *http.Request) {
+	var payload models.ProcessPayload
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	harvestID, err := h.service.CreateByproducts(r.Context(), payload)
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to process byproducts", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "harvestId": harvestID})
+}
+
+func (h *Handler) addProductType(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		NewType string `json:"newType"`
+	}
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+	
+	err := h.service.AddProductType(r.Context(), payload.NewType)
+	if err != nil {
+		if err.Error() == "this product type already exists" {
+			util.HandleError(w, http.StatusConflict, err.Error(), err)
+		} else {
+			util.HandleError(w, http.StatusInternalServerError, "Failed to add product type", err)
+		}
+		return
+	}
+	util.RespondJSON(w, http.StatusCreated, map[string]interface{}{"success": true})
+}
+
+func (h *Handler) getProductTypeUsage(w http.ResponseWriter, r *http.Request) {
+	types, err := h.service.GetProductTypeUsage(r.Context())
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch product type usage", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, types)
+}
+
+func (h *Handler) deleteProductType(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		TypeToDelete string `json:"typeToDelete"`
+	}
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	err := h.service.DeleteProductType(r.Context(), payload.TypeToDelete)
+	if err != nil {
+		if err.Error() == "cannot delete a product type that is currently in use" {
+			util.HandleError(w, http.StatusConflict, err.Error(), err)
+		} else {
+			util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		}
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+

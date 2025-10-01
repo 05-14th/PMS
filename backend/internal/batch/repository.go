@@ -487,7 +487,7 @@ func (r *Repository) GetDashboardMetrics(ctx context.Context) (models.AtAGlanceD
 	defer rows.Close()
 
 	for rows.Next() {
-		var b models.ActiveBatchInternal // <-- Use the new internal struct
+		var b models.ActiveBatchInternal 
 		// Scan into its fields
 		if err := rows.Scan(&b.BatchID, &b.Name, &b.StartDate, &b.ExpectedHarvestDate, &b.Population); err != nil {
 			return glance, activeBatches, err
@@ -519,4 +519,41 @@ func (r *Repository) GetCostsForActiveBatches(ctx context.Context) (float64, flo
 	if err != nil { return 0,0,0, err }
 
 	return feedCost, chickCost, otherCost, nil
+}
+
+func (r *Repository) UpdateBatch(ctx context.Context, p models.UpdateBatchPayload, batchID int) error {
+	query := `
+		UPDATE cm_batches 
+		SET BatchName = ?, ExpectedHarvestDate = ?, Notes = ?, Status = ?
+		WHERE BatchID = ?`
+	_, err := r.db.ExecContext(ctx, query, p.BatchName, p.ExpectedHarvestDate, p.Notes, p.Status, batchID)
+	return err
+}
+
+func (r *Repository) DeleteBatch(ctx context.Context, batchID int) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	// BUSINESS RULE: Check all child tables to ensure there is no activity.
+	childTables := []string{"cm_harvest", "cm_inventory_usage", "cm_mortality", "cm_production_cost", "cm_health_checks"}
+	for _, table := range childTables {
+		var count int
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE BatchID = ?", table)
+		if err := tx.QueryRowContext(ctx, query, batchID).Scan(&count); err != nil {
+			return fmt.Errorf("failed to check batch activity in %s: %w", table, err)
+		}
+		if count > 0 {
+			return errors.New("cannot delete a batch with existing monitoring or harvest records")
+		}
+	}
+
+	// If all checks pass, delete the batch.
+	if _, err := tx.ExecContext(ctx, "DELETE FROM cm_batches WHERE BatchID = ?", batchID); err != nil {
+		return err
+	}
+
+	return tx.Commit()
 }

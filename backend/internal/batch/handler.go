@@ -35,6 +35,8 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 		r.Post("/costs", h.createDirectCost)
 		r.Get("/harvest-products", h.getHarvestsForBatch)
 		r.Get("/transactions", h.getBatchTransactions)
+		r.Put("/", h.updateBatch)     
+		r.Delete("/", h.deleteBatch) 
 	})
 	// Route for deleting events
 	router.Delete("/api/events/{type}/{id}", h.deleteEvent)
@@ -223,4 +225,30 @@ func (h *Handler) getBatchTransactions(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	util.RespondJSON(w, http.StatusOK, transactions)
+}
+
+func (h *Handler) updateBatch(w http.ResponseWriter, r *http.Request) {
+	batchID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+	var payload models.UpdateBatchPayload
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	err := h.service.UpdateBatch(r.Context(), payload, batchID)
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (h *Handler) deleteBatch(w http.ResponseWriter, r *http.Request) {
+	batchID, _ := strconv.Atoi(chi.URLParam(r, "id"))
+
+	err := h.service.DeleteBatch(r.Context(), batchID)
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
