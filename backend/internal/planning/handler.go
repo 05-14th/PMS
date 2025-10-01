@@ -21,16 +21,28 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 }
 
 func (h *Handler) generateProcurementPlan(w http.ResponseWriter, r *http.Request) {
-	var payload struct {
-		ChickenCount int `json:"chickenCount"`
-		DurationDays int `json:"durationDays"`
-	}
-	if !util.DecodeJSONBody(w, r, &payload) { return }
+    var payload struct {
+        BatchID      int `json:"batchID"` // <-- New field
+        ChickenCount int `json:"chickenCount"`
+        DurationDays int `json:"durationDays"`
+    }
+    if !util.DecodeJSONBody(w, r, &payload) { return }
 
-	plan, err := h.service.GenerateProcurementPlan(r.Context(), payload.ChickenCount, payload.DurationDays)
-	if err != nil {
-		util.HandleError(w, http.StatusInternalServerError, "Failed to generate procurement plan", err)
-		return
-	}
-	util.RespondJSON(w, http.StatusOK, plan)
+    // New safety check
+    status, err := h.service.GetBatchStatus(r.Context(), payload.BatchID)
+    if err != nil {
+        util.HandleError(w, http.StatusNotFound, "Batch not found", err)
+        return
+    }
+    if status == "Sold" {
+        util.HandleError(w, http.StatusBadRequest, "Cannot generate a plan for a completed batch.", nil)
+        return
+    }
+
+    plan, err := h.service.GenerateProcurementPlan(r.Context(), payload.ChickenCount, payload.DurationDays)
+    if err != nil {
+        util.HandleError(w, http.StatusInternalServerError, "Failed to generate procurement plan", err)
+        return
+    }
+    util.RespondJSON(w, http.StatusOK, plan)
 }

@@ -226,6 +226,7 @@ const Batches: React.FC = () => {
 
       // The endpoint has changed
       const res = await api.post("/api/planning/procurement-plan", {
+        batchID: batch.batchID,
         chickenCount: batch.totalChicken,
         durationDays: durationDays,
       });
@@ -431,13 +432,15 @@ const Batches: React.FC = () => {
                           Monitoring
                         </button>
 
-                        <button
-                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-purple-700 bg-white hover:bg-gray-50"
-                          onClick={() => handleViewProcurementPlan(batch)}
-                        >
-                          <FaClipboardList className="mr-1.5 h-4 w-4" />
-                          Plan
-                        </button>
+                        {batch.status === "Active" && (
+                          <button
+                            className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-purple-700 bg-white hover:bg-gray-50"
+                            onClick={() => handleViewProcurementPlan(batch)}
+                          >
+                            <FaClipboardList className="mr-1.5 h-4 w-4" />
+                            Plan
+                          </button>
+                        )}
 
                         <button
                           className="inline-flex items-center px-3 py-1.5 border border-gray-300 rounded-md text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"

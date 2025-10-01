@@ -10,6 +10,7 @@ type Service struct {
 	repo *Repository
 }
 
+// These response structs remain the same
 type ProcurementItem struct {
 	ItemName string  `json:"itemName"`
 	Quantity float64 `json:"quantity"`
@@ -27,6 +28,11 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
+func (s *Service) GetBatchStatus(ctx context.Context, batchID int) (string, error) {
+    return s.repo.GetBatchStatus(ctx, batchID)
+}
+
+// THIS IS THE FINAL, CORRECTED VERSION OF THE FUNCTION
 func (s *Service) GenerateProcurementPlan(ctx context.Context, chickenCount int, durationDays int) (*ProcurementPlan, error) {
 	avgDuration, err := s.repo.GetHistoricalAvgDuration(ctx)
 	if err != nil { return nil, err }
@@ -44,23 +50,24 @@ func (s *Service) GenerateProcurementPlan(ctx context.Context, chickenCount int,
 
 	var finalPlan []PhasePlan
 	
-	// A helper function to sum up daily values for a phase
+	// Helper function to sum up daily values for a phase
 	calculatePhaseConsumption := func(startDay, endDay int) float64 {
-		var totalGrams float64
+		var totalGramsPerBird float64
 		// Loop from startDay to endDay, capping at the batch duration and available data
 		for day := startDay; day <= int(math.Min(float64(endDay), float64(durationDays))); day++ {
 			if day < len(dailyIntakeGrams) {
-				totalGrams += dailyIntakeGrams[day]
+				totalGramsPerBird += dailyIntakeGrams[day]
 			}
 		}
-		return (totalGrams * float64(chickenCount)) / 1000.0 // Convert final sum to kg
+		// Return total consumption for the whole batch in KG
+		return (totalGramsPerBird * float64(chickenCount)) / 1000.0
 	}
 
 	// --- STARTER CALCULATION (Days 1-14) ---
 	starterQtyKg := calculatePhaseConsumption(1, 14)
 	if starterQtyKg > 0 {
 		finalPlan = append(finalPlan, PhasePlan{
-			Phase: "Starter (Days 1-14)",
+			Phase: "Starter (Week 1-2)",
 			Items: []ProcurementItem{{ItemName: "Starter Feed (e.g., Integra 1000)", Quantity: starterQtyKg}},
 		})
 	}
@@ -69,7 +76,7 @@ func (s *Service) GenerateProcurementPlan(ctx context.Context, chickenCount int,
 	growerQtyKg := calculatePhaseConsumption(15, 21)
 	if growerQtyKg > 0 {
 		finalPlan = append(finalPlan, PhasePlan{
-			Phase: "Grower (Days 15-21)",
+			Phase: "Grower (Week 3)",
 			Items: []ProcurementItem{{ItemName: "Grower Feed (e.g., Integra 2000)", Quantity: growerQtyKg}},
 		})
 	}
@@ -78,7 +85,7 @@ func (s *Service) GenerateProcurementPlan(ctx context.Context, chickenCount int,
 	finisherQtyKg := calculatePhaseConsumption(22, durationDays)
 	if finisherQtyKg > 0 {
 		finalPlan = append(finalPlan, PhasePlan{
-			Phase: "Finisher (Days 22+)",
+			Phase: "Finisher (Week 4+)",
 			Items: []ProcurementItem{{ItemName: "Finisher Feed (or Grower)", Quantity: finisherQtyKg}},
 		})
 	}

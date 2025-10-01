@@ -30,12 +30,29 @@ func (r *Repository) GetHistoricalAvgDuration(ctx context.Context) (float64, err
 	return avgDuration.Float64, nil
 }
 
+func (r *Repository) GetBatchStatus(ctx context.Context, batchID int) (string, error) {
+    var status string
+    err := r.db.QueryRowContext(ctx, "SELECT Status FROM cm_batches WHERE BatchID = ?", batchID).Scan(&status)
+    return status, err
+}
+
 // This simpler query gets the total lifetime consumption per bird for each feed type.
 func (r *Repository) GetHistoricalConsumptionPerBird(ctx context.Context) ([]ConsumptionRate, error) {
+	// This query now correctly calculates the divisor by summing the TotalChicken of unique batches.
 	query := `
 		SELECT
 			i.SubCategory,
-			SUM(iu.QuantityUsed) / SUM(b.TotalChicken) as KgPerBird
+			SUM(iu.QuantityUsed) / (
+				SELECT SUM(b_inner.TotalChicken) 
+				FROM cm_batches b_inner 
+				WHERE b_inner.Status = 'Sold' 
+				AND b_inner.BatchID IN (
+					SELECT DISTINCT iu_inner.BatchID 
+					FROM cm_inventory_usage iu_inner 
+					JOIN cm_items i_inner ON iu_inner.ItemID = i_inner.ItemID 
+					WHERE i_inner.SubCategory = i.SubCategory
+				)
+			) as KgPerBird
 		FROM cm_inventory_usage iu
 		JOIN cm_items i ON iu.ItemID = i.ItemID
 		JOIN cm_batches b ON iu.BatchID = b.BatchID
