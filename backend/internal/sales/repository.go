@@ -333,6 +333,9 @@ func (r *Repository) GetRevenueByActiveBatch(ctx context.Context) (map[int]float
 	return revenueMap, nil
 }
 
+// In sales/repository.go - Fix GetHarvestedProducts function
+// In sales/repository.go - Ensure we always return an array, not nil
+// In sales/repository.go - Update GetHarvestedProducts function
 func (r *Repository) GetHarvestedProducts(ctx context.Context) ([]models.HarvestedProduct, error) {
     query := `
         SELECT 
@@ -347,35 +350,56 @@ func (r *Repository) GetHarvestedProducts(ctx context.Context) ([]models.Harvest
         FROM cm_harvest_products hp
         JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
         JOIN cm_batches b ON h.BatchID = b.BatchID
-        WHERE hp.IsActive = 1 AND hp.QuantityRemaining > 0
+        WHERE hp.QuantityRemaining > 0 AND hp.IsActive = 1
         ORDER BY h.HarvestDate DESC`
 
     rows, err := r.db.QueryContext(ctx, query)
     if err != nil {
-        return nil, err
+        log.Printf("ERROR: GetHarvestedProducts query failed: %v", err)
+        return []models.HarvestedProduct{}, err
     }
     defer rows.Close()
 
     var products []models.HarvestedProduct
     for rows.Next() {
         var p models.HarvestedProduct
-        if err := rows.Scan(
+        var harvestDate, productType, batchName sql.NullString
+        
+        err := rows.Scan(
             &p.HarvestProductID,
-            &p.HarvestDate,
-            &p.ProductType,
+            &harvestDate,
+            &productType,
             &p.QuantityHarvested,
             &p.QuantityRemaining,
             &p.WeightHarvestedKg,
             &p.WeightRemainingKg,
-            &p.BatchName,
-        ); err != nil {
-            return nil, err
+            &batchName,
+        )
+        if err != nil {
+            log.Printf("ERROR: GetHarvestedProducts scan failed: %v", err)
+            return []models.HarvestedProduct{}, err
         }
+        
+        p.HarvestDate = harvestDate.String
+        p.ProductType = productType.String
+        p.BatchName = batchName.String
+        
         products = append(products, p)
     }
+    
+    if err := rows.Err(); err != nil {
+        log.Printf("ERROR: GetHarvestedProducts rows error: %v", err)
+        return []models.HarvestedProduct{}, err
+    }
+    
+    log.Printf("DEBUG: GetHarvestedProducts found %d active products with remaining quantity", len(products))
+    for i, p := range products {
+        log.Printf("DEBUG: Product %d - ID: %d, Type: %s, Remaining: %d, Batch: %s", 
+            i, p.HarvestProductID, p.ProductType, p.QuantityRemaining, p.BatchName)
+    }
+    
     return products, nil
 }
-
 
 // In sales/repository.go - Complete fix for VoidSale
 func (r *Repository) VoidSale(ctx context.Context, saleID int) error {
@@ -532,4 +556,95 @@ func (r *Repository) GetSalesByBatch(ctx context.Context, batchID int) ([]models
 		records = append(records, rec)
 	}
 	return records, nil
+}
+
+func (r *Repository) CreateDirectSale(ctx context.Context, payload models.DirectSalePayload) (int64, error) {
+    tx, err := r.db.BeginTx(ctx, nil)
+    if err != nil {
+        return 0, err
+    }
+    defer tx.Rollback()
+
+    // 1. Create the sale order (no batch ID for direct sales)
+    saleQuery := `INSERT INTO cm_sales_orders 
+                  (CustomerID, SaleDate, Status, PaymentMethod, Notes, IsActive) 
+                  VALUES (?, ?, 'Fulfilled', ?, ?, 1)`
+    
+    res, err := tx.ExecContext(ctx, saleQuery, 
+        payload.CustomerID, payload.SaleDate, payload.PaymentMethod, payload.Notes)
+    if err != nil {
+        return 0, fmt.Errorf("failed to create sale order: %w", err)
+    }
+    
+    saleID, err := res.LastInsertId()
+    if err != nil {
+        return 0, fmt.Errorf("failed to get sale ID: %w", err)
+    }
+
+    var totalAmount float64
+
+    // 2. Process each sale item
+    for _, item := range payload.Items {
+        // Get current inventory
+        var currentQty int
+        var currentWeight float64
+        err := tx.QueryRowContext(ctx,
+            "SELECT QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE HarvestProductID = ? FOR UPDATE",
+            item.HarvestProductID,
+        ).Scan(&currentQty, &currentWeight)
+        if err != nil {
+            return 0, fmt.Errorf("failed to get product inventory: %w", err)
+        }
+
+        // Check quantity
+        if currentQty < item.QuantitySold {
+            return 0, fmt.Errorf("insufficient stock. Available: %d, Requested: %d", currentQty, item.QuantitySold)
+        }
+
+        // Calculate new quantities
+        newQty := currentQty - item.QuantitySold
+        newWeight := currentWeight - item.TotalWeightKg
+        if newWeight < 0 {
+            newWeight = 0
+        }
+
+        // Update inventory
+        updateQuery := `UPDATE cm_harvest_products 
+                       SET QuantityRemaining = ?, WeightRemainingKg = ?, IsActive = ?
+                       WHERE HarvestProductID = ?`
+        
+        _, err = tx.ExecContext(ctx, updateQuery, 
+            newQty, newWeight, newQty > 0, item.HarvestProductID)
+        if err != nil {
+            return 0, fmt.Errorf("failed to update inventory: %w", err)
+        }
+
+        // Add sale detail
+        detailQuery := `INSERT INTO cm_sales_details 
+                       (SaleID, ProductType, QuantitySold, TotalWeightKg, PricePerKg) 
+                       VALUES (?, ?, ?, ?, ?)`
+        
+        _, err = tx.ExecContext(ctx, detailQuery,
+            saleID, item.ProductType, item.QuantitySold, item.TotalWeightKg, item.PricePerKg)
+        if err != nil {
+            return 0, fmt.Errorf("failed to create sale detail: %w", err)
+        }
+
+        // Calculate item total
+        totalAmount += item.TotalWeightKg * item.PricePerKg
+    }
+
+    // 3. Update sale total amount
+    updateSaleQuery := "UPDATE cm_sales_orders SET TotalAmount = ? WHERE SaleID = ?"
+    _, err = tx.ExecContext(ctx, updateSaleQuery, totalAmount, saleID)
+    if err != nil {
+        return 0, fmt.Errorf("failed to update sale total: %w", err)
+    }
+
+    // 4. Commit transaction
+    if err := tx.Commit(); err != nil {
+        return 0, fmt.Errorf("failed to commit transaction: %w", err)
+    }
+
+    return saleID, nil
 }

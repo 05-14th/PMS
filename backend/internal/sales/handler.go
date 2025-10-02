@@ -4,6 +4,7 @@ package sales
 import (
 	"chickmate-api/internal/models"
 	"chickmate-api/internal/util"
+	"database/sql"
 	"log"
 	"net/http"
 	"strconv"
@@ -29,6 +30,10 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
     router.Get("/api/batches-for-sale", h.getActiveBatchesForSale)
     router.Get("/api/payment-methods", h.getPaymentMethods)
     router.Get("/api/harvested-products", h.getHarvestedProducts)
+
+	router.Post("/api/direct-sales", h.createDirectSale)
+
+	router.Get("/api/debug/harvest-products", h.debugAllHarvestProducts) // debugger
 }
 
 // createPreOrder handles the creation of a new pending order.
@@ -139,3 +144,103 @@ func (h *Handler) voidSale(w http.ResponseWriter, r *http.Request) {
     }
     util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }
+
+// In sales/handler.go - Add this method
+func (h *Handler) createDirectSale(w http.ResponseWriter, r *http.Request) {
+    var payload models.DirectSalePayload
+    if !util.DecodeJSONBody(w, r, &payload) {
+        return
+    }
+
+    saleID, err := h.service.CreateDirectSale(r.Context(), payload)
+    if err != nil {
+        util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+        return
+    }
+    
+    util.RespondJSON(w, http.StatusCreated, map[string]interface{}{
+        "success": true, 
+        "saleID": saleID,
+        "message": "Direct sale completed successfully",
+    })
+}
+
+// In sales/handler.go - Add this debug endpoint
+func (h *Handler) debugAllHarvestProducts(w http.ResponseWriter, r *http.Request) {
+    query := `
+        SELECT 
+            hp.HarvestProductID,
+            h.HarvestDate,
+            hp.ProductType,
+            hp.QuantityHarvested,
+            hp.QuantityRemaining,
+            hp.WeightHarvestedKg,
+            hp.WeightRemainingKg,
+            b.BatchName,
+            hp.IsActive
+        FROM cm_harvest_products hp
+        LEFT JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+        LEFT JOIN cm_batches b ON h.BatchID = b.BatchID
+        ORDER BY hp.HarvestProductID`
+
+    rows, err := h.service.repo.db.QueryContext(r.Context(), query)
+    if err != nil {
+        util.RespondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+            "error": err.Error(),
+        })
+        return
+    }
+    defer rows.Close()
+
+    type HarvestProductDebug struct {
+        HarvestProductID int     `json:"harvestProductID"`
+        HarvestDate      string  `json:"harvestDate"`
+        ProductType      string  `json:"productType"`
+        QuantityHarvested int    `json:"quantityHarvested"`
+        QuantityRemaining int    `json:"quantityRemaining"`
+        WeightHarvestedKg float64 `json:"weightHarvestedKg"`
+        WeightRemainingKg float64 `json:"weightRemainingKg"`
+        BatchName        string  `json:"batchName"`
+        IsActive         bool    `json:"isActive"`
+    }
+    
+    var products []HarvestProductDebug
+    for rows.Next() {
+        var p HarvestProductDebug
+        var isActive int
+        var harvestDate, productType, batchName sql.NullString
+        
+        err := rows.Scan(
+            &p.HarvestProductID,
+            &harvestDate,
+            &productType,
+            &p.QuantityHarvested,
+            &p.QuantityRemaining,
+            &p.WeightHarvestedKg,
+            &p.WeightRemainingKg,
+            &batchName,
+            &isActive,
+        )
+        if err != nil {
+            util.RespondJSON(w, http.StatusInternalServerError, map[string]interface{}{
+                "error": err.Error(),
+            })
+            return
+        }
+        
+        p.HarvestDate = harvestDate.String
+        p.ProductType = productType.String
+        p.BatchName = batchName.String
+        p.IsActive = isActive == 1
+        
+        products = append(products, p)
+    }
+
+    util.RespondJSON(w, http.StatusOK, map[string]interface{}{
+        "total_products": len(products),
+        "products": products,
+    })
+}
+
+// Register it in your RegisterRoutes method:
+

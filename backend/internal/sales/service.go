@@ -5,6 +5,7 @@ import (
 	"chickmate-api/internal/models"
 	"context"
 	"errors"
+	"fmt"
 )
 
 type Service struct {
@@ -76,4 +77,34 @@ func (s *Service) GetHarvestedProducts(ctx context.Context) ([]models.HarvestedP
 
 func (s *Service) VoidSale(ctx context.Context, saleID int) error {
     return s.repo.VoidSale(ctx, saleID)
+}
+
+
+func (s *Service) CreateDirectSale(ctx context.Context, payload models.DirectSalePayload) (int64, error) {
+    // Business logic: Check if harvested products have sufficient quantity
+    for _, item := range payload.Items {
+        products, err := s.repo.GetHarvestedProducts(ctx)
+        if err != nil {
+            return 0, err
+        }
+
+        var targetProduct *models.HarvestedProduct
+        for i, p := range products {
+            if p.HarvestProductID == item.HarvestProductID {
+                targetProduct = &products[i]
+                break
+            }
+        }
+
+        if targetProduct == nil {
+            return 0, fmt.Errorf("harvested product with ID %d not found", item.HarvestProductID)
+        }
+
+        if item.QuantitySold > targetProduct.QuantityRemaining {
+            return 0, fmt.Errorf("insufficient quantity for product %s. Available: %d, Requested: %d", 
+                targetProduct.ProductType, targetProduct.QuantityRemaining, item.QuantitySold)
+        }
+    }
+
+    return s.repo.CreateDirectSale(ctx, payload)
 }

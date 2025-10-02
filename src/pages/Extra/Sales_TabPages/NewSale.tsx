@@ -227,7 +227,7 @@ const NewSale: React.FC = () => {
       <Card
         title={
           <Title level={4} style={{ margin: 0 }}>
-            Create Pre-Order
+            Pre-Order
           </Title>
         }
         style={{ marginBottom: 24 }}

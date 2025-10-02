@@ -340,14 +340,14 @@ type DirectCostPayload struct {
 
 
 type HarvestedProduct struct {
-    HarvestProductID  int     `json:"HarvestProductID"`
-    HarvestDate       string  `json:"HarvestDate"`
-    ProductType       string  `json:"ProductType"`
-    QuantityHarvested int     `json:"QuantityHarvested"`
-    QuantityRemaining int     `json:"QuantityRemaining"`
-    WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
-    WeightRemainingKg float64 `json:"WeightRemainingKg"`
-    BatchName         string  `json:"BatchName,omitempty"` // Add this field
+    HarvestProductID  int     `json:"harvestProductID"`
+    HarvestDate       string  `json:"harvestDate"`
+    ProductType       string  `json:"productType"`
+    QuantityHarvested int     `json:"quantityHarvested"`
+    QuantityRemaining int     `json:"quantityRemaining"`
+    WeightHarvestedKg float64 `json:"weightHarvestedKg"`
+    WeightRemainingKg float64 `json:"weightRemainingKg"`
+    BatchName         string  `json:"batchName"`
 }
 
 // For the optional sale details within the harvest payload
@@ -535,3 +535,21 @@ type PhaseRate struct {
 	Phase    string
 	Rate     float64 // Avg consumption per bird per day
 }
+
+
+type DirectSalePayload struct {
+    CustomerID    int              `json:"customerID"`
+    SaleDate      string           `json:"saleDate"`
+    PaymentMethod string           `json:"paymentMethod"`
+    Notes         string           `json:"notes"`
+    Items         []DirectSaleItem `json:"items"`
+}
+
+type DirectSaleItem struct {
+    HarvestProductID int     `json:"harvestProductID"`
+    ProductType      string  `json:"productType"`
+    QuantitySold     int     `json:"quantitySold"`
+    TotalWeightKg    float64 `json:"totalWeightKg"`
+    PricePerKg       float64 `json:"pricePerKg"`
+}
+
