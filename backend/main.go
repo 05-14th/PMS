@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -505,9 +506,23 @@ type DhtData struct {
 
 // In-memory registry and state - resets on server restart
 type Device struct {
-	ID      string `json:"id"`
-	Name    string `json:"name,omitempty"`
-	BaseURL string `json:"baseUrl"` // ESP endpoint, example: http://192.168.1.123
+	IPAddress  string `json:"ipAddress"`
+	DeviceType string `json:"deviceType"`
+}
+
+var (
+	idevicesMu sync.RWMutex
+	idevices   = make(map[string]Device) // key is IP
+)
+
+type DeviceRequest struct {
+	IPAddress  string `json:"ipAddress"`
+	DeviceType string `json:"deviceType"`
+}
+
+type DeviceResponse struct {
+	Message string        `json:"message"`
+	Device  DeviceRequest `json:"device"`
 }
 
 type Telemetry struct {
@@ -3893,218 +3908,72 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 	IoT Data Handling
 =========================== */
 
-// POST /api/iot/devices
-// Body: { "id":"client1", "baseUrl":"http://<esp-ip>", "name":"Brooder 1"}
-func registerDevice(w http.ResponseWriter, r *http.Request) {
-	var d Device
-	if !decodeJSONBody(w, r, &d) {
-		return
-	}
-	if d.ID == "" || d.BaseURL == "" {
-		handleError(w, http.StatusBadRequest, "id and baseUrl are required", nil)
-		return
-	}
-	devMu.Lock()
-	devices[d.ID] = d
-	devMu.Unlock()
-	respondJSON(w, http.StatusOK, map[string]any{"success": true, "device": d})
-}
-
-// POST /api/iot/{id}/relays
-// Body: { "relay1":0|1, "relay2":0|1, "relay3":0|1 }
-// If device is registered with a BaseURL, this forwards the command to ESP: POST <baseUrl>/command
-// It also updates the cached relay state.
-func setRelays(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		handleError(w, http.StatusBadRequest, "device id is required", nil)
-		return
-	}
-	var body struct {
-		Relay1 *int `json:"relay1"`
-		Relay2 *int `json:"relay2"`
-		Relay3 *int `json:"relay3"`
-	}
-	if !decodeJSONBody(w, r, &body) {
+func idevicesHandler(w http.ResponseWriter, r *http.Request) {
+	// CORS for browser calls
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
-	devMu.RLock()
-	d, ok := devices[id]
-	devMu.RUnlock()
-	if !ok {
-		handleError(w, http.StatusNotFound, "device not registered", nil)
-		return
-	}
-
-	// Prepare command payload
-	cmd := map[string]any{}
-	if body.Relay1 != nil {
-		cmd["relay1"] = *body.Relay1
-	}
-	if body.Relay2 != nil {
-		cmd["relay2"] = *body.Relay2
-	}
-	if body.Relay3 != nil {
-		cmd["relay3"] = *body.Relay3
-	}
-
-	// Forward to ESP if BaseURL exists
-	var forwardErr error
-	if d.BaseURL != "" {
-		buf, _ := json.Marshal(cmd)
-		req, _ := http.NewRequest(http.MethodPost, strings.TrimRight(d.BaseURL, "/")+"/command", strings.NewReader(string(buf)))
-		req.Header.Set("Content-Type", "application/json")
-		resp, err := httpc.Do(req)
-		if err != nil {
-			forwardErr = err
-		} else {
-			io.Copy(io.Discard, resp.Body)
-			resp.Body.Close()
-			if resp.StatusCode < 200 || resp.StatusCode > 299 {
-				forwardErr = fmt.Errorf("ESP responded %d", resp.StatusCode)
-			}
+	switch r.Method {
+	case http.MethodPost:
+		var req Device
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid JSON body", http.StatusBadRequest)
+			return
 		}
-	}
+		if req.IPAddress == "" || req.DeviceType == "" {
+			http.Error(w, "ipAddress and deviceType are required", http.StatusBadRequest)
+			return
+		}
+		if net.ParseIP(req.IPAddress) == nil {
+			http.Error(w, "ipAddress is not a valid IP", http.StatusBadRequest)
+			return
+		}
 
-	// Update cached relay state if we have previous telemetry or create a new record
-	devMu.Lock()
-	t := readings[id]
-	if body.Relay1 != nil {
-		t.Relay1 = *body.Relay1
-	}
-	if body.Relay2 != nil {
-		t.Relay2 = *body.Relay2
-	}
-	if body.Relay3 != nil {
-		t.Relay3 = *body.Relay3
-	}
-	t.At = time.Now()
-	readings[id] = t
-	devMu.Unlock()
+		idevicesMu.Lock()
+		idevices[req.IPAddress] = req
+		idevicesMu.Unlock()
 
-	if forwardErr != nil {
-		respondJSON(w, http.StatusAccepted, map[string]any{
-			"success": false,
-			"message": "cached and attempted to forward to device",
-			"error":   forwardErr.Error(),
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"message": "Device added successfully",
+			"device":  req,
 		})
-		return
-	}
-	respondJSON(w, http.StatusOK, map[string]any{"success": true})
-}
 
-// POST /api/iot/{id}/telemetry
-// POST /api/iot/{id}/rotate-servo
-// Body: { "angle": 90 }
-func rotateServoHandler(w http.ResponseWriter, r *http.Request) {
-	deviceID := chi.URLParam(r, "id")
-	var payload struct {
-		Angle int `json:"angle"`
-	}
-	if !decodeJSONBody(w, r, &payload) {
-		return
-	}
-	devMu.RLock()
-	dev, ok := devices[deviceID]
-	devMu.RUnlock()
-	if !ok {
-		handleError(w, http.StatusNotFound, "Device not found", nil)
-		return
-	}
-	// Forward to ESP8266 endpoint
-	espURL := fmt.Sprintf("%s/rotate-servo", dev.BaseURL)
-	reqBody, _ := json.Marshal(map[string]int{"angle": payload.Angle})
-	req, err := http.NewRequest("POST", espURL, strings.NewReader(string(reqBody)))
-	if err != nil {
-		handleError(w, http.StatusInternalServerError, "Failed to create request", err)
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := httpc.Do(req)
-	if err != nil {
-		handleError(w, http.StatusBadGateway, "Failed to reach device", err)
-		return
-	}
-	defer resp.Body.Close()
-	body, _ := io.ReadAll(resp.Body)
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(resp.StatusCode)
-	w.Write(body)
-}
+	case http.MethodGet:
+		// Optional filter by ipAddress: /api/idevices?ipAddress=192.168.1.10
+		ip := r.URL.Query().Get("ipAddress")
 
-// Body from ESP: { "water1":0|1, "water2":0|1, "water3":0|1, "relay1":0|1, "relay2":0|1, "relay3":0|1}
-func postTelemetry(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		handleError(w, http.StatusBadRequest, "device id is required", nil)
-		return
-	}
-	var t Telemetry
-	var incoming map[string]any
-	dec := json.NewDecoder(r.Body)
-	if err := dec.Decode(&incoming); err != nil {
-		handleError(w, http.StatusBadRequest, "Invalid JSON body", err)
-		return
-	}
+		w.Header().Set("Content-Type", "application/json")
 
-	// Extract ints with defaults
-	toInt := func(v any) int {
-		switch x := v.(type) {
-		case float64:
-			return int(x)
-		case int:
-			return x
-		default:
-			return 0
+		idevicesMu.RLock()
+		defer idevicesMu.RUnlock()
+
+		if ip != "" {
+			if d, ok := idevices[ip]; ok {
+				_ = json.NewEncoder(w).Encode(d)
+				return
+			}
+			http.Error(w, "device not found", http.StatusNotFound)
+			return
 		}
-	}
-	t.Water1 = toInt(incoming["water1"])
-	t.Water2 = toInt(incoming["water2"])
-	t.Water3 = toInt(incoming["water3"])
-	t.Relay1 = toInt(incoming["relay1"])
-	t.Relay2 = toInt(incoming["relay2"])
-	t.Relay3 = toInt(incoming["relay3"])
-	t.At = time.Now()
 
-	devMu.Lock()
-	readings[id] = t
-	devMu.Unlock()
-	respondJSON(w, http.StatusOK, map[string]any{"success": true})
+		list := make([]Device, 0, len(idevices))
+		for _, d := range idevices {
+			list = append(list, d)
+		}
+		_ = json.NewEncoder(w).Encode(list)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
 }
 
-// GET /api/iot/{id}/water-level
-// Returns the last reported water levels from cache
-func getWaterLevel(w http.ResponseWriter, r *http.Request) {
-	id := chi.URLParam(r, "id")
-	if id == "" {
-		handleError(w, http.StatusBadRequest, "device id is required", nil)
-		return
-	}
-	devMu.RLock()
-	t, ok := readings[id]
-	devMu.RUnlock()
-	if !ok {
-		handleError(w, http.StatusNotFound, "no telemetry yet", nil)
-		return
-	}
-	respondJSON(w, http.StatusOK, map[string]any{
-		"device": id,
-		"at":     t.At.Format(time.RFC3339),
-		"water": map[string]int{
-			"water1": t.Water1,
-			"water2": t.Water2,
-			"water3": t.Water3,
-		},
-		"relays": map[string]int{
-			"relay1": t.Relay1,
-			"relay2": t.Relay2,
-			"relay3": t.Relay3,
-		},
-	})
-}
-
-func 
 /* ===========================
     Router / Server
 =========================== */
@@ -4218,11 +4087,7 @@ func buildRouter() http.Handler {
 
 		//IoT device management
 		r.Route("/iot", func(r chi.Router) {
-			r.Post("/devices", registerDevice)
-			r.Post("/{id}/relays", setRelays)
-			r.Post("/{id}/telemetry", postTelemetry)
-			r.Get("/{id}/water-level", getWaterLevel)
-			r.Post("/{id}/rotate-servo", rotateServoHandler)
+			r.Handle("/manageDevices", http.HandlerFunc(idevicesHandler))
 		})
 	})
 

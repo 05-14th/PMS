@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import axios from 'axios';
 
 interface AddDeviceProps {
   isOpen: boolean;
@@ -12,33 +13,56 @@ const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) =
   const [error, setError] = useState('');
   const [customType, setCustomType] = useState('');
   const [showCustomInput, setShowCustomInput] = useState(false);
+  const [deviceInfo, setDeviceInfo] = useState<{ ipAddress: string; deviceType: string } | null>(null);
+  const serverHost = import.meta.env.VITE_APP_SERVERHOST;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    
+
+    setError("");
+
     // Basic validation
-    if (!ipAddress.trim()) {
-      setError('IP Address is required');
+    const ip = ipAddress.trim();
+    if (!ip) {
+      setError("IP Address is required");
       return;
     }
-    
-    const selectedType = showCustomInput ? customType : deviceType;
+
+    const selectedType = (showCustomInput ? customType : deviceType).trim();
     if (!selectedType) {
-      setError('Please enter or select a device type');
+      setError("Please enter or select a device type");
       return;
     }
-    
-    // Call the parent handler with the form data
-    onAddDevice(ipAddress, selectedType);
-    
-    // Reset form
-    setIpAddress('');
-    setDeviceType('');
-    setCustomType('');
-    setError('');
-    setShowCustomInput(false);
-    onClose();
+
+    try {
+      // Save to backend
+      const response = await axios.post(serverHost +"/api/iot/manageDevices", {
+        ipAddress: ip,
+        deviceType: selectedType,
+      });
+      console.log("Device added successfully:", response.data);
+
+      // Update parent and any local state you keep
+      onAddDevice(ip, selectedType);
+      setDeviceInfo({ ipAddress: ip, deviceType: selectedType });
+
+      // Reset form and close
+      setIpAddress("");
+      setDeviceType("");
+      setCustomType("");
+      setError("");
+      setShowCustomInput(false);
+      onClose();
+    } catch (error: any) {
+      console.error("Error adding device:", error);
+      const msg =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to add device";
+      setError(msg);
+    }
   };
+
 
   if (!isOpen) return null;
 
@@ -99,8 +123,12 @@ const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) =
                 onChange={(e) => setDeviceType(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
               >
-                <option value="">Select </option>
-                <option value="Custom Device"> Device</option>
+                <option value="">Select</option>
+                <option value="Watering">Watering</option>
+                <option value="Feeding">Feeding</option>
+                <option value="Medicine">Medicine</option>
+                <option value="Lighting">Lighting</option>
+                <option value="Custom">Custom</option>
               </select>
             )}
           </div>

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Calendar, Plus } from 'lucide-react';
 import Automation_Form from './Automation/Automation_Form';
 import Add_Device from './Device_Forms/Add_Device';
+import { a } from 'framer-motion/client';
+import axios from 'axios';
 
 interface ToggleManualAutoModeProps {
   isAuto: boolean;
@@ -21,7 +23,6 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
   const [isAuto, setIsAuto] = useState(externalIsAuto);
   const [showSchedule, setShowSchedule] = useState(false);
   const [showAddDevice, setShowAddDevice] = useState(false);
-
   // Sync with external state
   useEffect(() => {
     setIsAuto(externalIsAuto);
@@ -51,10 +52,10 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
     setShowAddDevice(false);
   };
 
+  // Store added device info to backend
   const handleAddDevice = (ipAddress: string, deviceType: string) => {
     console.log('Adding device:', { ipAddress, deviceType });
-    // Here you can add the logic to handle the new device
-    // For example, update state or make an API call
+   
   };
 
   return (

@@ -13,6 +13,11 @@ const Feedingandwatering: React.FC = () => {
   const [waterState, setWaterState] = useState<string>("Empty");
   const [isAutoMode, setIsAutoMode] = useState<boolean>(true);
   const [activeTab, setActiveTab] = useState<string>("Control");
+  const [wateringIp, setWateringIp] = useState<string>("");
+  const [feedingIp, setFeedingIp] = useState<string>("");
+  const [medicineIp, setMedicineIp] = useState<string>("");
+  const serverHost = import.meta.env.VITE_APP_SERVERHOST;
+
 
   // Map tab names to components
   const tabComponents: { [key: string]: React.ReactNode } = {
@@ -21,7 +26,7 @@ const Feedingandwatering: React.FC = () => {
   };
 
   React.useEffect(() => {
-    axios.get("http://192.168.1.16/telemetry")
+    axios.get(`http://${wateringIp}/telemetry`)
       .then(response => {
         const data = response.data;
         setRelayState({
@@ -33,6 +38,20 @@ const Feedingandwatering: React.FC = () => {
       .catch(error => {
         console.error("Error fetching telemetry data:", error);
       });
+
+    axios.get(`${serverHost}/api/iot/manageDevices`)
+      .then(response => {
+        const devices = response.data;
+        devices.forEach((device: { deviceType: string; ipAddress: string }) => {
+          if (device.deviceType === "Watering") setWateringIp(device.ipAddress);
+          else if (device.deviceType === "Feeding") setFeedingIp(device.ipAddress);
+          else if (device.deviceType === "Medicine") setMedicineIp(device.ipAddress);
+        });
+      })
+      .catch(error => {
+        console.error("Error fetching device data:", error);
+      });
+
   }, []);
 
   const handleToggleMode = (isAuto: boolean) => {
@@ -44,23 +63,37 @@ const Feedingandwatering: React.FC = () => {
     }
     
   };
-
+  
   const postModeChange = (mode: string) => {
-    axios.post("http://192.168.1.9/set-relays", {
-      "relay1": 0,
-      "relay2": 0,
-      "relay3": 0,
-      "mode": mode}
-  )
-      .then(response => console.log("Mode changed:", response.data))
-      .catch(error => console.error("Error changing mode:", error));
-  }
+    Promise.all([
+      axios.post(`http://${wateringIp}/set-relays`, {
+        relay1: 0,
+        relay2: 0,
+        relay3: 0,
+        mode: mode,
+      }),
+      axios.post(`http://${medicineIp}/set-relays`, {
+        relay1: 0,
+        relay2: 0,
+        relay3: 0,
+        mode: mode,
+      }),
+      axios.post(`http://${feedingIp}/mode`, { mode: mode })
+    ])
+      .then(([wateringResponse, medicineResponse, feedingRespons]) => {
+        console.log("Watering response:", wateringResponse.data);
+        console.log("Medicine response:", medicineResponse.data);
+        console.log("Feeding response:", feedingRespons.data);
+      })
+      .catch((error) => console.error("Error changing mode:", error));
+  };
+
   
   // Rotate servo for feed buttons
   const handleFeedRotate = async (relay: number) => {
     try {
       const { data } = await axios.post(
-        "http://192.168.1.17/rotate-servo",
+        `http://${feedingIp}/rotate-servo`,
         { relay },
         { headers: { "Content-Type": "application/json" }, timeout: 3000 }
       );
@@ -79,7 +112,7 @@ const Feedingandwatering: React.FC = () => {
     newState[`relay${relayNum}` as keyof typeof newState] =
       relayState[`relay${relayNum}` as keyof typeof newState] ? 0 : 1;
     setRelayState(newState);
-    axios.post("http://192.168.1.16/set-relays", newState)
+    axios.post(`http://${wateringIp}/set-relays`, newState)
       .then(response => console.log("Watering successful:", response.data))
       .catch(error => console.error("Error watering:", error));
   };
@@ -90,7 +123,7 @@ const Feedingandwatering: React.FC = () => {
     newState[`relay_med${relayNum}` as keyof typeof newState] =
       medRelayState[`relay_med${relayNum}` as keyof typeof newState] ? 0 : 1;
     setMedRelayState(newState);
-    axios.post("http://192.168.1.16/set-relays", newState)
+    axios.post(`http://${medicineIp}/set-relays`, newState)
       .then(response => console.log("Medicine relay toggled:", response.data))
       .catch(error => console.error("Error toggling medicine relay:", error));
   };
