@@ -1,239 +1,309 @@
-import React, { useState, useEffect } from 'react';
+// src/pages/Extra/Sales_TabPages/SaleHistory.tsx
+import React, { useState, useEffect } from "react";
 import {
-    Table,
-    Input,
-    Button,
-    DatePicker,
-    Card,
-    Typography,
-    message,
-    Space,
-    Modal,
-    Grid,
-} from 'antd';
-import {
-    SearchOutlined,
-} from '@ant-design/icons';
-import type { ColumnsType } from 'antd/es/table';
-import dayjs from 'dayjs';
-import axios from 'axios';
-import DetailsSaleHistory from '../Forms_Sales/DetailsSaleHistory';
+  Table,
+  Input,
+  Button,
+  DatePicker,
+  Card,
+  Typography,
+  message,
+  Space,
+  Modal,
+  Grid,
+  Tag,
+  Popconfirm,
+} from "antd";
+import { SearchOutlined, DeleteOutlined, EyeOutlined } from "@ant-design/icons";
+import type { ColumnsType } from "antd/es/table";
+import dayjs from "dayjs";
+import axios from "axios";
+import DetailsSaleHistory from "../Forms_Sales/DetailsSaleHistory";
+import FulfillmentModal from "../Forms_Sales/FulfillmentModal";
 
 const { RangePicker } = DatePicker;
 const { Title } = Typography;
 const { useBreakpoint } = Grid;
 
-interface SaleRecord {
-    SaleID: number;
-    SaleDate: string;
-    CustomerName: string;
-    TotalAmount: number;
+// UPDATED: Interface now includes status, batchName, and discount
+interface SaleHistoryRecord {
+  saleID: number;
+  saleDate: string;
+  customerName: string;
+  totalAmount: number;
+  status: "Pending" | "Fulfilled" | "Cancelled";
+  batchName: string;
+  discount: number;
 }
 
 const api = axios.create({
-    baseURL: import.meta.env.VITE_APP_SERVERHOST,
-    timeout: 10000,
+  baseURL: import.meta.env.VITE_APP_SERVERHOST,
+  timeout: 10000,
 });
 
 const SaleHistory: React.FC = () => {
-    const [searchText, setSearchText] = useState('');
-    const [dates, setDates] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([null, null]);
-    const [isLoading, setIsLoading] = useState(false);
-    const [data, setData] = useState<SaleRecord[]>([]);
-    const [isDeleteModalVisible, setIsDeleteModalVisible] = useState(false);
-    const [deletingSaleId, setDeletingSaleId] = useState<number | null>(null);
-    const [isDetailsModalVisible, setIsDetailsModalVisible] = useState(false);
-    const [viewingSaleId, setViewingSaleId] = useState<number | null>(null);
+  const [searchText, setSearchText] = useState("");
+  const [dates, setDates] = useState<[dayjs.Dayjs | null, dayjs.Dayjs | null]>([
+    null,
+    null,
+  ]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [data, setData] = useState<SaleHistoryRecord[]>([]);
+  const [isDetailsModalVisible, setIsDetailsModalVisible] = useState(false);
+  const [viewingSaleId, setViewingSaleId] = useState<number | null>(null);
 
-    const screens = useBreakpoint(); // ✅ detect screen size
+  // State for the fulfillment modal
+  const [isFulfillModalVisible, setIsFulfillModalVisible] = useState(false);
+  const [fulfillingSale, setFulfillingSale] =
+    useState<SaleHistoryRecord | null>(null);
 
-    const fetchData = async () => {
-        setIsLoading(true);
-        try {
-            const response = await api.get('/api/sales');
-            setData(response.data || []);
-        } catch (error) {
-            message.error('Failed to load sales history.');
-        } finally {
-            setIsLoading(false);
-        }
-    };
+  const screens = useBreakpoint();
 
-    useEffect(() => {
-        fetchData();
-    }, []);
+  const fetchData = async () => {
+    setIsLoading(true);
+    try {
+      const response = await api.get("/api/sales");
+      setData(response.data || []);
+    } catch (error) {
+      message.error("Failed to load sales history.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-    const handleSearch = (value: string) => {
-        setSearchText(value);
-    };
+  useEffect(() => {
+    fetchData();
+  }, []);
 
-    const handleDateChange = (dates: any) => {
-        setDates(dates);
-    };
+  const handleClearFilters = () => {
+    setSearchText("");
+    setDates([null, null]);
+  };
 
-    const handleClearFilters = () => {
-        setSearchText('');
-        setDates([null, null]);
-    };
+  const handleViewDetails = (record: SaleHistoryRecord) => {
+    setViewingSaleId(record.saleID);
+    setIsDetailsModalVisible(true);
+  };
 
-    const handleDelete = (saleId: number) => {
-        setDeletingSaleId(saleId);
-        setIsDeleteModalVisible(true);
-    };
+  // Handlers for the fulfillment flow
+  const handleOpenFulfillModal = (record: SaleHistoryRecord) => {
+    setFulfillingSale(record);
+    setIsFulfillModalVisible(true);
+  };
 
-    const confirmDelete = async () => {
-        if (!deletingSaleId) return;
-        try {
-            await api.delete(`/api/sales/${deletingSaleId}`);
-            message.success('Sale record archived successfully');
-            await fetchData();
-        } catch (error) {
-            message.error('Failed to archive sale record.');
-        } finally {
-            setIsDeleteModalVisible(false);
-        }
-    };
+  const handleFulfillmentSuccess = () => {
+    setIsFulfillModalVisible(false);
+    setFulfillingSale(null);
+    message.success("Order has been successfully fulfilled!");
+    fetchData(); // Refresh the list to show the updated status
+  };
 
-    const handleViewDetails = (record: SaleRecord) => {
-        setViewingSaleId(record.SaleID);
-        setIsDetailsModalVisible(true);
-    };
+  // NEW: Handler for voiding sales
+  const handleVoidSale = async (saleId: number) => {
+    try {
+      await api.delete(`/api/sales/${saleId}`);
+      message.success(
+        "Sale voided successfully and products returned to inventory"
+      );
+      fetchData(); // Refresh the data
+    } catch (error: any) {
+      console.error("Error voiding sale:", error);
+      message.error(error.response?.data?.error || "Failed to void sale.");
+    }
+  };
 
-    const filteredData = data.filter((item) => {
-        const matchesSearch = item.CustomerName.toLowerCase().includes(
-            searchText.toLowerCase()
-        );
+  const filteredData = data.filter((item) => {
+    // --- FIX: Added a check for item.customerName to prevent crash ---
+    const matchesSearch = (item.customerName || "")
+      .toLowerCase()
+      .includes(searchText.toLowerCase());
 
-        const matchesDateRange =
-            !dates[0] ||
-            !dates[1] ||
-            (dayjs(item.SaleDate).isAfter(dates[0].startOf('day')) &&
-                dayjs(item.SaleDate).isBefore(dates[1].endOf('day')));
+    const matchesDateRange =
+      !dates[0] ||
+      !dates[1] ||
+      (dayjs(item.saleDate).isAfter(dates[0].startOf("day")) &&
+        dayjs(item.saleDate).isBefore(dates[1].endOf("day")));
 
-        return matchesSearch && matchesDateRange;
-    });
+    return matchesSearch && matchesDateRange;
+  });
 
-    const columns: ColumnsType<SaleRecord> = [
-        {
-            title: 'Receipt Number',
-            dataIndex: 'SaleID',
-            key: 'SaleID',
-            render: (id: number) => `RCPT-${String(id).padStart(5, '0')}`,
-            sorter: (a, b) => a.SaleID - b.SaleID,
-        },
-        {
-            title: 'Date and Time',
-            dataIndex: 'SaleDate',
-            key: 'SaleDate',
-            render: (dateTime: string) =>
-                dayjs(dateTime).format('MMM D, YYYY hh:mm A'),
-            sorter: (a, b) =>
-                dayjs(a.SaleDate).unix() - dayjs(b.SaleDate).unix(),
-        },
-        {
-            title: 'Customer Name',
-            dataIndex: 'CustomerName',
-            key: 'CustomerName',
-        },
-        {
-            title: 'Total',
-            dataIndex: 'TotalAmount',
-            key: 'TotalAmount',
-            render: (total: number) => `₱${total.toFixed(2)}`,
-            sorter: (a, b) => a.TotalAmount - b.TotalAmount,
-        },
-        {
-            title: 'Actions',
-            key: 'actions',
-            render: (_, record: SaleRecord) => (
-                <Space size={screens.xs ? 4 : 8}>
-                    <Button
-                        type="link"
-                        size={screens.xs ? 'small' : 'middle'}
-                        onClick={() => handleViewDetails(record)}
-                    >
-                        Details
-                    </Button>
-                    <Button
-                        type="link"
-                        size={screens.xs ? 'small' : 'middle'}
-                        danger
-                        onClick={() => handleDelete(record.SaleID)}
-                    >
-                        Delete
-                    </Button>
-                </Space>
-            ),
-        },
-    ];
-
-    return (
-        <div className="p-2 sm:p-4">
-            <Card className="mb-6">
-                <div className="flex justify-between items-center mb-6">
-                    <Title level={4} className="m-0">
-                        Sales History
-                    </Title>
-                </div>
-
-                {/* Filters - stack on mobile, row on desktop */}
-                <div
-                    className={`flex ${screens.xs ? 'flex-col gap-2' : 'flex-row gap-4'} mb-6`}
+  const columns: ColumnsType<SaleHistoryRecord> = [
+    {
+      title: "Receipt #",
+      dataIndex: "saleID",
+      key: "saleID",
+      render: (id: number) => `RCPT-${String(id).padStart(5, "0")}`,
+    },
+    {
+      title: "Date Ordered",
+      dataIndex: "saleDate",
+      key: "saleDate",
+      render: (dateTime: string) => dayjs(dateTime).format("MMM D, YYYY"),
+      sorter: (a, b) => dayjs(a.saleDate).unix() - dayjs(b.saleDate).unix(),
+    },
+    // --- NEW: Status Column ---
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      render: (status: string) => {
+        let color = "geekblue";
+        if (status === "Fulfilled") color = "green";
+        if (status === "Cancelled") color = "volcano";
+        return <Tag color={color}>{status.toUpperCase()}</Tag>;
+      },
+      filters: [
+        { text: "Pending", value: "Pending" },
+        { text: "Fulfilled", value: "Fulfilled" },
+        { text: "Cancelled", value: "Cancelled" },
+      ],
+      onFilter: (value, record) => record.status === value,
+    },
+    { title: "Customer Name", dataIndex: "customerName", key: "customerName" },
+    { title: "Batch", dataIndex: "batchName", key: "batchName" },
+    {
+      title: "Total",
+      dataIndex: "totalAmount",
+      key: "totalAmount",
+      render: (total: number) => `₱${total.toFixed(2)}`,
+      sorter: (a, b) => a.totalAmount - b.totalAmount,
+    },
+    {
+      title: "Actions",
+      key: "actions",
+      render: (_, record: SaleHistoryRecord) => (
+        <Space size={screens.xs ? 4 : 8}>
+          {/* --- UPDATED: Conditional Actions based on status --- */}
+          {record.status === "Pending" && (
+            <>
+              <Button
+                type="primary"
+                size="small"
+                onClick={() => handleOpenFulfillModal(record)}
+              >
+                Fulfill
+              </Button>
+              <Popconfirm
+                title="Are you sure to void this sale?"
+                description="This will cancel the pending order and cannot be undone."
+                onConfirm={() => handleVoidSale(record.saleID)}
+                okText="Yes"
+                cancelText="No"
+              >
+                <Button
+                  type="link"
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
                 >
-                    <Input
-                        placeholder="Search by customer name"
-                        prefix={<SearchOutlined />}
-                        value={searchText}
-                        onChange={(e) => handleSearch(e.target.value)}
-                        className={screens.xs ? 'w-full' : 'w-96'}
-                    />
-                    <div className={`flex ${screens.xs ? 'flex-col gap-2' : 'flex-row gap-2'}`}>
-                        <RangePicker
-                            onChange={handleDateChange}
-                            value={dates}
-                            style={{ width: screens.xs ? '100%' : undefined }}
-                        />
-                        <Button onClick={handleClearFilters} block={screens.xs}>
-                            Clear
-                        </Button>
-                    </div>
-                </div>
-
-                {/* Delete Modal */}
-                <Modal
-                    title="Confirm Delete Sale"
-                    open={isDeleteModalVisible}
-                    onOk={confirmDelete}
-                    onCancel={() => setIsDeleteModalVisible(false)}
-                    okText="Delete"
-                    okButtonProps={{ danger: true }}
+                  Void
+                </Button>
+              </Popconfirm>
+            </>
+          )}
+          {record.status === "Fulfilled" && (
+            <>
+              <Button
+                type="link"
+                size="small"
+                icon={<EyeOutlined />}
+                onClick={() => handleViewDetails(record)}
+              >
+                Details
+              </Button>
+              <Popconfirm
+                title="Are you sure to void this sale?"
+                description="This will return products to inventory and cannot be undone."
+                onConfirm={() => handleVoidSale(record.saleID)}
+                okText="Yes"
+                cancelText="No"
+              >
+                <Button
+                  type="link"
+                  danger
+                  size="small"
+                  icon={<DeleteOutlined />}
                 >
-                    <p>
-                        Are you sure you want to delete this sale record? This
-                        action cannot be undone.
-                    </p>
-                </Modal>
+                  Void
+                </Button>
+              </Popconfirm>
+            </>
+          )}
+          {record.status === "Cancelled" && (
+            <Button
+              type="link"
+              size="small"
+              icon={<EyeOutlined />}
+              onClick={() => handleViewDetails(record)}
+            >
+              Details
+            </Button>
+          )}
+        </Space>
+      ),
+    },
+  ];
 
-                {/* Details Modal */}
-                <DetailsSaleHistory
-                    visible={isDetailsModalVisible}
-                    onCancel={() => setIsDetailsModalVisible(false)}
-                    saleId={viewingSaleId}
-                />
+  return (
+    <div className="p-2 sm:p-4">
+      <Card>
+        <Title level={4} className="m-0 mb-6">
+          Sales History
+        </Title>
 
-                {/* Table - scrollable on mobile */}
-                <Table
-                    columns={columns}
-                    dataSource={filteredData}
-                    rowKey="SaleID"
-                    loading={isLoading}
-                    pagination={{ pageSize: 10 }}
-                    size={screens.xs ? 'small' : 'middle'}
-                    scroll={screens.xs ? { x: true } : undefined}
-                />
-            </Card>
+        <div
+          className={`flex ${screens.xs ? "flex-col gap-2" : "flex-row gap-4"} mb-6`}
+        >
+          <Input
+            placeholder="Search by customer name"
+            prefix={<SearchOutlined />}
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className={screens.xs ? "w-full" : "w-96"}
+          />
+          <div
+            className={`flex ${screens.xs ? "flex-col gap-2" : "flex-row gap-2"}`}
+          >
+            <RangePicker
+              onChange={setDates}
+              value={dates}
+              style={{ width: screens.xs ? "100%" : undefined }}
+            />
+            <Button onClick={handleClearFilters} block={screens.xs}>
+              Clear
+            </Button>
+          </div>
         </div>
-    );
+
+        <Table
+          columns={columns}
+          dataSource={filteredData}
+          rowKey="saleID"
+          loading={isLoading}
+          pagination={{ pageSize: 10 }}
+          size={screens.xs ? "small" : "middle"}
+          scroll={screens.xs ? { x: true } : undefined}
+        />
+      </Card>
+
+      <DetailsSaleHistory
+        visible={isDetailsModalVisible}
+        onCancel={() => setIsDetailsModalVisible(false)}
+        saleId={viewingSaleId}
+        onSaleVoided={fetchData} // Refresh the table when a sale is voided from details
+      />
+
+      {/* --- NEW: Render the Fulfillment Modal when needed --- */}
+      {fulfillingSale && (
+        <FulfillmentModal
+          visible={isFulfillModalVisible}
+          onCancel={() => setIsFulfillModalVisible(false)}
+          saleOrder={fulfillingSale}
+          onSuccess={handleFulfillmentSuccess}
+        />
+      )}
+    </div>
+  );
 };
 
 export default SaleHistory;

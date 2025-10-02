@@ -4,6 +4,7 @@ package sales
 import (
 	"chickmate-api/internal/models"
 	"chickmate-api/internal/util"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -19,14 +20,63 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(router *chi.Mux) {
-	router.Get("/api/sales", h.getSalesHistory)
-	router.Get("/api/sale-products", h.getAvailableProducts)
-	router.Post("/api/sales", h.createSale)
-	router.Get("/api/sales/{id}", h.getSaleDetails)
-	router.Get("/api/payment-methods", h.getPaymentMethods)
-	router.Delete("/api/sales/{id}", h.deleteSale)
+    router.Get("/api/sales", h.getSalesHistory)
+    router.Post("/api/sales", h.createPreOrder)
+    router.Get("/api/sales/{id}", h.getSaleDetails)
+    router.Post("/api/sales/{id}/fulfill", h.fulfillOrder)
+    router.Delete("/api/sales/{id}", h.voidSale) // Add this line
 
+    router.Get("/api/batches-for-sale", h.getActiveBatchesForSale)
+    router.Get("/api/payment-methods", h.getPaymentMethods)
+    router.Get("/api/harvested-products", h.getHarvestedProducts)
 }
+
+// createPreOrder handles the creation of a new pending order.
+func (h *Handler) createPreOrder(w http.ResponseWriter, r *http.Request) {
+	var payload models.SalePayload
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	saleID, err := h.service.CreatePreOrder(r.Context(), payload)
+	if err != nil {
+		// This could be a DB error or an insufficient stock error from the service
+		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
+		return
+	}
+	util.RespondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "saleID": saleID})
+}
+
+// fulfillOrder handles the fulfillment of a pending order.
+func (h *Handler) fulfillOrder(w http.ResponseWriter, r *http.Request) {
+	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, "Invalid Sale ID", err)
+		return
+	}
+
+	var payload models.FulfillmentPayload
+	if !util.DecodeJSONBody(w, r, &payload) {
+		return
+	}
+
+	if err := h.service.FulfillOrder(r.Context(), saleID, payload); err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to fulfill order", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+// getActiveBatchesForSale provides the list of batches for the pre-order form.
+func (h *Handler) getActiveBatchesForSale(w http.ResponseWriter, r *http.Request) {
+	batches, err := h.service.GetActiveBatchesForSale(r.Context())
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch active batches", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, batches)
+}
+
 
 func (h *Handler) getSalesHistory(w http.ResponseWriter, r *http.Request) {
 	history, err := h.service.GetSalesHistory(r.Context())
@@ -37,19 +87,8 @@ func (h *Handler) getSalesHistory(w http.ResponseWriter, r *http.Request) {
 	util.RespondJSON(w, http.StatusOK, history)
 }
 
-func (h *Handler) getAvailableProducts(w http.ResponseWriter, r *http.Request) {
-	productType := r.URL.Query().Get("type")
-	products, err := h.service.GetAvailableProducts(r.Context(), productType)
-	if err != nil {
-		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch available products", err)
-		return
-	}
-	util.RespondJSON(w, http.StatusOK, products)
-}
-
 func (h *Handler) getSaleDetails(w http.ResponseWriter, r *http.Request) {
-	saleIDStr := chi.URLParam(r, "id")
-	saleID, err := strconv.Atoi(saleIDStr)
+	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
 	if err != nil {
 		util.HandleError(w, http.StatusBadRequest, "Invalid sale ID", err)
 		return
@@ -63,21 +102,6 @@ func (h *Handler) getSaleDetails(w http.ResponseWriter, r *http.Request) {
 	util.RespondJSON(w, http.StatusOK, details)
 }
 
-func (h *Handler) createSale(w http.ResponseWriter, r *http.Request) {
-	var payload models.SalePayload
-	if !util.DecodeJSONBody(w, r, &payload) {
-		return
-	}
-
-	saleID, err := h.service.CreateSale(r.Context(), payload)
-	if err != nil {
-		// This could be a DB error or an insufficient stock error
-		util.HandleError(w, http.StatusInternalServerError, "Failed to create sale", err)
-		return
-	}
-	util.RespondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "saleID": saleID})
-}
-
 func (h *Handler) getPaymentMethods(w http.ResponseWriter, r *http.Request) {
 	methods, err := h.service.GetPaymentMethods(r.Context())
 	if err != nil {
@@ -87,17 +111,31 @@ func (h *Handler) getPaymentMethods(w http.ResponseWriter, r *http.Request) {
 	util.RespondJSON(w, http.StatusOK, methods)
 }
 
-func (h *Handler) deleteSale(w http.ResponseWriter, r *http.Request) {
-	saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
+func (h *Handler) getHarvestedProducts(w http.ResponseWriter, r *http.Request) {
+	products, err := h.service.GetHarvestedProducts(r.Context())
 	if err != nil {
-		util.HandleError(w, http.StatusBadRequest, "Invalid sale ID", err)
+		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch harvested products", err)
 		return
 	}
-	
-	err = h.service.DeleteSale(r.Context(), saleID)
-	if err != nil {
-		util.HandleError(w, http.StatusInternalServerError, "Failed to delete sale", err)
-		return
-	}
-	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+
+	// --- 2. ADD THIS LOGGING LINE ---
+	// This will print the data to your backend terminal.
+	log.Printf("DEBUG: Fetched harvested products from DB: %+v\n", products)
+
+	util.RespondJSON(w, http.StatusOK, products)
+}
+
+// In sales/handler.go - Add voidSale method
+func (h *Handler) voidSale(w http.ResponseWriter, r *http.Request) {
+    saleID, err := strconv.Atoi(chi.URLParam(r, "id"))
+    if err != nil {
+        util.HandleError(w, http.StatusBadRequest, "Invalid sale ID", err)
+        return
+    }
+
+    if err := h.service.VoidSale(r.Context(), saleID); err != nil {
+        util.HandleError(w, http.StatusInternalServerError, "Failed to void sale", err)
+        return
+    }
+    util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
 }

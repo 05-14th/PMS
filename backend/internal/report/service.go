@@ -8,6 +8,7 @@ import (
 	"chickmate-api/internal/models"
 	"chickmate-api/internal/sales"
 	"context"
+	"fmt"
 	"sync"
 )
 
@@ -162,4 +163,83 @@ func (s *Service) GenerateBatchReport(ctx context.Context, batchID int) (*models
 	}
 
 	return &report, nil
+}
+
+func (s *Service) GetBatchTransactions(ctx context.Context, batchID int) ([]models.Transaction, error) {
+    var transactions []models.Transaction
+
+    // Direct database query for sales
+    salesQuery := `
+        SELECT 
+            DATE(so.SaleDate) as SaleDate,
+            c.Name as CustomerName,
+            so.TotalAmount,
+            b.BatchName
+        FROM cm_sales_orders so
+        JOIN cm_customers c ON so.CustomerID = c.CustomerID
+        JOIN cm_batches b ON so.BatchID = b.BatchID
+        WHERE so.BatchID = ? AND so.Status = 'Fulfilled' AND so.IsActive = 1
+        ORDER BY so.SaleDate DESC`
+
+    rows, err := s.repo.db.QueryContext(ctx, salesQuery, batchID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to fetch sales: %w", err)
+    }
+    defer rows.Close()
+
+    for rows.Next() {
+        var saleDate, customerName, batchName string
+        var totalAmount float64
+        
+        if err := rows.Scan(&saleDate, &customerName, &totalAmount, &batchName); err != nil {
+            return nil, fmt.Errorf("failed to scan sale: %w", err)
+        }
+
+        transactions = append(transactions, models.Transaction{
+            Date:        saleDate,
+            Type:        "Revenue",
+            Description: fmt.Sprintf("Sale to %s", customerName),
+            Amount:      totalAmount,
+        })
+    }
+
+    // Add costs
+    costsQuery := `
+        SELECT 
+            Date,
+            CostType,
+            Amount,
+            Description
+        FROM cm_production_cost 
+        WHERE BatchID = ?
+        ORDER BY Date DESC`
+
+    costRows, err := s.repo.db.QueryContext(ctx, costsQuery, batchID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to fetch costs: %w", err)
+    }
+    defer costRows.Close()
+
+    for costRows.Next() {
+        var date, costType, description string
+        var amount float64
+        
+        if err := costRows.Scan(&date, &costType, &amount, &description); err != nil {
+            return nil, fmt.Errorf("failed to scan cost: %w", err)
+        }
+
+        desc := description
+        if desc == "" {
+            desc = costType
+        }
+
+        transactions = append(transactions, models.Transaction{
+            Date:        date,
+            Type:        "Cost",
+            Description: desc,
+            Amount:      -amount,
+        })
+    }
+
+    return transactions, nil
 }

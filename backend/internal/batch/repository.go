@@ -616,3 +616,39 @@ func (r *Repository) GetProductionCostsByActiveBatch(ctx context.Context) (map[i
 	}
 	return costMap, nil
 }
+
+func (r *Repository) GetBatchCostsWithDetails(ctx context.Context, batchID int) ([]map[string]interface{}, error) {
+	query := `
+		SELECT 
+			Date,
+			CostType,
+			Amount,
+			Description
+		FROM cm_production_cost 
+		WHERE BatchID = ?
+		ORDER BY Date DESC`
+	
+	rows, err := r.db.QueryContext(ctx, query, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var costs []map[string]interface{}
+	for rows.Next() {
+		var date, costType, description string
+		var amount float64
+		
+		if err := rows.Scan(&date, &costType, &amount, &description); err != nil {
+			return nil, err
+		}
+		
+		costs = append(costs, map[string]interface{}{
+			"date":        date,
+			"type":        costType,
+			"amount":      amount,
+			"description": description,
+		})
+	}
+	return costs, nil
+}

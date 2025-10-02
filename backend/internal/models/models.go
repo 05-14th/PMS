@@ -186,10 +186,25 @@ type Customer struct {
 // for history log in sales tab
 
 type SaleHistoryRecord struct {
-	SaleID       int     `json:"SaleID"`
-	SaleDate     string  `json:"SaleDate"`
-	CustomerName string  `json:"CustomerName"`
-	TotalAmount  float64 `json:"TotalAmount"`
+	SaleID       int     `json:"saleID"`
+	SaleDate     string  `json:"saleDate"`
+	CustomerName string  `json:"customerName"`
+	TotalAmount  float64 `json:"totalAmount"`
+	Discount     float64 `json:"discount"` // New
+	Status       string  `json:"status"`   // New
+	BatchName    string  `json:"batchName"`  // New
+}
+
+
+type SaleDetail struct {
+    SaleDetailID     int     `json:"saleDetailID"`
+    ProductType      string  `json:"productType"`
+    QuantitySold     int     `json:"quantitySold"`
+    TotalWeightKg    float64 `json:"totalWeightKg"`
+    PricePerKg       float64 `json:"pricePerKg"`
+    HarvestProductID int     `json:"harvestProductID,omitempty"`
+    HarvestDate      string  `json:"harvestDate,omitempty"`
+    BatchName        string  `json:"batchName,omitempty"`
 }
 
 // for details of a single sale record
@@ -217,13 +232,43 @@ type SaleDetailItemPayload struct {
 	PricePerKg       float64 `json:"PricePerKg"`
 }
 
+type SalePayloadItem struct {
+    ProductType  string  `json:"productType"` // New
+    QuantitySold int     `json:"quantitySold"`
+    // PricePerKg and TotalWeightKg will be set during fulfillment
+}
+
 // for entire payload for creating a new sale
 type SalePayload struct {
-	CustomerID    int                     `json:"CustomerID"`
-	SaleDate      string                  `json:"SaleDate"`
-	PaymentMethod string                  `json:"PaymentMethod"`
-	Notes         string                  `json:"Notes"`
-	Items         []SaleDetailItemPayload `json:"items"`
+    CustomerID    int             `json:"customerID"`
+    BatchID       int             `json:"batchID"`      
+    SaleDate      string          `json:"saleDate"`
+    PaymentMethod string          `json:"paymentMethod"`
+    
+    Notes         string          `json:"notes"`
+    Items         []SalePayloadItem `json:"items"`
+}
+
+type FulfillmentPayload struct {
+	Discount      float64         `json:"discount"`     
+	Items []FulfillmentItem `json:"items"`
+}
+
+type FulfillmentItem struct {
+	SaleDetailID    int     `json:"saleDetailID"`
+	TotalWeightKg   float64 `json:"totalWeightKg"`
+	PricePerKg      float64 `json:"pricePerKg"`
+	HarvestProductID int    `json:"harvestProductID"`
+}
+
+
+type BatchForSale struct {
+	BatchID             int    `json:"batchID"`
+	BatchName           string `json:"batchName"`
+	ExpectedHarvestDate string `json:"expectedHarvestDate"`
+	TotalChicken        int    `json:"totalChicken"`
+	CurrentChicken      int    `json:"currentChicken"` // <-- ADD THIS FIELD
+	PreOrderedChicken   int    `json:"preOrderedChicken"`
 }
 
 //for inventory usage log (Batch Monitoring)
@@ -292,14 +337,17 @@ type DirectCostPayload struct {
 }
 
 // For the list of harvested products in the Harvesting tab
+
+
 type HarvestedProduct struct {
-	HarvestProductID  int     `json:"HarvestProductID"`
-	HarvestDate       string  `json:"HarvestDate"`
-	ProductType       string  `json:"ProductType"`
-	QuantityHarvested int     `json:"QuantityHarvested"`
-	QuantityRemaining int     `json:"QuantityRemaining"`
-	WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
-	WeightRemainingKg float64 `json:"WeightRemainingKg"`
+    HarvestProductID  int     `json:"HarvestProductID"`
+    HarvestDate       string  `json:"HarvestDate"`
+    ProductType       string  `json:"ProductType"`
+    QuantityHarvested int     `json:"QuantityHarvested"`
+    QuantityRemaining int     `json:"QuantityRemaining"`
+    WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
+    WeightRemainingKg float64 `json:"WeightRemainingKg"`
+    BatchName         string  `json:"BatchName,omitempty"` // Add this field
 }
 
 // For the optional sale details within the harvest payload

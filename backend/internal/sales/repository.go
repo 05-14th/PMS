@@ -5,6 +5,9 @@ import (
 	"chickmate-api/internal/models"
 	"context"
 	"database/sql"
+	"errors"
+	"fmt"
+	"log"
 	"strings"
 )
 
@@ -16,11 +19,69 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
+// GetActiveBatchesForSale fetches active batches and calculates pre-ordered quantities.
+func (r *Repository) GetActiveBatchesForSale(ctx context.Context) ([]models.BatchForSale, error) {
+	query := `
+		SELECT 
+			b.BatchID, b.BatchName, b.ExpectedHarvestDate, b.TotalChicken, b.CurrentChicken,
+			COALESCE((
+				SELECT SUM(sd.QuantitySold) 
+				FROM cm_sales_orders so
+				JOIN cm_sales_details sd ON so.SaleID = sd.SaleID
+				WHERE so.BatchID = b.BatchID AND so.Status = 'Pending'
+			), 0) as PreOrderedChicken
+		FROM cm_batches b
+		WHERE b.Status = 'Active';`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var batches []models.BatchForSale
+	for rows.Next() {
+		var b models.BatchForSale
+		if err := rows.Scan(&b.BatchID, &b.BatchName, &b.ExpectedHarvestDate, &b.TotalChicken, &b.CurrentChicken, &b.PreOrderedChicken); err != nil {
+			return nil, err
+		}
+		batches = append(batches, b)
+	}
+	return batches, nil
+}
+
+// CreatePreOrder creates a new sale with a 'Pending' status.
+func (r *Repository) CreatePreOrder(ctx context.Context, payload models.SalePayload) (int64, error) {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer tx.Rollback()
+
+	saleQuery := "INSERT INTO cm_sales_orders (CustomerID, BatchID, SaleDate, Status, PaymentMethod, Notes) VALUES (?, ?, ?, 'Pending', ?, ?)"
+	res, err := tx.ExecContext(ctx, saleQuery, payload.CustomerID, payload.BatchID, payload.SaleDate, payload.PaymentMethod, payload.Notes)
+	if err != nil {
+		return 0, err
+	}
+	saleID, _ := res.LastInsertId()
+
+	detailQuery := "INSERT INTO cm_sales_details (SaleID, ProductType, QuantitySold) VALUES (?, ?, ?)"
+	for _, item := range payload.Items {
+		if _, err := tx.ExecContext(ctx, detailQuery, saleID, item.ProductType, item.QuantitySold); err != nil {
+			return 0, err
+		}
+	}
+
+	return saleID, tx.Commit()
+}
+
+// GetSalesHistory now fetches additional order information like status and batch name.
 func (r *Repository) GetSalesHistory(ctx context.Context) ([]models.SaleHistoryRecord, error) {
 	query := `
-		SELECT s.SaleID, s.SaleDate, c.Name, s.TotalAmount 
+		SELECT s.SaleID, s.SaleDate, c.Name, s.TotalAmount, s.Status, COALESCE(b.BatchName, 'N/A'), s.Discount 
 		FROM cm_sales_orders s
 		JOIN cm_customers c ON s.CustomerID = c.CustomerID
+		LEFT JOIN cm_batches b ON s.BatchID = b.BatchID
 		WHERE s.IsActive = 1
 		ORDER BY s.SaleDate DESC;`
 	
@@ -33,7 +94,7 @@ func (r *Repository) GetSalesHistory(ctx context.Context) ([]models.SaleHistoryR
 	var records []models.SaleHistoryRecord
 	for rows.Next() {
 		var rec models.SaleHistoryRecord
-		if err := rows.Scan(&rec.SaleID, &rec.SaleDate, &rec.CustomerName, &rec.TotalAmount); err != nil {
+		if err := rows.Scan(&rec.SaleID, &rec.SaleDate, &rec.CustomerName, &rec.TotalAmount, &rec.Status, &rec.BatchName, &rec.Discount); err != nil {
 			return nil, err
 		}
 		records = append(records, rec)
@@ -41,106 +102,85 @@ func (r *Repository) GetSalesHistory(ctx context.Context) ([]models.SaleHistoryR
 	return records, nil
 }
 
-func (r *Repository) GetAvailableProducts(ctx context.Context, productType string) ([]models.SaleProduct, error) {
-	query := "SELECT HarvestProductID, ProductType, QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE IsActive = 1 AND (QuantityRemaining > 0 OR WeightRemainingKg > 0)"
-	var args []interface{}
-	if productType != "" {
-		query += " AND ProductType = ?"
-		args = append(args, productType)
-	}
+func (r *Repository) FulfillOrder(ctx context.Context, saleID int, payload models.FulfillmentPayload) error {
+    tx, err := r.db.BeginTx(ctx, nil)
+    if err != nil {
+        return err
+    }
+    defer tx.Rollback()
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+    var totalAmount float64
 
-	var products []models.SaleProduct
-	for rows.Next() {
-		var p models.SaleProduct
-		if err := rows.Scan(&p.HarvestProductID, &p.ProductType, &p.QuantityRemaining, &p.WeightRemainingKg); err != nil {
-			return nil, err
-		}
-		products = append(products, p)
-	}
-	return products, nil
+    for _, item := range payload.Items {
+        var currentQty int
+        var orderedQty int
+        var currentWeight float64
+        
+        err = tx.QueryRowContext(ctx, "SELECT QuantitySold FROM cm_sales_details WHERE SaleDetailID = ?", item.SaleDetailID).Scan(&orderedQty)
+        if err != nil {
+            return errors.New("sale detail not found")
+        }
+
+        err = tx.QueryRowContext(ctx, "SELECT QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE HarvestProductID = ? FOR UPDATE", item.HarvestProductID).Scan(&currentQty, &currentWeight)
+        if err != nil {
+            return errors.New("harvested product not found")
+        }
+
+        if currentQty < orderedQty {
+            return fmt.Errorf("insufficient stock for the selected product. Required: %d, Available: %d", orderedQty, currentQty)
+        }
+        
+        // Update sale details with ACTUAL weight and price (no adjustment)
+        updateDetailQuery := "UPDATE cm_sales_details SET TotalWeightKg = ?, PricePerKg = ? WHERE SaleDetailID = ? AND SaleID = ?"
+        _, err = tx.ExecContext(ctx, updateDetailQuery, item.TotalWeightKg, item.PricePerKg, item.SaleDetailID, saleID)
+        if err != nil {
+            return err
+        }
+
+        // Calculate new quantity and weight based on ACTUAL usage
+        newQtyRemaining := currentQty - orderedQty
+        
+        // NEW: Calculate weight remaining, but set to 0 if it would go negative
+        // This allows recording actual weights while preventing negative inventory
+        newWeightRemaining := currentWeight - item.TotalWeightKg
+        if newWeightRemaining < 0 {
+            newWeightRemaining = 0
+            // Log this discrepancy for auditing
+            fmt.Printf("Weight discrepancy: Product %d, Available: %.2fkg, Used: %.2fkg, Setting remaining to 0\n", 
+                item.HarvestProductID, currentWeight, item.TotalWeightKg)
+        }
+
+        // Determine if we should deactivate the product
+        isActive := 1
+        if newQtyRemaining <= 0 {
+            isActive = 0
+        }
+
+        updateStockQuery := `
+            UPDATE cm_harvest_products 
+            SET QuantityRemaining = ?, 
+                WeightRemainingKg = ?,
+                IsActive = ?
+            WHERE HarvestProductID = ?`
+        _, err = tx.ExecContext(ctx, updateStockQuery, newQtyRemaining, newWeightRemaining, isActive, item.HarvestProductID)
+        if err != nil {
+            return err
+        }
+        
+        // Use ACTUAL weight for pricing
+        totalAmount += item.TotalWeightKg * item.PricePerKg
+    }
+
+    finalTotal := totalAmount - payload.Discount
+    updateOrderQuery := "UPDATE cm_sales_orders SET Status = 'Fulfilled', TotalAmount = ?, Discount = ? WHERE SaleID = ?"
+    _, err = tx.ExecContext(ctx, updateOrderQuery, finalTotal, payload.Discount, saleID)
+    if err != nil {
+        return err
+    }
+
+    return tx.Commit()
 }
 
-func (r *Repository) GetSaleDetails(ctx context.Context, saleID int) ([]models.SaleDetailItem, error) {
-	query := `
-		SELECT 
-			sd.SaleDetailID, hp.ProductType, sd.QuantitySold, 
-			sd.TotalWeightKg, sd.PricePerKg
-		FROM cm_sales_details sd
-		JOIN cm_harvest_products hp ON sd.HarvestProductID = hp.HarvestProductID
-		WHERE sd.SaleID = ?;`
-
-	rows, err := r.db.QueryContext(ctx, query, saleID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-
-	var details []models.SaleDetailItem
-	for rows.Next() {
-		var d models.SaleDetailItem
-		if err := rows.Scan(&d.SaleDetailID, &d.ItemName, &d.QuantitySold, &d.TotalWeightKg, &d.PricePerKg); err != nil {
-			return nil, err
-		}
-		details = append(details, d)
-	}
-	return details, nil
-}
-
-func (r *Repository) CreateSale(ctx context.Context, payload models.SalePayload, totalAmount float64) (int64, error) {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return 0, err
-	}
-	defer tx.Rollback()
-
-	saleQuery := "INSERT INTO cm_sales_orders (CustomerID, SaleDate, TotalAmount, PaymentMethod, Notes, IsActive) VALUES (?, ?, ?, ?, ?, 1)"
-	res, err := tx.ExecContext(ctx, saleQuery, payload.CustomerID, payload.SaleDate, totalAmount, payload.PaymentMethod, payload.Notes)
-	if err != nil {
-		return 0, err
-	}
-	saleID, _ := res.LastInsertId()
-
-	for _, item := range payload.Items {
-		var currentQty, currentWeight float64
-		checkQuery := "SELECT QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE HarvestProductID = ? FOR UPDATE"
-		if err := tx.QueryRowContext(ctx, checkQuery, item.HarvestProductID).Scan(&currentQty, &currentWeight); err != nil {
-			return 0, err
-		}
-
-		newQtyRemaining := currentQty - item.QuantitySold
-		newWeightRemaining := currentWeight - item.TotalWeightKg
-
-		if newQtyRemaining < 0 || newWeightRemaining < 0 {
-			return 0, sql.ErrNoRows // Using this error to signify insufficient stock
-		}
-
-		updateStockQuery := "UPDATE cm_harvest_products SET QuantityRemaining = ?, WeightRemainingKg = ? WHERE HarvestProductID = ?"
-		_, err = tx.ExecContext(ctx, updateStockQuery, newQtyRemaining, newWeightRemaining, item.HarvestProductID)
-		if err != nil {
-			return 0, err
-		}
-
-		if newQtyRemaining <= 0 && newWeightRemaining <= 0 {
-			_, err = tx.ExecContext(ctx, "UPDATE cm_harvest_products SET IsActive = 0 WHERE HarvestProductID = ?", item.HarvestProductID)
-			if err != nil {
-				return 0, err
-			}
-		}
-
-		detailQuery := "INSERT INTO cm_sales_details (SaleID, HarvestProductID, QuantitySold, TotalWeightKg, PricePerKg) VALUES (?, ?, ?, ?, ?)"
-		if _, err := tx.ExecContext(ctx, detailQuery, saleID, item.HarvestProductID, item.QuantitySold, item.TotalWeightKg, item.PricePerKg); err != nil {
-			return 0, err
-		}
-	}
-
-	return saleID, tx.Commit()
-}
 
 func (r *Repository) GetPaymentMethods(ctx context.Context) ([]string, error) {
 	query := `
@@ -152,35 +192,81 @@ func (r *Repository) GetPaymentMethods(ctx context.Context) ([]string, error) {
 	if err := r.db.QueryRowContext(ctx, query).Scan(&enumStr); err != nil {
 		return nil, err
 	}
-
 	cleanedStr := strings.ReplaceAll(enumStr, "'", "")
 	return strings.Split(cleanedStr, ","), nil
 }
 
+
+func (r *Repository) GetSaleDetails(ctx context.Context, saleID int) ([]models.SaleDetail, error) {
+    query := `
+        SELECT 
+            sd.SaleDetailID, 
+            sd.ProductType,
+            sd.QuantitySold, 
+            COALESCE(sd.TotalWeightKg, 0) as TotalWeightKg, 
+            COALESCE(sd.PricePerKg, 0) as PricePerKg,
+            b.BatchName
+        FROM cm_sales_details sd
+        JOIN cm_sales_orders so ON sd.SaleID = so.SaleID
+        LEFT JOIN cm_batches b ON so.BatchID = b.BatchID
+        WHERE sd.SaleID = ?
+        ORDER BY sd.SaleDetailID;`
+
+    rows, err := r.db.QueryContext(ctx, query, saleID)
+    if err != nil {
+        return nil, fmt.Errorf("failed to query sale details: %w", err)
+    }
+    defer rows.Close()
+
+    var details []models.SaleDetail
+    for rows.Next() {
+        var d models.SaleDetail
+        var batchName sql.NullString
+        
+        if err := rows.Scan(
+            &d.SaleDetailID, 
+            &d.ProductType, 
+            &d.QuantitySold, 
+            &d.TotalWeightKg, 
+            &d.PricePerKg,
+            &batchName,
+        ); err != nil {
+            return nil, fmt.Errorf("failed to scan sale detail: %w", err)
+        }
+        
+        if batchName.Valid {
+            d.BatchName = batchName.String
+        }
+        
+        details = append(details, d)
+    }
+    
+    if err := rows.Err(); err != nil {
+        return nil, fmt.Errorf("error iterating rows: %w", err)
+    }
+    
+    return details, nil
+}
+
+// --- FIX: ADDED MISSING REPORTING FUNCTIONS BACK ---
+
 func (r *Repository) GetTotalRevenueForBatch(ctx context.Context, batchID int) (float64, error) {
 	var totalRevenue float64
+	// Updated query to use the final TotalAmount from fulfilled orders
 	query := `
-		SELECT COALESCE(SUM(sd.TotalWeightKg * sd.PricePerKg), 0)
-		FROM cm_sales_details sd
-		JOIN cm_harvest_products hp ON sd.HarvestProductID = hp.HarvestProductID
-		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-		WHERE h.BatchID = ?`
+		SELECT COALESCE(SUM(so.TotalAmount), 0)
+		FROM cm_sales_orders so
+		WHERE so.BatchID = ? AND so.Status = 'Fulfilled' AND so.IsActive = 1`
 	err := r.db.QueryRowContext(ctx, query, batchID).Scan(&totalRevenue)
 	return totalRevenue, err
 }
 
-func (r *Repository) GetMonthlyRevenue(ctx context.Context) (float64, error) {
-	var monthlyRevenue float64
-	query := `SELECT COALESCE(SUM(TotalAmount), 0) FROM cm_sales_orders WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY AND IsActive = 1`
-	err := r.db.QueryRowContext(ctx, query).Scan(&monthlyRevenue)
-	return monthlyRevenue, err
-}
-
 func (r *Repository) GetRevenueTimeline(ctx context.Context) (map[string]float64, error) {
+	// Updated query to only count fulfilled orders
 	query := `
 		SELECT DATE(SaleDate), SUM(TotalAmount) 
 		FROM cm_sales_orders 
-		WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY AND IsActive = 1 
+		WHERE SaleDate >= CURDATE() - INTERVAL 30 DAY AND IsActive = 1 AND Status = 'Fulfilled'
 		GROUP BY DATE(SaleDate)`
 	
 	rows, err := r.db.QueryContext(ctx, query)
@@ -203,10 +289,13 @@ func (r *Repository) GetRevenueTimeline(ctx context.Context) (map[string]float64
 
 func (r *Repository) GetHistoricalAvgPricePerKg(ctx context.Context) (float64, error) { 
 	var avgPrice sql.NullFloat64
+	// This logic remains valid as it averages across all completed sales details
 	query := `
 		SELECT SUM(sd.TotalWeightKg * sd.PricePerKg) / NULLIF(SUM(sd.TotalWeightKg), 0)
-		FROM cm_sales_details sd`
-	err := r.db.QueryRowContext(ctx, query).Scan(&avgPrice) // Now 'ctx' is defined
+		FROM cm_sales_details sd
+		JOIN cm_sales_orders so ON sd.SaleID = so.SaleID
+		WHERE so.Status = 'Fulfilled'`
+	err := r.db.QueryRowContext(ctx, query).Scan(&avgPrice)
 	if err != nil && err != sql.ErrNoRows {
 		return 160.0, err // Return default on error
 	}
@@ -216,67 +305,15 @@ func (r *Repository) GetHistoricalAvgPricePerKg(ctx context.Context) (float64, e
 	return avgPrice.Float64, nil
 }
 
-func (r *Repository) DeleteSale(ctx context.Context, saleID int) error {
-	tx, err := r.db.BeginTx(ctx, nil)
-	if err != nil {
-		return err
-	}
-	defer tx.Rollback()
-
-	// 1. Find all items that were part of this sale
-	type itemToRevert struct {
-		HarvestProductID int
-		QuantitySold     int
-		TotalWeightKg    float64
-	}
-	var itemsToRevert []itemToRevert
-
-	rows, err := tx.QueryContext(ctx, "SELECT HarvestProductID, QuantitySold, TotalWeightKg FROM cm_sales_details WHERE SaleID = ?", saleID)
-	if err != nil {
-		return err
-	}
-	defer rows.Close()
-
-	for rows.Next() {
-		var item itemToRevert
-		if err := rows.Scan(&item.HarvestProductID, &item.QuantitySold, &item.TotalWeightKg); err != nil {
-			return err
-		}
-		itemsToRevert = append(itemsToRevert, item)
-	}
-
-	// 2. Add the stock back to the harvested products inventory
-	for _, item := range itemsToRevert {
-		_, err := tx.ExecContext(ctx, `
-			UPDATE cm_harvest_products 
-			SET 
-				QuantityRemaining = QuantityRemaining + ?, 
-				WeightRemainingKg = WeightRemainingKg + ?,
-				IsActive = 1
-			WHERE HarvestProductID = ?`,
-			item.QuantitySold, item.TotalWeightKg, item.HarvestProductID)
-		if err != nil {
-			return err
-		}
-	}
-
-	// 3. Soft-delete the sale by marking it as inactive
-	_, err = tx.ExecContext(ctx, "UPDATE cm_sales_orders SET IsActive = 0 WHERE SaleID = ?", saleID)
-	if err != nil {
-		return err
-	}
-
-	return tx.Commit()
-}
 
 func (r *Repository) GetRevenueByActiveBatch(ctx context.Context) (map[int]float64, error) {
+	// Updated query to use new schema and only count fulfilled orders
 	query := `
-		SELECT h.BatchID, COALESCE(SUM(sd.TotalWeightKg * sd.PricePerKg), 0)
-		FROM cm_sales_details sd
-		JOIN cm_harvest_products hp ON sd.HarvestProductID = hp.HarvestProductID
-		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-		WHERE h.BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active')
-		GROUP BY h.BatchID`
+		SELECT so.BatchID, COALESCE(SUM(so.TotalAmount), 0)
+		FROM cm_sales_orders so
+		WHERE so.BatchID IN (SELECT BatchID FROM cm_batches WHERE Status = 'Active') 
+		AND so.Status = 'Fulfilled' AND so.IsActive = 1
+		GROUP BY so.BatchID`
 
 	rows, err := r.db.QueryContext(ctx, query)
 	if err != nil {
@@ -294,4 +331,205 @@ func (r *Repository) GetRevenueByActiveBatch(ctx context.Context) (map[int]float
 		revenueMap[batchID] = totalRevenue
 	}
 	return revenueMap, nil
+}
+
+func (r *Repository) GetHarvestedProducts(ctx context.Context) ([]models.HarvestedProduct, error) {
+    query := `
+        SELECT 
+            hp.HarvestProductID, 
+            h.HarvestDate,
+            hp.ProductType, 
+            hp.QuantityHarvested,
+            hp.QuantityRemaining, 
+            hp.WeightHarvestedKg, 
+            hp.WeightRemainingKg,
+            b.BatchName
+        FROM cm_harvest_products hp
+        JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+        JOIN cm_batches b ON h.BatchID = b.BatchID
+        WHERE hp.IsActive = 1 AND hp.QuantityRemaining > 0
+        ORDER BY h.HarvestDate DESC`
+
+    rows, err := r.db.QueryContext(ctx, query)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var products []models.HarvestedProduct
+    for rows.Next() {
+        var p models.HarvestedProduct
+        if err := rows.Scan(
+            &p.HarvestProductID,
+            &p.HarvestDate,
+            &p.ProductType,
+            &p.QuantityHarvested,
+            &p.QuantityRemaining,
+            &p.WeightHarvestedKg,
+            &p.WeightRemainingKg,
+            &p.BatchName,
+        ); err != nil {
+            return nil, err
+        }
+        products = append(products, p)
+    }
+    return products, nil
+}
+
+
+// In sales/repository.go - Complete fix for VoidSale
+func (r *Repository) VoidSale(ctx context.Context, saleID int) error {
+    tx, err := r.db.BeginTx(ctx, nil)
+    if err != nil {
+        return fmt.Errorf("failed to begin transaction: %w", err)
+    }
+    defer tx.Rollback()
+
+    // 1. First, check if sale exists and get its current status
+    var currentStatus string
+    var batchID sql.NullInt64
+    err = tx.QueryRowContext(ctx, 
+        "SELECT Status, BatchID FROM cm_sales_orders WHERE SaleID = ?", 
+        saleID,
+    ).Scan(&currentStatus, &batchID)
+    
+    if err != nil {
+        if err == sql.ErrNoRows {
+            return fmt.Errorf("sale with ID %d not found", saleID)
+        }
+        return fmt.Errorf("failed to fetch sale: %w", err)
+    }
+
+    // 2. Prevent voiding already cancelled sales
+    if currentStatus == "Cancelled" {
+        return fmt.Errorf("sale is already cancelled")
+    }
+
+    // 3. Get sale details to return to inventory
+    detailsQuery := `
+        SELECT 
+            sd.SaleDetailID,
+            sd.ProductType,
+            sd.QuantitySold,
+            COALESCE(sd.TotalWeightKg, 0) as TotalWeightKg
+        FROM cm_sales_details sd
+        WHERE sd.SaleID = ?`
+    
+    rows, err := tx.QueryContext(ctx, detailsQuery, saleID)
+    if err != nil {
+        return fmt.Errorf("failed to fetch sale details: %w", err)
+    }
+    defer rows.Close()
+
+    type saleDetail struct {
+        SaleDetailID  int
+        ProductType   string
+        QuantitySold  int
+        TotalWeightKg float64
+    }
+    
+    var details []saleDetail
+    for rows.Next() {
+        var d saleDetail
+        if err := rows.Scan(&d.SaleDetailID, &d.ProductType, &d.QuantitySold, &d.TotalWeightKg); err != nil {
+            return fmt.Errorf("failed to scan sale detail: %w", err)
+        }
+        details = append(details, d)
+    }
+
+    if err := rows.Err(); err != nil {
+        return fmt.Errorf("error iterating sale details: %w", err)
+    }
+
+    // 4. Return products to inventory
+    // Since we don't have direct HarvestProductID mapping, we'll update the harvest products
+    // based on the batch and product type
+    for _, detail := range details {
+        if batchID.Valid && detail.QuantitySold > 0 {
+            updateQuery := `
+                UPDATE cm_harvest_products hp
+                JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+                SET 
+                    hp.QuantityRemaining = hp.QuantityRemaining + ?,
+                    hp.WeightRemainingKg = hp.WeightRemainingKg + ?,
+                    hp.IsActive = 1
+                WHERE 
+                    h.BatchID = ? 
+                    AND hp.ProductType = ?
+                    AND hp.IsActive = 0
+                ORDER BY hp.HarvestProductID DESC
+                LIMIT 1`
+            
+            result, err := tx.ExecContext(ctx, updateQuery, 
+                detail.QuantitySold, 
+                detail.TotalWeightKg,
+                batchID.Int64,
+                detail.ProductType,
+            )
+            
+            if err != nil {
+                return fmt.Errorf("failed to update inventory for product %s: %w", detail.ProductType, err)
+            }
+            
+            rowsAffected, err := result.RowsAffected()
+            if err != nil {
+                return fmt.Errorf("failed to check inventory update: %w", err)
+            }
+            
+            if rowsAffected == 0 {
+                log.Printf("Warning: No harvest product found to return for batch %d, product %s", 
+                    batchID.Int64, detail.ProductType)
+                // Continue anyway - we'll still cancel the sale
+            }
+        }
+    }
+
+    // 5. Update the sale status to Cancelled
+    updateSaleQuery := "UPDATE cm_sales_orders SET Status = 'Cancelled', IsActive = 0 WHERE SaleID = ?"
+    result, err := tx.ExecContext(ctx, updateSaleQuery, saleID)
+    if err != nil {
+        return fmt.Errorf("failed to cancel sale: %w", err)
+    }
+
+    rowsAffected, err := result.RowsAffected()
+    if err != nil {
+        return fmt.Errorf("failed to check sale update: %w", err)
+    }
+
+    if rowsAffected == 0 {
+        return fmt.Errorf("sale was not updated - may have been modified by another process")
+    }
+
+    // 6. Commit the transaction
+    if err := tx.Commit(); err != nil {
+        return fmt.Errorf("failed to commit transaction: %w", err)
+    }
+
+    return nil
+}
+
+func (r *Repository) GetSalesByBatch(ctx context.Context, batchID int) ([]models.SaleHistoryRecord, error) {
+	query := `
+		SELECT s.SaleID, s.SaleDate, c.Name, s.TotalAmount, s.Status, COALESCE(b.BatchName, 'N/A'), s.Discount 
+		FROM cm_sales_orders s
+		JOIN cm_customers c ON s.CustomerID = c.CustomerID
+		LEFT JOIN cm_batches b ON s.BatchID = b.BatchID
+		WHERE s.IsActive = 1 AND s.BatchID = ?
+		ORDER BY s.SaleDate DESC;`
+	
+	rows, err := r.db.QueryContext(ctx, query, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var records []models.SaleHistoryRecord
+	for rows.Next() {
+		var rec models.SaleHistoryRecord
+		if err := rows.Scan(&rec.SaleID, &rec.SaleDate, &rec.CustomerName, &rec.TotalAmount, &rec.Status, &rec.BatchName, &rec.Discount); err != nil {
+			return nil, err
+		}
+		records = append(records, rec)
+	}
+	return records, nil
 }
