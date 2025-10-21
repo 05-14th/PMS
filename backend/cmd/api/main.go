@@ -21,13 +21,14 @@ import (
 	"chickmate-api/internal/report"
 	"chickmate-api/internal/sales"
 	"chickmate-api/internal/supplier"
+	"chickmate-api/internal/user"
 	"chickmate-api/internal/util"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func buildRouter(batchHandler *batch.Handler, supplierHandler *supplier.Handler, inventoryHandler *inventory.Handler, 
+func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplierHandler *supplier.Handler, inventoryHandler *inventory.Handler, 
 	harvestHandler *harvest.Handler, customerHandler *customer.Handler, salesHandler *sales.Handler, reportHandler *report.Handler,
 	dashboardHandler *dashboard.Handler, planningHandler *planning.Handler) http.Handler {
 	r := chi.NewRouter()
@@ -41,6 +42,7 @@ func buildRouter(batchHandler *batch.Handler, supplierHandler *supplier.Handler,
 	r.Use(util.Cors)
 
 	// Handler routes
+	userHandler.RegisterRoutes(r)
 	batchHandler.RegisterRoutes(r)
 	supplierHandler.RegisterRoutes(r)
 	inventoryHandler.RegisterRoutes(r)
@@ -66,6 +68,10 @@ func buildRouter(batchHandler *batch.Handler, supplierHandler *supplier.Handler,
 
 func main() {
 	database.InitDB()
+
+	userRepo := user.NewRepository(database.DB)
+	userService := user.NewService(userRepo)
+	userHandler := user.NewHandler(userService)
 
 	// Initialize layers for the inventory feature
 	inventoryRepo := inventory.NewRepository(database.DB)
@@ -112,7 +118,7 @@ func main() {
 	planningService := planning.NewService(planningRepo)
 	planningHandler := planning.NewHandler(planningService)
 
-	router := buildRouter(batchHandler, supplierHandler, inventoryHandler, harvestHandler, customerHandler, salesHandler, reportHandler, dashboardHandler, planningHandler)
+	router := buildRouter(userHandler, batchHandler, supplierHandler, inventoryHandler, harvestHandler, customerHandler, salesHandler, reportHandler, dashboardHandler, planningHandler)
 
 	server := &http.Server{
 		Addr:         "0.0.0.0:8080",

@@ -19,41 +19,49 @@ func NewRepository(db *sql.DB) *Repository {
 }
 
 func (r *Repository) GetHarvestedInventory(ctx context.Context, productType, batchID string) ([]models.HarvestedInventoryItem, error) {
-	query := `
-		SELECT
-			hp.HarvestProductID, h.HarvestDate, hp.ProductType, b.BatchName,
-			hp.QuantityHarvested, hp.WeightHarvestedKg, hp.QuantityRemaining, hp.WeightRemainingKg
-		FROM cm_harvest_products hp
-		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-		JOIN cm_batches b ON h.BatchID = b.BatchID
-		WHERE 1=1`
-	var args []interface{}
+    query := `
+        SELECT
+            hp.HarvestProductID, h.HarvestDate, hp.ProductType, b.BatchName,
+            hp.QuantityHarvested, hp.WeightHarvestedKg, hp.QuantityRemaining, hp.WeightRemainingKg
+        FROM cm_harvest_products hp
+        JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+        JOIN cm_batches b ON h.BatchID = b.BatchID
+        WHERE 1=1`
+    
+    var args []interface{}
 
-	if productType != "" && productType != "All" {
-		query += " AND hp.ProductType = ?"
-		args = append(args, productType)
-	}
-	if batchID != "" && batchID != "All" {
-		query += " AND b.BatchID = ?"
-		args = append(args, batchID)
-	}
-	query += " ORDER BY h.HarvestDate DESC, hp.HarvestProductID DESC"
+    if productType != "" && productType != "All" {
+        query += " AND hp.ProductType = ?"
+        args = append(args, productType)
+    }
+    if batchID != "" && batchID != "All" {
+        query += " AND b.BatchID = ?"
+        args = append(args, batchID)
+    }
+    query += " ORDER BY h.HarvestDate DESC, hp.HarvestProductID DESC"
 
-	rows, err := r.db.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
+    fmt.Printf("DEBUG: Executing FULL inventory query (including IsActive=0): %s\n", query)
+    fmt.Printf("DEBUG: Query args: %v\n", args)
 
-	var inventory []models.HarvestedInventoryItem
-	for rows.Next() {
-		var item models.HarvestedInventoryItem
-		if err := rows.Scan(&item.HarvestProductID, &item.HarvestDate, &item.ProductType, &item.BatchOrigin, &item.QuantityHarvested, &item.WeightHarvestedKg, &item.QuantityRemaining, &item.WeightRemainingKg); err != nil {
-			return nil, err
-		}
-		inventory = append(inventory, item)
-	}
-	return inventory, nil
+    rows, err := r.db.QueryContext(ctx, query, args...)
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var inventory []models.HarvestedInventoryItem
+    for rows.Next() {
+        var item models.HarvestedInventoryItem
+        if err := rows.Scan(&item.HarvestProductID, &item.HarvestDate, &item.ProductType, &item.BatchOrigin, 
+            &item.QuantityHarvested, &item.WeightHarvestedKg, &item.QuantityRemaining, &item.WeightRemainingKg); err != nil {
+            return nil, err
+        }
+        inventory = append(inventory, item)
+    }
+    
+    fmt.Printf("DEBUG: GetHarvestedInventory found %d products (including IsActive=0)\n", len(inventory))
+    
+    return inventory, nil
 }
 
 func (r *Repository) GetProductTypes(ctx context.Context) ([]string, error) {
@@ -93,38 +101,39 @@ func (r *Repository) GetBatchList(ctx context.Context) ([]map[string]interface{}
 
 // GetHarvestedSummary calculates the summary data for the inventory page.
 func (r *Repository) GetHarvestedSummary(ctx context.Context) (map[string]interface{}, error) {
-	var totalDressed, totalLive int
-	var totalByproductWeight float64
+    var totalDressed, totalLive int
+    var totalByproductWeight float64
 
-	// Query for Dressed and Live counts
-	err := r.db.QueryRowContext(ctx, `
-		SELECT 
-			COALESCE(SUM(CASE WHEN ProductType = 'Dressed' THEN QuantityRemaining ELSE 0 END), 0),
-			COALESCE(SUM(CASE WHEN ProductType = 'Live' THEN QuantityRemaining ELSE 0 END), 0)
-		FROM cm_harvest_products WHERE IsActive = 1
-	`).Scan(&totalDressed, &totalLive)
-	if err != nil {
-		return nil, err
-	}
+    // Query for Dressed and Live counts - NO IsActive filter
+    err := r.db.QueryRowContext(ctx, `
+        SELECT 
+            COALESCE(SUM(CASE WHEN ProductType = 'Dressed' THEN QuantityRemaining ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN ProductType = 'Live' THEN QuantityRemaining ELSE 0 END), 0)
+        FROM cm_harvest_products`).Scan(&totalDressed, &totalLive) // No WHERE clause
+    if err != nil {
+        return nil, err
+    }
 
-	// Query for Byproduct weight
-	err = r.db.QueryRowContext(ctx, `
-		SELECT COALESCE(SUM(WeightRemainingKg), 0) 
-		FROM cm_harvest_products 
-		WHERE IsActive = 1 AND ProductType NOT IN ('Live', 'Dressed')
-	`).Scan(&totalByproductWeight)
-	if err != nil {
-		return nil, err
-	}
+    // Query for Byproduct weight - NO IsActive filter
+    err = r.db.QueryRowContext(ctx, `
+        SELECT COALESCE(SUM(WeightRemainingKg), 0) 
+        FROM cm_harvest_products 
+        WHERE ProductType NOT IN ('Live', 'Dressed')`).Scan(&totalByproductWeight) // No IsActive filter
+    if err != nil {
+        return nil, err
+    }
 
-	summary := map[string]interface{}{
-		"totalDressed":         totalDressed,
-		"totalLive":            totalLive,
-		"totalByproductWeight": totalByproductWeight,
-	}
-	return summary, nil
+    summary := map[string]interface{}{
+        "totalDressed":         totalDressed,
+        "totalLive":            totalLive,
+        "totalByproductWeight": totalByproductWeight,
+    }
+    
+    fmt.Printf("DEBUG: Summary - Dressed: %d, Live: %d, Byproduct: %.2f (including IsActive=0)\n", 
+        totalDressed, totalLive, totalByproductWeight)
+        
+    return summary, nil
 }
-
 func (r *Repository) CreateHarvest(ctx context.Context, payload models.HarvestPayload) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {

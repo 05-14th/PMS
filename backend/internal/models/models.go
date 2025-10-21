@@ -130,6 +130,7 @@ type HarvestedInventoryItem struct {
 	WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
 	QuantityRemaining int     `json:"QuantityRemaining"`
 	WeightRemainingKg float64 `json:"WeightRemainingKg"`
+	IsActive           bool      `json:"IsActive"` 
 }
 
 type PurchaseHistoryDetail struct {
@@ -551,5 +552,17 @@ type DirectSaleItem struct {
     QuantitySold     int     `json:"quantitySold"`
     TotalWeightKg    float64 `json:"totalWeightKg"`
     PricePerKg       float64 `json:"pricePerKg"`
+}
+
+// for user registration payload
+type UserRegistrationPayload struct {
+	Username    string `json:"username"`
+	FirstName   string `json:"firstName"`
+	LastName    string `json:"lastName"`
+	Suffix      string `json:"suffix"`
+	Email       string `json:"email"`
+	PhoneNumber string `json:"phoneNumber"`
+	Password    string `json:"password"`
+	Role        string `json:"role"`
 }
 

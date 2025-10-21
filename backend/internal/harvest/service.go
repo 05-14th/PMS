@@ -17,7 +17,14 @@ func NewService(repo *Repository) *Service {
 }
 
 func (s *Service) GetHarvestedInventory(ctx context.Context, productType, batchID string) ([]models.HarvestedInventoryItem, error) {
-	return s.repo.GetHarvestedInventory(ctx, productType, batchID)
+    // Simply call the repository - NO additional filtering
+    inventory, err := s.repo.GetHarvestedInventory(ctx, productType, batchID)
+    if err != nil {
+        return nil, err
+    }
+    
+    // NO FILTERING - return everything including sold out items
+    return inventory, nil
 }
 
 func (s *Service) GetProductTypes(ctx context.Context) ([]string, error) {
@@ -27,7 +34,6 @@ func (s *Service) GetProductTypes(ctx context.Context) ([]string, error) {
 func (s *Service) GetBatchList(ctx context.Context) ([]map[string]interface{}, error) {
 	return s.repo.GetBatchList(ctx)
 }
-
 
 func (s *Service) GetHarvestedSummary(ctx context.Context) (map[string]interface{}, error) {
 	return s.repo.GetHarvestedSummary(ctx)

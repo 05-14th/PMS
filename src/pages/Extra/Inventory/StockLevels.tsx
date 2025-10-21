@@ -185,11 +185,12 @@ const StockLevels: React.FC = () => {
   const handleAddSubmit = async (values: any) => {
     setIsSubmitting(true);
     try {
-      const { isNewSupplier, ...itemData } = values;
+      const { isNewSupplier, AmountPaid, ...itemData } = values; // Remove AmountPaid
       const payload = {
         ...itemData,
         PurchaseDate: values.PurchaseDate.format("YYYY-MM-DD"),
-        AmountPaid: values.AmountPaid,
+        // FIX: Send UnitCost as the cost per unit (not total amount)
+        UnitCost: values.UnitCost, // This is the cost per unit
       };
 
       if (isNewSupplier) {
@@ -227,7 +228,9 @@ const StockLevels: React.FC = () => {
         SupplierID: values.SupplierID,
         PurchaseDate: values.PurchaseDate.format("YYYY-MM-DD"),
         QuantityPurchased: values.QuantityPurchased,
-        UnitCost: values.TotalCost,
+        // FIX: Send UnitCost as cost per unit (not TotalCost)
+        UnitCost: values.UnitCost, // This should be cost per unit
+        ReceiptInfo: values.ReceiptInfo,
       };
 
       await api.post("/api/purchases", payload);
@@ -263,8 +266,9 @@ const StockLevels: React.FC = () => {
         SupplierID: values.SupplierID,
         PurchaseDate: values.PurchaseDate.format("YYYY-MM-DD"),
         QuantityPurchased: values.QuantityPurchased,
-        UnitCost: values.TotalCost,
-        ReceiptInfo: values.ReceiptInfo, // <-- ADD THIS LINE
+        // FIX: Send UnitCost as cost per unit (not TotalCost)
+        UnitCost: values.UnitCost, // This should be cost per unit
+        ReceiptInfo: values.ReceiptInfo,
       };
 
       await api.put(`/api/purchases/${editingPurchase.PurchaseID}`, payload);
@@ -349,10 +353,16 @@ const StockLevels: React.FC = () => {
     },
     {
       title: "Cost",
-      dataIndex: "UnitCost",
+      dataIndex: "UnitCost", // This is actually the unit cost from backend
       key: "Cost",
-      render: (cost: number) =>
-        `₱${cost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`,
+      // FIX: Calculate and display total cost instead of unit cost
+      render: (unitCost: number, record: PurchaseHistoryDetail) => {
+        const totalCost = unitCost * record.QuantityPurchased;
+        return `₱${totalCost.toLocaleString(undefined, {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        })}`;
+      },
     },
     {
       title: "Supplier",

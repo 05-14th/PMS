@@ -65,13 +65,22 @@ const HarvestedProducts: React.FC = () => {
     const fetchTableData = async () => {
       setLoading(true);
       try {
+        console.log("DEBUG: Fetching data with filters:", filters);
+
         const [inventoryRes, summaryRes] = await Promise.all([
           api.get("/api/harvested-products", { params: filters }),
           api.get("/api/harvested-products/summary", { params: filters }),
         ]);
+
+        console.log("DEBUG: Raw inventory response:", inventoryRes);
+        console.log("DEBUG: Inventory data:", inventoryRes.data);
+        console.log("DEBUG: Raw summary response:", summaryRes);
+        console.log("DEBUG: Summary data:", summaryRes.data);
+
         setInventory(inventoryRes.data || []);
         setSummary(summaryRes.data || null);
       } catch (error) {
+        console.error("DEBUG: Error fetching data:", error);
         message.error("Failed to load harvested inventory.");
       } finally {
         setLoading(false);
@@ -80,11 +89,12 @@ const HarvestedProducts: React.FC = () => {
     fetchTableData();
   }, [filters]);
 
-  const handleFilterChange = (name: string, value: any) => {
-    setFilters((prev) => ({ ...prev, [name]: value }));
+  // FIX: Safe number formatting function
+  const formatNumber = (value: number | undefined | null): string => {
+    if (value === undefined || value === null) return "0.00";
+    return typeof value === "number" ? value.toFixed(2) : "0.00";
   };
 
-  // MODIFICATION: Added missing 'key' properties for better performance
   const columns = [
     {
       title: "Harvest Date",
@@ -110,30 +120,36 @@ const HarvestedProducts: React.FC = () => {
       title: "Qty Harvested",
       dataIndex: "QuantityHarvested",
       key: "QuantityHarvested",
+      // FIX: Safe rendering for numbers
+      render: (val: number) => val ?? 0,
     },
     {
       title: "Weight Harvested (kg)",
       dataIndex: "WeightHarvestedKg",
       key: "WeightHarvestedKg",
-      render: (val: number) => val.toFixed(2),
+      // FIX: Use safe formatting function
+      render: (val: number) => formatNumber(val),
     },
     {
       title: "Qty Remaining",
       dataIndex: "QuantityRemaining",
       key: "QuantityRemaining",
+      render: (val: number) => val ?? 0,
     },
     {
       title: "Weight Remaining (kg)",
       dataIndex: "WeightRemainingKg",
       key: "WeightRemainingKg",
-      render: (val: number) => val.toFixed(2),
+      // FIX: Use safe formatting function
+      render: (val: number) => formatNumber(val),
     },
     {
       title: "Status",
       key: "status",
       render: (_: any, record: HarvestedInventoryItem) => {
         const isSoldOut =
-          record.QuantityRemaining <= 0 && record.WeightRemainingKg <= 0;
+          (record.QuantityRemaining ?? 0) <= 0 &&
+          (record.WeightRemainingKg ?? 0) <= 0;
         return (
           <Tag color={isSoldOut ? "red" : "green"}>
             {isSoldOut ? "Sold Out" : "In Stock"}
@@ -202,8 +218,8 @@ const HarvestedProducts: React.FC = () => {
               <Col span={8} className="text-center">
                 <Text strong>Byproduct Weight</Text>
                 <Title level={3}>
-                  {/* MODIFICATION: Safely handle the case where summary is null */}
-                  {(summary?.totalByproductWeight ?? 0).toFixed(2)}{" "}
+                  {/* FIX: Use safe formatting function */}
+                  {formatNumber(summary?.totalByproductWeight)}{" "}
                   <span className="text-base font-normal">kg</span>
                 </Title>
               </Col>
@@ -219,6 +235,8 @@ const HarvestedProducts: React.FC = () => {
           loading={loading}
           rowKey="HarvestProductID"
           scroll={{ x: "max-content" }}
+          // FIX: Add empty state for when no data
+          locale={{ emptyText: "No harvested products found" }}
         />
       </Card>
     </div>

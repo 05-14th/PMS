@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { IMaskInput } from "react-imask";
 
 const SignUpPage: React.FC = () => {
   const navigate = useNavigate();
@@ -15,6 +16,9 @@ const SignUpPage: React.FC = () => {
   const [preview, setPreview] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [phoneError, setPhoneError] = useState("");
+
+  const PHONE_PATTERN = /^\+63\s9\d{2}\s\d{3}\s\d{4}$/;
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -24,10 +28,29 @@ const SignUpPage: React.FC = () => {
     }
   };
 
+  const handlePhoneNumberChange = (value: string) => {
+    setPhoneNumber(value);
+
+    if (value.length > 0 && value.length < 12) {
+      setPhoneError("Incomplete number. Must be 10 digits after +63.");
+    } else if (value.length === 12 && !PHONE_PATTERN.test(value)) {
+      setPhoneError("Invalid number. Please check digits.");
+    } else {
+      setPhoneError("");
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
 
+    if (!PHONE_PATTERN.test(phoneNumber)) {
+      setPhoneError("Phone number must be in the format: +63 9XX XXX XXXX");
+      setError("Please correct the phone number format before submitting.");
+      return;
+    }
+
+    // Primary Validation Check
     if (
       !username ||
       !firstName ||
@@ -36,9 +59,16 @@ const SignUpPage: React.FC = () => {
       !phoneNumber ||
       !password ||
       !role ||
-      !profilePic
+      !profilePic ||
+      phoneError
     ) {
-      setError("Please fill in all required fields including profile picture.");
+      if (phoneError) {
+        setError("Please correct the phone number format before submitting.");
+      } else {
+        setError(
+          "Please fill in all required fields including profile picture."
+        );
+      }
       return;
     }
 
@@ -46,26 +76,24 @@ const SignUpPage: React.FC = () => {
 
     try {
       const formData = new FormData();
-      formData.append('username', username);
-      formData.append('firstName', firstName);
-      formData.append('lastName', lastName);
-      formData.append('suffix', suffix);
-      formData.append('email', email);
-      formData.append('phoneNumber', phoneNumber);
-      formData.append('password', password);
-      formData.append('role', role);
-      
-      // Append the file with the correct field name
+      formData.append("username", username);
+      formData.append("firstName", firstName);
+      formData.append("lastName", lastName);
+      formData.append("suffix", suffix);
+      formData.append("email", email);
+      formData.append("phoneNumber", phoneNumber);
+      formData.append("password", password);
+      formData.append("role", role);
+
       if (profilePic) {
-        formData.append('profilePic', profilePic);
+        formData.append("profilePic", profilePic);
       }
 
-      const response = await fetch('http://localhost:8080/api/register', {
-        method: 'POST',
+      const response = await fetch("http://localhost:8080/api/register", {
+        method: "POST",
         body: formData,
-        // Don't set Content-Type header, let the browser set it with the correct boundary
         headers: {
-          'Accept': 'application/json',
+          Accept: "application/json",
         },
       });
 
@@ -73,19 +101,22 @@ const SignUpPage: React.FC = () => {
       try {
         data = await response.json();
       } catch (error) {
-        throw new Error('Failed to parse server response');
+        throw new Error("Failed to parse server response");
       }
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || 'Registration failed');
+        throw new Error(data.error || data.message || "Registration failed");
       }
 
-      alert('Registration successful! Please login.');
-      navigate('/login');
+      alert("Registration successful! Please login.");
+      navigate("/login");
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Registration failed. Please try again.';
+      const errorMessage =
+        err instanceof Error
+          ? err.message
+          : "Registration failed. Please try again.";
       setError(errorMessage);
-      console.error('Registration error:', err);
+      console.error("Registration error:", err);
     } finally {
       setLoading(false);
     }
@@ -159,7 +190,9 @@ const SignUpPage: React.FC = () => {
 
           {/* First Name */}
           <div>
-            <label className="block text-sm font-semibold mb-1">First Name</label>
+            <label className="block text-sm font-semibold mb-1">
+              First Name
+            </label>
             <input
               type="text"
               className="w-full px-4 py-2 border rounded-lg 
@@ -172,7 +205,9 @@ const SignUpPage: React.FC = () => {
 
           {/* Last Name */}
           <div>
-            <label className="block text-sm font-semibold mb-1">Last Name</label>
+            <label className="block text-sm font-semibold mb-1">
+              Last Name
+            </label>
             <input
               type="text"
               className="w-full px-4 py-2 border rounded-lg 
@@ -215,18 +250,26 @@ const SignUpPage: React.FC = () => {
 
           {/* Phone Number */}
           <div>
-            <label className="block text-sm font-semibold mb-1">Phone Number</label>
-            <input
-              type="tel"
-              pattern="^\+63\s[0-9]{3}\s[0-9]{3}\s[0-9]{4}$"
-              title="Format: +63 912 345 6789"
-              className="w-full px-4 py-2 border rounded-lg 
-                         focus:outline-none focus:ring-2 focus:ring-orange-500"
+            <label className="block text-sm font-semibold mb-1">
+              Phone Number
+            </label>
+            <IMaskInput // <--- NEW COMPONENT
+              mask={"+63 000 000 0000"}
+              onAccept={handlePhoneNumberChange}
+              onBlur={() => handlePhoneNumberChange(phoneNumber)}
               value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
+              type="tel"
               placeholder="+63 912 345 6789"
+              className={`w-full px-4 py-2 border rounded-lg 
+                         focus:outline-none focus:ring-2 ${phoneError ? "border-red-500 focus:ring-red-500" : "focus:ring-orange-500"}`}
               required
             />
+            {/* Conditional Error Message */}
+            {phoneError && (
+              <p className="text-red-500 text-xs mt-1 font-medium">
+                {phoneError}
+              </p>
+            )}
           </div>
 
           {/* Password */}

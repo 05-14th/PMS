@@ -157,12 +157,7 @@ func (h *Handler) createDirectSale(w http.ResponseWriter, r *http.Request) {
         util.HandleError(w, http.StatusBadRequest, err.Error(), err)
         return
     }
-    
-    util.RespondJSON(w, http.StatusCreated, map[string]interface{}{
-        "success": true, 
-        "saleID": saleID,
-        "message": "Direct sale completed successfully",
-    })
+    util.RespondJSON(w, http.StatusCreated, map[string]interface{}{"success": true, "saleID": saleID})
 }
 
 // In sales/handler.go - Add this debug endpoint
