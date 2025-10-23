@@ -212,8 +212,8 @@ func (r *Repository) CreateHarvest(ctx context.Context, payload models.HarvestPa
 		// The product is created with its remaining quantity equal to the harvested quantity.
 		productQuery := `
 			INSERT INTO cm_harvest_products 
-			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg) 
-			VALUES (?, ?, ?, ?, ?, ?)`
+			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg, IsActive) 
+			VALUES (?, ?, ?, ?, ?, ?, 1)` // Set IsActive to 1
 		_, err = tx.ExecContext(ctx, productQuery, harvestID, payload.ProductType, payload.QuantityHarvested, payload.TotalWeightKg, payload.QuantityHarvested, payload.TotalWeightKg)
 		if err != nil {
 			return 0, err
@@ -352,13 +352,13 @@ func (r *Repository) CreateByproducts(ctx context.Context, payload models.Proces
 	for _, yield := range payload.Yields {
 		byproductQuery := `
 			INSERT INTO cm_harvest_products
-			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg)
-			VALUES (?, ?, 0, ?, 0, ?)`
+			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg, IsActive)
+			VALUES (?, ?, 0, ?, 0, ?, 1)` // Set IsActive to 1
 		if _, err := tx.ExecContext(ctx, byproductQuery, newHarvestID, yield.ByproductType, yield.ByproductWeightKg, yield.ByproductWeightKg); err != nil {
 			return 0, fmt.Errorf("failed to create byproduct record for %s: %w", yield.ByproductType, err)
 		}
 	}
-
+	
 	return newHarvestID, tx.Commit()
 }
 

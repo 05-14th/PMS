@@ -61,6 +61,7 @@ const DirectSale: React.FC = () => {
   const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [subTotal, setSubTotal] = useState(0); // NEW: For total calculation
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [harvestedProducts, setHarvestedProducts] = useState<
@@ -70,6 +71,12 @@ const DirectSale: React.FC = () => {
   const [selectedProduct, setSelectedProduct] =
     useState<HarvestedProduct | null>(null);
 
+  // NEW: Watchers for dynamic form fields
+  const discount = Form.useWatch("discount", form) || 0;
+  const enteredWeight = Form.useWatch("totalWeightKg", form) || 0;
+  const selectedHarvestProductID = Form.useWatch("harvestProductID", form);
+
+  // Initial data load
   useEffect(() => {
     const fetchInitialData = async () => {
       setIsLoading(true);
@@ -98,11 +105,10 @@ const DirectSale: React.FC = () => {
           batchName: product.batchName || product.BatchName,
         }));
 
-        // Map customers data - handle all possible cases
+        // Map customers data
         const rawCustomers = customersRes.data || [];
         const mappedCustomers = rawCustomers
           .map((customer: any) => {
-            // Try different possible property names
             const customerID =
               customer.customerID ||
               customer.CustomerID ||
@@ -114,12 +120,9 @@ const DirectSale: React.FC = () => {
             return {
               customerID: customerID,
               name: name,
-              email: customer.email || customer.Email,
-              phone: customer.phone || customer.Phone,
-              address: customer.address || customer.Address,
             };
           })
-          .filter((customer: Customer) => customer.customerID && customer.name); // Filter out invalid customers
+          .filter((customer: Customer) => customer.customerID && customer.name);
 
         setCustomers(mappedCustomers);
         setHarvestedProducts(mappedProducts);
@@ -132,9 +135,19 @@ const DirectSale: React.FC = () => {
       }
     };
     fetchInitialData();
-    form.setFieldsValue({ SaleDate: dayjs() });
+    form.setFieldsValue({ SaleDate: dayjs(), discount: 0 });
   }, [form]);
 
+  // NEW: Calculate Subtotal
+  useEffect(() => {
+    const currentSubtotal = orderItems.reduce(
+      (total, item) => total + item.totalWeightKg * item.pricePerKg,
+      0
+    );
+    setSubTotal(currentSubtotal);
+  }, [orderItems]);
+
+  // UPDATED: Handle adding items
   const handleAddItem = (values: any) => {
     if (!selectedProduct) {
       message.error("Please select a product first.");
@@ -153,16 +166,24 @@ const DirectSale: React.FC = () => {
       harvestProductID: selectedProduct.harvestProductID,
       productType: selectedProduct.productType,
       quantitySold: values.quantitySold,
-      totalWeightKg: 0, // Will be calculated during sale completion
-      pricePerKg: 0, // Will be set during sale completion
+      totalWeightKg: values.totalWeightKg, // UPDATED
+      pricePerKg: values.pricePerKg, // UPDATED
       batchName: selectedProduct.batchName,
     };
 
     setOrderItems((prev) => [...prev, newItem]);
-    form.resetFields(["productType", "quantitySold"]);
+    // UPDATED: Reset all item-related fields
+    form.resetFields([
+      "harvestProductID",
+      "productType",
+      "quantitySold",
+      "totalWeightKg",
+      "pricePerKg",
+    ]);
     setSelectedProduct(null);
   };
 
+  // UPDATED: Handle saving the sale
   const handleSaveSale = async () => {
     if (orderItems.length === 0) {
       message.warn("Please add at least one item to the order.");
@@ -175,24 +196,34 @@ const DirectSale: React.FC = () => {
         "SaleDate",
         "PaymentMethod",
         "Notes",
+        "discount",
       ]);
 
       setIsSaving(true);
 
       const payload = {
-        customerID: orderInfo.CustomerID,
-        saleDate: dayjs(orderInfo.SaleDate).format("YYYY-MM-DD HH:mm:ss"),
-        paymentMethod: orderInfo.PaymentMethod,
-        notes: orderInfo.Notes || "",
-        status: "Fulfilled",
+        // --- Main Sale Info (camelCase, no Discount) ---
+        customerID: orderInfo.CustomerID, // Changed from CustomerID
+        saleDate: dayjs(orderInfo.SaleDate).format("YYYY-MM-DD HH:mm:ss"), // Changed from SaleDate
+        paymentMethod: orderInfo.PaymentMethod, // Changed from PaymentMethod
+        notes: orderInfo.Notes || "", // Changed from Notes
+
+        // --- Sale Items Array (camelCase) ---
         items: orderItems.map((item) => ({
-          harvestProductID: item.harvestProductID,
-          productType: item.productType,
-          quantitySold: item.quantitySold,
-          totalWeightKg: item.totalWeightKg,
-          pricePerKg: item.pricePerKg,
+          // Changed from Items
+          harvestProductID: item.harvestProductID, // Changed from HarvestProductID
+          productType: item.productType, // Changed from ProductType
+          quantitySold: item.quantitySold, // Changed from QuantitySold
+          totalWeightKg: item.totalWeightKg, // Changed from TotalWeightKg
+          pricePerKg: item.pricePerKg, // Changed from PricePerKg
         })),
       };
+
+      // You can keep this log for final confirmation
+      console.log(
+        "Sending final payload (camelCase):",
+        JSON.stringify(payload, null, 2)
+      );
 
       await api.post("/api/direct-sales", payload);
       message.success("Direct sale completed successfully!");
@@ -200,7 +231,7 @@ const DirectSale: React.FC = () => {
       // Reset form
       setOrderItems([]);
       form.resetFields();
-      form.setFieldsValue({ SaleDate: dayjs() });
+      form.setFieldsValue({ SaleDate: dayjs(), discount: 0 });
       setSelectedProduct(null);
 
       // Refresh inventory
@@ -230,6 +261,7 @@ const DirectSale: React.FC = () => {
     }
   };
 
+  // UPDATED: Table columns
   const orderItemColumns = [
     {
       title: "Product Type",
@@ -242,9 +274,27 @@ const DirectSale: React.FC = () => {
       key: "batchName",
     },
     {
-      title: "Quantity Ordered",
+      title: "Quantity",
       dataIndex: "quantitySold",
       key: "quantitySold",
+    },
+    {
+      title: "Weight (kg)",
+      dataIndex: "totalWeightKg",
+      key: "totalWeightKg",
+      render: (weight: number) => weight.toFixed(2),
+    },
+    {
+      title: "Price / kg",
+      dataIndex: "pricePerKg",
+      key: "pricePerKg",
+      render: (price: number) => `₱${price.toFixed(2)}`,
+    },
+    {
+      title: "Item Total",
+      key: "itemTotal",
+      render: (_: any, record: OrderItem) =>
+        `₱${(record.totalWeightKg * record.pricePerKg).toFixed(2)}`,
     },
     {
       title: "Actions",
@@ -259,9 +309,7 @@ const DirectSale: React.FC = () => {
               prev.filter((item) => item.key !== record.key)
             )
           }
-        >
-          Remove
-        </Button>
+        />
       ),
     },
   ];
@@ -281,6 +329,10 @@ const DirectSale: React.FC = () => {
       )
     : 0;
 
+  // NEW: Check for weight discrepancy
+  const showWeightWarning =
+    selectedProduct && enteredWeight > selectedProduct.weightRemainingKg;
+
   return (
     <div className="p-2 sm:p-4">
       <Card
@@ -291,6 +343,7 @@ const DirectSale: React.FC = () => {
         }
         style={{ marginBottom: 24 }}
       >
+        {/* Main sale info form (Customer, Date, etc.) */}
         <Form form={form} layout="vertical">
           <Row gutter={[16, 16]}>
             <Col xs={24} md={8}>
@@ -342,10 +395,22 @@ const DirectSale: React.FC = () => {
                 </Select>
               </Form.Item>
             </Col>
-
             <Col xs={24}>
               <Form.Item name="Notes" label="Notes (Optional)">
                 <Input.TextArea rows={1} />
+              </Form.Item>
+            </Col>
+
+            {/* NEW: Discount field moved here */}
+            <Col xs={24} md={8}>
+              <Form.Item name="discount" label="Discount (₱)">
+                <InputNumber
+                  min={0}
+                  style={{ width: "100%" }}
+                  prefix="₱"
+                  precision={2}
+                  disabled={orderItems.length === 0}
+                />
               </Form.Item>
             </Col>
           </Row>
@@ -353,6 +418,7 @@ const DirectSale: React.FC = () => {
 
         <Divider />
 
+        {/* Add items section */}
         {availableProducts.length === 0 ? (
           <Alert
             message="No products available for direct sale"
@@ -362,16 +428,36 @@ const DirectSale: React.FC = () => {
           />
         ) : (
           <>
-            <Form form={form} layout="vertical" onFinish={handleAddItem}>
+            {/* NEW: Weight Discrepancy Warning */}
+            {showWeightWarning && (
+              <Alert
+                message={`Note: Entered weight (${enteredWeight}kg) exceeds recorded available weight (${selectedProduct?.weightRemainingKg}kg). The actual measured weight will be used.`}
+                type="info"
+                showIcon
+                style={{ marginBottom: 16 }}
+              />
+            )}
+
+            {/* UPDATED: Add Item Form */}
+            <Form
+              form={form}
+              layout="vertical"
+              onFinish={handleAddItem}
+              // We use a different key to force re-render when selected product changes
+              // This is a way to clear validation statuses
+              key={selectedHarvestProductID || "add-item-form"}
+            >
               <Space align="end" wrap>
                 <Form.Item
                   label="Product from Inventory"
                   name="harvestProductID"
-                  rules={[{ required: true }]}
+                  rules={[
+                    { required: true, message: "Please select a product." },
+                  ]}
                 >
                   <Select
                     placeholder="Select product"
-                    style={{ width: 300 }}
+                    style={{ width: 250 }}
                     onChange={(value) => {
                       const product = harvestedProducts.find(
                         (p) => p.harvestProductID === value
@@ -379,6 +465,10 @@ const DirectSale: React.FC = () => {
                       setSelectedProduct(product || null);
                       form.setFieldsValue({
                         productType: product?.productType,
+                        // Clear previous item entries
+                        quantitySold: undefined,
+                        totalWeightKg: undefined,
+                        pricePerKg: undefined,
                       });
                     }}
                   >
@@ -387,8 +477,9 @@ const DirectSale: React.FC = () => {
                         key={p.harvestProductID}
                         value={p.harvestProductID}
                       >
-                        {p.productType} - {p.batchName} (Available:{" "}
-                        {p.quantityRemaining})
+                        {p.productType} - {p.batchName} (Qty:{" "}
+                        {p.quantityRemaining}, Wt:{" "}
+                        {p.weightRemainingKg.toFixed(2)}kg)
                       </Option>
                     ))}
                   </Select>
@@ -405,13 +496,81 @@ const DirectSale: React.FC = () => {
                 <Form.Item
                   label="Quantity to Sell"
                   name="quantitySold"
-                  rules={[{ required: true }]}
+                  rules={[
+                    { required: true, message: "Enter quantity." },
+                    {
+                      validator: (_, value) => {
+                        if (value && value > availableForSale) {
+                          return Promise.reject(
+                            new Error(`Max ${availableForSale} available`)
+                          );
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
                 >
                   <InputNumber
                     min={1}
                     max={availableForSale}
                     placeholder="e.g., 5"
-                    style={{ width: 150 }}
+                    style={{ width: 120 }}
+                    disabled={!selectedProduct}
+                  />
+                </Form.Item>
+
+                {/* NEW: Actual Weight */}
+                <Form.Item
+                  label="Actual Weight (kg)"
+                  name="totalWeightKg"
+                  rules={[
+                    { required: true, message: "Enter weight." },
+                    {
+                      validator: (_, value) => {
+                        if (value && value <= 0) {
+                          return Promise.reject(
+                            new Error("Weight must be > 0")
+                          );
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
+                  validateStatus={showWeightWarning ? "warning" : ""}
+                >
+                  <InputNumber
+                    min={0.01}
+                    step={0.01}
+                    precision={2}
+                    placeholder="e.g., 25.5"
+                    style={{ width: 140 }}
+                    disabled={!selectedProduct}
+                  />
+                </Form.Item>
+
+                {/* NEW: Price per Kg */}
+                <Form.Item
+                  label="Price per Kg (₱)"
+                  name="pricePerKg"
+                  rules={[
+                    { required: true, message: "Enter price." },
+                    {
+                      validator: (_, value) => {
+                        if (value && value <= 0) {
+                          return Promise.reject(new Error("Price must be > 0"));
+                        }
+                        return Promise.resolve();
+                      },
+                    },
+                  ]}
+                >
+                  <InputNumber
+                    min={0.01}
+                    step={0.01}
+                    precision={2}
+                    prefix="₱"
+                    placeholder="e.g., 180"
+                    style={{ width: 120 }}
                     disabled={!selectedProduct}
                   />
                 </Form.Item>
@@ -428,7 +587,7 @@ const DirectSale: React.FC = () => {
                 </Form.Item>
 
                 {selectedProduct && (
-                  <Tag color="blue">Available: {availableForSale}</Tag>
+                  <Tag color="blue">Available: {availableForSale} pcs</Tag>
                 )}
               </Space>
             </Form>
@@ -449,23 +608,42 @@ const DirectSale: React.FC = () => {
         />
       </Card>
 
+      {/* NEW: Totals and Save Button */}
       {orderItems.length > 0 && (
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "flex-end",
-            marginTop: "16px",
-          }}
-        >
-          <Button
-            type="primary"
-            size="large"
-            onClick={handleSaveSale}
-            loading={isSaving}
-          >
-            Complete Direct Sale
-          </Button>
-        </div>
+        <Card>
+          <Row gutter={16} align="middle">
+            <Col xs={24} md={12}>
+              {/* Discount field is now part of the main form */}
+              <Text type="secondary">
+                Discount is applied to the final total.
+              </Text>
+            </Col>
+            <Col xs={24} md={12} style={{ textAlign: "right" }}>
+              <div>
+                <Text>Subtotal:</Text>{" "}
+                <Text strong>₱{subTotal.toFixed(2)}</Text>
+              </div>
+              <div>
+                <Text type="danger">Discount:</Text>{" "}
+                <Text strong type="danger">
+                  - ₱{discount.toFixed(2)}
+                </Text>
+              </div>
+              <Title level={4} style={{ marginTop: 8 }}>
+                Final Total: ₱{(subTotal - discount).toFixed(2)}
+              </Title>
+              <Button
+                type="primary"
+                size="large"
+                onClick={handleSaveSale}
+                loading={isSaving}
+                style={{ marginTop: 16 }}
+              >
+                Complete Direct Sale
+              </Button>
+            </Col>
+          </Row>
+        </Card>
       )}
     </div>
   );
