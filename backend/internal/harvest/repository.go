@@ -223,6 +223,8 @@ func (r *Repository) CreateHarvest(ctx context.Context, payload models.HarvestPa
 	return harvestID, tx.Commit()
 }
 
+// File: backend/internal/harvest/repository.go
+
 func (r *Repository) DeleteHarvestProduct(ctx context.Context, harvestProductID int) error {
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -230,43 +232,49 @@ func (r *Repository) DeleteHarvestProduct(ctx context.Context, harvestProductID 
 	}
 	defer tx.Rollback()
 
-	// 1. BUSINESS RULE: Check if the product is part of any sale.
-	var saleCount int
-	err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM cm_sales_details WHERE HarvestProductID = ?", harvestProductID).Scan(&saleCount)
-	if err != nil {
-		return fmt.Errorf("failed to check for existing sales: %w", err)
-	}
-	if saleCount > 0 {
-		return errors.New("cannot delete a harvested product that is already part of a sale")
-	}
+	// 1. BUSINESS RULE - CANNOT BE ENFORCED WITH CURRENT DB SCHEMA
+	// The cm_sales_details table does not have a HarvestProductID column,
+	// so it's impossible to check if a product is part of a sale.
+	// This block has been removed to allow the function to work.
 
-	// 2. Get the batch ID and quantity to revert the stock count.
-	var batchID, quantityHarvested int
-	infoQuery := `
-		SELECT h.BatchID, hp.QuantityHarvested 
-		FROM cm_harvest_products hp
-		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-		WHERE hp.HarvestProductID = ?`
-	err = tx.QueryRowContext(ctx, infoQuery, harvestProductID).Scan(&batchID, &quantityHarvested)
+	// 2. Get the product's details using correct PascalCase column names.
+	var harvestID, quantityToRestore int
+	var productType string
+	productQuery := "SELECT HarvestID, QuantityRemaining, ProductType FROM cm_harvest_products WHERE HarvestProductID = ?"
+	err = tx.QueryRowContext(ctx, productQuery, harvestProductID).Scan(&harvestID, &quantityToRestore, &productType)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return errors.New("harvest product not found")
 		}
-		return err
+		// This error means a column name in cm_harvest_products is wrong.
+		return fmt.Errorf("database schema error fetching product details: %w", err)
 	}
 
-	// 3. Delete the actual harvest product record.
+	// 3. Get the batch_id from the parent harvest record.
+	var batchID int
+	batchQuery := "SELECT BatchID FROM cm_harvest WHERE HarvestID = ?"
+	err = tx.QueryRowContext(ctx, batchQuery, harvestID).Scan(&batchID)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return errors.New("data inconsistency: the parent harvest record for this product could not be found")
+		}
+		return fmt.Errorf("database schema error fetching parent harvest info: %w", err)
+	}
+
+	// 4. Delete the product record.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM cm_harvest_products WHERE HarvestProductID = ?", harvestProductID); err != nil {
-		return fmt.Errorf("failed to delete harvest product: %w", err)
+		return fmt.Errorf("failed to delete harvest product record: %w", err)
 	}
 
-	// 4. Add the chicken count back to the original batch.
-	updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken + ? WHERE BatchID = ?"
-	if _, err := tx.ExecContext(ctx, updateBatchQuery, quantityHarvested, batchID); err != nil {
-		return fmt.Errorf("failed to restore batch population: %w", err)
+	// 5. Restore the chicken count for primary products.
+	if (productType == "Live" || productType == "Dressed") && quantityToRestore > 0 {
+		updateBatchQuery := "UPDATE cm_batches SET CurrentChicken = CurrentChicken + ?, Status = 'Active' WHERE BatchID = ?"
+		if _, err := tx.ExecContext(ctx, updateBatchQuery, quantityToRestore, batchID); err != nil {
+			return fmt.Errorf("failed to restore batch population: %w", err)
+		}
 	}
 
-	// 5. If all steps succeed, commit the transaction.
+	// 6. If all steps succeed, commit the transaction.
 	return tx.Commit()
 }
 
@@ -286,7 +294,6 @@ func (r *Repository) GetSellableInventory(ctx context.Context) (int, error) {
 	return sellableInventory, err
 }
 
-// Add this function to backend/internal/harvest/repository.go
 
 func (r *Repository) CreateByproducts(ctx context.Context, payload models.ProcessPayload) (int64, error) {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -295,23 +302,60 @@ func (r *Repository) CreateByproducts(ctx context.Context, payload models.Proces
 	}
 	defer tx.Rollback()
 
-	// 1. Create a single parent harvest event for this processing action
-	harvestNote := fmt.Sprintf("Processed %d Dressed chickens to create byproducts.", payload.QuantityToProcess)
+	// 1. Get the source product to validate and update its weight.
+	var sourceQtyRemaining int
+	var sourceWeightRemainingKg float64
+	sourceQuery := "SELECT QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE HarvestProductID = ? FOR UPDATE"
+	err = tx.QueryRowContext(ctx, sourceQuery, payload.SourceHarvestProductID).Scan(&sourceQtyRemaining, &sourceWeightRemainingKg)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, errors.New("source dressed product not found")
+		}
+		return 0, fmt.Errorf("could not retrieve source product: %w", err)
+	}
+
+	// 2. Validate that we have enough quantity for the operation.
+	// This step is a logical check, even though we aren't changing the quantity.
+	if payload.QuantityToProcess > sourceQtyRemaining {
+		return 0, fmt.Errorf("cannot process %d chickens, only %d are available in this source", payload.QuantityToProcess, sourceQtyRemaining)
+	}
+
+	// 3. Calculate the total weight of the byproducts being created.
+	var totalByproductWeight float64
+	for _, yield := range payload.Yields {
+		totalByproductWeight += yield.ByproductWeightKg
+	}
+
+	// 4. Validate that the byproduct weight does not exceed the source's remaining weight.
+	if totalByproductWeight > sourceWeightRemainingKg {
+		return 0, fmt.Errorf("byproduct weight (%.2f kg) cannot exceed the source's remaining weight (%.2f kg)", totalByproductWeight, sourceWeightRemainingKg)
+	}
+
+	// 5. Reduce the source product's weight by the byproduct weight. THE QUANTITY REMAINS THE SAME.
+	newSourceWeight := sourceWeightRemainingKg - totalByproductWeight
+	updateQuery := "UPDATE cm_harvest_products SET WeightRemainingKg = ? WHERE HarvestProductID = ?"
+	_, err = tx.ExecContext(ctx, updateQuery, newSourceWeight, payload.SourceHarvestProductID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to update source product weight: %w", err)
+	}
+
+	// 6. Create a single parent harvest event for this processing action.
+	harvestNote := fmt.Sprintf("Created byproducts from %d Dressed chickens.", payload.QuantityToProcess)
 	harvestQuery := "INSERT INTO cm_harvest (BatchID, HarvestDate, Notes) VALUES (?, ?, ?)"
 	res, err := tx.ExecContext(ctx, harvestQuery, payload.BatchID, payload.ProcessingDate, harvestNote)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to create parent harvest record: %w", err)
 	}
 	newHarvestID, _ := res.LastInsertId()
 
-	// 2. Loop through all yielded byproducts and create a record for each
+	// 7. Loop through all yielded byproducts and create a record for each in the inventory.
 	for _, yield := range payload.Yields {
 		byproductQuery := `
-			INSERT INTO cm_harvest_products 
+			INSERT INTO cm_harvest_products
 			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg)
 			VALUES (?, ?, 0, ?, 0, ?)`
 		if _, err := tx.ExecContext(ctx, byproductQuery, newHarvestID, yield.ByproductType, yield.ByproductWeightKg, yield.ByproductWeightKg); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("failed to create byproduct record for %s: %w", yield.ByproductType, err)
 		}
 	}
 

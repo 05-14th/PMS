@@ -14,11 +14,13 @@ import dayjs from "dayjs";
 const { Option } = Select;
 
 interface HarvestedProduct {
-  HarvestProductID: number;
-  HarvestDate: string;
-  ProductType: string;
-  QuantityHarvested: number;
-  // Note: We don't need QtyRemaining here, but it's part of the object
+  harvestProductID: number;
+  harvestDate: string;
+  productType: string;
+  quantityHarvested: number;
+  quantityRemaining: number;
+  weightRemainingKg: number;
+  weightHarvestedKg: number;
 }
 
 interface EditHarvestFormProps {

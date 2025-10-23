@@ -33,24 +33,29 @@ interface Batch {
   batchName: string;
 }
 interface Customer {
-  CustomerID: number;
-  Name: string;
+  customerID: number;
+  name: string;
 }
 interface HarvestedProduct {
-  HarvestProductID: number;
-  HarvestDate: string;
-  ProductType: string;
-  QuantityHarvested: number;
-  QuantityRemaining: number;
-  WeightHarvestedKg: number;
-  WeightRemainingKg: number;
+  harvestProductID: number;
+  harvestDate: string;
+  productType: string;
+  quantityHarvested: number;
+  quantityRemaining: number;
+  weightHarvestedKg: number;
+  weightRemainingKg: number;
 }
 interface DressedProduct {
-  HarvestProductID: number;
-  HarvestDate: string;
-  QuantityRemaining: number;
-  WeightRemainingKg: number;
+  harvestProductID: number;
+  harvestDate: string;
+  quantityRemaining: number;
+  weightRemainingKg: number;
 }
+
+interface BatchVitals {
+  currentPopulation: number;
+}
+
 interface HarvestingProps {
   batch: Batch;
   onDataChange: () => void;
@@ -320,7 +325,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
       key: "HarvestDate",
       render: (text: string) => dayjs(text).format("YYYY-MM-DD"),
     },
-    { title: "Product Type", dataIndex: "ProductType", key: "ProductType" },
+    { title: "Product Type", dataIndex: "productType", key: "ProductType" },
     {
       title: "Qty Harvested",
       dataIndex: "quantityHarvested",
@@ -350,8 +355,8 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
       key: "actions",
       render: (_: any, record: HarvestedProduct) => {
         const isSold =
-          record.QuantityRemaining < record.QuantityHarvested ||
-          record.WeightRemainingKg < record.WeightHarvestedKg;
+          record.quantityRemaining < record.quantityHarvested ||
+          record.weightRemainingKg < record.weightHarvestedKg;
 
         return (
           <div className="flex items-center space-x-4">
@@ -375,7 +380,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
             <button
               onClick={() => {
                 if (!isSold) {
-                  handleDeleteHarvest(record.HarvestProductID);
+                  handleDeleteHarvest(record.harvestProductID);
                 }
               }}
               className={
@@ -653,11 +658,11 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
                   >
                     {dressedInventory.map((p) => (
                       <Option
-                        key={p.HarvestProductID}
-                        value={p.HarvestProductID}
+                        key={p.harvestProductID} // Corrected from HarvestProductID
+                        value={p.harvestProductID} // Corrected from HarvestProductID
                       >
-                        Harvested on {dayjs(p.HarvestDate).format("MMM D")} (
-                        {p.QuantityRemaining} pcs remaining)
+                        Harvested on {dayjs(p.harvestDate).format("MMM D")} ({" "}
+                        {p.quantityRemaining} pcs remaining){" "}
                       </Option>
                     ))}
                   </Select>
