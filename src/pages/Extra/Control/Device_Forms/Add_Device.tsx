@@ -1,68 +1,92 @@
-import React, { useState } from 'react';
-import axios from 'axios';
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import axios from "axios";
 
 interface AddDeviceProps {
   isOpen: boolean;
   onClose: () => void;
-  onAddDevice: (ipAddress: string, deviceType: string) => void;
+  onAddDevice: (idOrIp: string, deviceType: string) => void;
+}
+
+type GatewayStatus = "online" | "offline" | "unknown";
+
+interface Gateway {
+  id: string;
+  name?: string;        // optional display name if your API provides it
+  ip?: string;          // optional IP if your API provides it
+  status?: GatewayStatus;
+  lastSeenAt?: string;  // ISO timestamp optional
 }
 
 const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) => {
-  const [ipAddress, setIpAddress] = useState('');
-  const [deviceType, setDeviceType] = useState('');
-  const [error, setError] = useState('');
-  const [customType, setCustomType] = useState('');
-  const [showCustomInput, setShowCustomInput] = useState(false);
-  const [deviceInfo, setDeviceInfo] = useState<{ ipAddress: string; deviceType: string } | null>(null);
-  const serverHost = import.meta.env.VITE_APP_SERVERHOST;
+  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [claimingId, setClaimingId] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+  const serverHost = import.meta.env.VITE_APP_SERVERHOST?.replace(/\/+$/, "") || "";
 
+  // Simple polling. If you already expose an SSE stream, you can swap this to EventSource.
+  // Guide mentions: Poll GET /api/gateways or subscribe via SSE.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    let cancelled = false;
+    setLoading(true);
     setError("");
 
-    // Basic validation
-    const ip = ipAddress.trim();
-    if (!ip) {
-      setError("IP Address is required");
-      return;
-    }
+    const fetchOnce = async () => {
+      try {
+        const { data } = await axios.get<Gateway[]>(`${serverHost}/iot/gateways`);
+        if (!cancelled) {
+          setGateways(Array.isArray(data) ? data : []);
+          setLoading(false);
+        }
+      } catch (e: any) {
+        if (!cancelled) {
+          setError(
+            e?.response?.data?.message ||
+            e?.message ||
+            "Failed to load gateways"
+          );
+          setLoading(false);
+        }
+      }
+    };
 
-    const selectedType = (showCustomInput ? customType : deviceType).trim();
-    if (!selectedType) {
-      setError("Please enter or select a device type");
-      return;
-    }
+    // First fetch right away
+    fetchOnce();
 
+    // Poll every 2 seconds
+    const t = setInterval(fetchOnce, 2000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [isOpen, serverHost]);
+
+  const handleClaim = async (gw: Gateway) => {
+    setError("");
+    setClaimingId(gw.id);
     try {
-      // Save to backend
-      const response = await axios.post(serverHost +"/api/iot/manageDevices", {
-        ipAddress: ip,
-        deviceType: selectedType,
-      });
-      console.log("Device added successfully:", response.data);
+      // Adjust this path if your claim endpoint differs
+      await axios.post(`${serverHost}/api/gateways/${encodeURIComponent(gw.id)}/claim`);
 
-      // Update parent and any local state you keep
-      onAddDevice(ip, selectedType);
-      setDeviceInfo({ ipAddress: ip, deviceType: selectedType });
+      // Notify parent. Use id as the device handle. Device type is Gateway.
+      onAddDevice(gw.id, "Gateway");
 
-      // Reset form and close
-      setIpAddress("");
-      setDeviceType("");
-      setCustomType("");
-      setError("");
-      setShowCustomInput(false);
+      // Close after success
+      setClaimingId(null);
       onClose();
-    } catch (error: any) {
-      console.error("Error adding device:", error);
-      const msg =
-        error?.response?.data?.message ||
-        error?.message ||
-        "Failed to add device";
-      setError(msg);
+    } catch (e: any) {
+      setClaimingId(null);
+      setError(
+        e?.response?.data?.message ||
+        e?.message ||
+        "Failed to claim device"
+      );
     }
   };
-
 
   if (!isOpen) return null;
 
@@ -70,85 +94,76 @@ const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) =
     <div className="fixed inset-0 bg-black/30 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-white/90 p-6 rounded-lg w-full max-w-md shadow-xl border border-gray-100">
         <div className="mb-4">
-          <h2 className="text-xl font-semibold text-gray-800">Add New Device</h2>
+          <h2 className="text-xl font-semibold text-gray-800">Add Device</h2>
+          <p className="text-sm text-gray-600 mt-1">
+            Tap a gateway to claim and add it.
+          </p>
         </div>
-        
+
         {error && (
-          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-4 mb-4 rounded">
+          <div className="bg-red-50 border-l-4 border-red-500 text-red-700 p-3 mb-4 rounded">
             <p>{error}</p>
           </div>
         )}
-        
-        <form onSubmit={handleSubmit}>
-          <div className="mb-4">
-            <label htmlFor="ipAddress" className="block text-sm font-medium text-gray-700 mb-1">
-              IP Address:
-            </label>
-            <input
-              type="text"
-              id="ipAddress"
-              value={ipAddress}
-              onChange={(e) => setIpAddress(e.target.value)}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              placeholder="Enter device IP address"
-            />
+
+        {loading ? (
+          <div className="flex items-center justify-center py-10">
+            <div className="animate-spin rounded-full h-6 w-6 border-2 border-gray-300 border-t-transparent" />
+            <span className="ml-3 text-gray-600 text-sm">Loading gateways...</span>
           </div>
-          
-          <div className="mb-6">
-            <div className="flex justify-between items-center mb-1">
-              <label htmlFor="deviceType" className="block text-sm font-medium text-gray-700">
-                Device :
-              </label>
-              <button
-                type="button"
-                onClick={() => setShowCustomInput(!showCustomInput)}
-                className="text-xs text-green-600 hover:text-green-800"
-              >
-                {showCustomInput ? 'Select from list' : 'Select one'}
-              </button>
-            </div>
-            
-            {showCustomInput ? (
-              <input
-                type="text"
-                value={customType}
-                onChange={(e) => setCustomType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-                placeholder="Enter device type"
-              />
-            ) : (
-              <select
-                id="deviceType"
-                value={deviceType}
-                onChange={(e) => setDeviceType(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent"
-              >
-                <option value="">Select</option>
-                <option value="Watering">Watering</option>
-                <option value="Feeding">Feeding</option>
-                <option value="Medicine">Medicine</option>
-                <option value="Lighting">Lighting</option>
-                <option value="Custom">Custom</option>
-              </select>
-            )}
+        ) : gateways.length === 0 ? (
+          <div className="text-sm text-gray-600 py-10 text-center">
+            No gateways discovered yet. Power your device and wait a moment.
           </div>
-          
-          <div className="flex justify-end space-x-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              className="px-4 py-2 text-sm font-medium text-white bg-green-600 rounded-md hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-colors"
-            >
-              Add Device
-            </button>
-          </div>
-        </form>
+        ) : (
+          <ul className="space-y-3 mb-6 max-h-72 overflow-auto pr-1">
+            {gateways.map((gw) => {
+              const status = gw.status || "unknown";
+              const statusColor =
+                status === "online" ? "bg-green-500" :
+                status === "offline" ? "bg-gray-400" :
+                "bg-yellow-500";
+
+              return (
+                <li key={gw.id}>
+                  <button
+                    onClick={() => handleClaim(gw)}
+                    disabled={claimingId === gw.id}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                  >
+                    <div className="min-w-0 text-left">
+                      <div className="flex items-center space-x-2">
+                        <span className={`inline-block w-2.5 h-2.5 rounded-full ${statusColor}`} />
+                        <span className="font-medium text-gray-800 truncate">
+                          {gw.name || gw.id}
+                        </span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-0.5 truncate">
+                        {gw.ip ? `IP ${gw.ip}` : "IP unknown"} • {status}
+                        {gw.lastSeenAt ? ` • seen ${new Date(gw.lastSeenAt).toLocaleString()}` : ""}
+                      </div>
+                    </div>
+                    <div className="ml-3">
+                      <span className="text-sm font-medium text-green-700">
+                        {claimingId === gw.id ? "Claiming..." : "Add"}
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        <div className="flex justify-end space-x-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
   );

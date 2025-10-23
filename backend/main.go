@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,6 +25,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
+
+	"github.com/gorilla/websocket"
 )
 
 /* ===========================
@@ -540,6 +541,20 @@ var (
 	devices  = make(map[string]Device)    // id -> device
 	readings = make(map[string]Telemetry) // id -> last telemetry
 	httpc    = &http.Client{Timeout: 3 * time.Second}
+)
+
+type Gateway struct {
+	ID       string
+	Conn     *websocket.Conn
+	LastSeen int64
+}
+
+var (
+	gatewayMu sync.RWMutex
+	gateways  = make(map[string]*Gateway)
+	upgrader  = websocket.Upgrader{
+		CheckOrigin: func(r *http.Request) bool { return true },
+	}
 )
 
 /* ===========================
@@ -3908,70 +3923,121 @@ func getDashboardData(w http.ResponseWriter, r *http.Request) {
 	IoT Data Handling
 =========================== */
 
-func idevicesHandler(w http.ResponseWriter, r *http.Request) {
-	// CORS for browser calls
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-	if r.Method == http.MethodOptions {
-		w.WriteHeader(http.StatusNoContent)
+// handleGatewayWS upgrades gateway connection at /ws/gateway?id=gw-1234
+func handleGatewayWS(w http.ResponseWriter, r *http.Request) {
+	id := r.URL.Query().Get("id")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
 		return
 	}
 
-	switch r.Method {
-	case http.MethodPost:
-		var req Device
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			http.Error(w, "invalid JSON body", http.StatusBadRequest)
-			return
-		}
-		if req.IPAddress == "" || req.DeviceType == "" {
-			http.Error(w, "ipAddress and deviceType are required", http.StatusBadRequest)
-			return
-		}
-		if net.ParseIP(req.IPAddress) == nil {
-			http.Error(w, "ipAddress is not a valid IP", http.StatusBadRequest)
-			return
-		}
-
-		idevicesMu.Lock()
-		idevices[req.IPAddress] = req
-		idevicesMu.Unlock()
-
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusCreated)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"message": "Device added successfully",
-			"device":  req,
-		})
-
-	case http.MethodGet:
-		// Optional filter by ipAddress: /api/idevices?ipAddress=192.168.1.10
-		ip := r.URL.Query().Get("ipAddress")
-
-		w.Header().Set("Content-Type", "application/json")
-
-		idevicesMu.RLock()
-		defer idevicesMu.RUnlock()
-
-		if ip != "" {
-			if d, ok := idevices[ip]; ok {
-				_ = json.NewEncoder(w).Encode(d)
-				return
-			}
-			http.Error(w, "device not found", http.StatusNotFound)
-			return
-		}
-
-		list := make([]Device, 0, len(idevices))
-		for _, d := range idevices {
-			list = append(list, d)
-		}
-		_ = json.NewEncoder(w).Encode(list)
-
-	default:
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Println("upgrade:", err)
+		return
 	}
+
+	gw := &Gateway{ID: id, Conn: conn}
+	gatewayMu.Lock()
+	gateways[id] = gw
+	gatewayMu.Unlock()
+	log.Printf("Gateway connected: %s", id)
+
+	defer func() {
+		conn.Close()
+		gatewayMu.Lock()
+		delete(gateways, id)
+		gatewayMu.Unlock()
+		log.Printf("Gateway disconnected: %s", id)
+	}()
+
+	for {
+		_, msg, err := conn.ReadMessage()
+		if err != nil {
+			log.Printf("Read error from %s: %v", id, err)
+			break
+		}
+		log.Printf("[%s] %s", id, string(msg))
+		// TODO: insert telemetry into MySQL if needed
+	}
+}
+
+// getGateways lists all connected gateways (for React polling)
+func getGateways(w http.ResponseWriter, r *http.Request) {
+	type gwInfo struct {
+		ID     string `json:"id"`
+		Status string `json:"status"`
+	}
+	gatewayMu.RLock()
+	list := make([]gwInfo, 0, len(gateways))
+	for id := range gateways {
+		list = append(list, gwInfo{ID: id, Status: "online"})
+	}
+	gatewayMu.RUnlock()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(list)
+}
+
+// claimGateway handles POST /api/gateways/{id}/claim
+func claimGateway(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+	gatewayMu.RLock()
+	_, ok := gateways[id]
+	gatewayMu.RUnlock()
+	if !ok {
+		http.Error(w, "gateway not found", http.StatusNotFound)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{
+		"success": "true",
+		"message": fmt.Sprintf("Gateway %s claimed", id),
+	})
+}
+
+// sendCommand posts JSON command down to the gateway WebSocket
+func sendCommand(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "id")
+
+	var cmd map[string]interface{}
+	if err := json.NewDecoder(r.Body).Decode(&cmd); err != nil {
+		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		return
+	}
+
+	gatewayMu.RLock()
+	gw, ok := gateways[id]
+	gatewayMu.RUnlock()
+	if !ok {
+		http.Error(w, "gateway not connected", http.StatusNotFound)
+		return
+	}
+
+	if err := gw.Conn.WriteJSON(cmd); err != nil {
+		log.Printf("WriteJSON to %s failed: %v", id, err)
+		http.Error(w, "failed to send command", http.StatusInternalServerError)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{
+		"success": "true",
+		"message": "Command sent",
+	})
+}
+
+// RegisterGatewayRoutes mounts the endpoints
+func RegisterGatewayRoutes(r chi.Router) {
+	// WebSocket for the ESP8266 gateway
+	r.HandleFunc("/ws/gateway", handleGatewayWS)
+
+	// Primary API
+	r.Get("/api/gateways", getGateways)
+	r.Post("/api/gateways/{id}/claim", claimGateway)
+	r.Post("/api/gateways/{id}/command", sendCommand)
+
+	// Aliases to match your current frontend calls
+	r.Get("/iot/gateways", getGateways)
+	r.Post("/iot/gateways/{id}/claim", claimGateway)
+	r.Post("/iot/gateways/{id}/command", sendCommand)
 }
 
 /* ===========================
@@ -4086,8 +4152,8 @@ func buildRouter() http.Handler {
 		r.Get("/reports/batch/{id}", getBatchReport)
 
 		//IoT device management
-		r.Route("/iot", func(r chi.Router) {
-			r.Handle("/manageDevices", http.HandlerFunc(idevicesHandler))
+		r.Group(func(r chi.Router) {
+			RegisterGatewayRoutes(r)
 		})
 	})
 
