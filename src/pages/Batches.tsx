@@ -1,3 +1,4 @@
+// File: Batches.tsx
 import React, { useState, useEffect } from "react";
 import MainBody from "../components/MainBody";
 import {
@@ -59,12 +60,12 @@ const Batches: React.FC = () => {
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
 
-  // --- FIX 1: Update the type definition for procurementData state ---
+  // --- CHANGE #1: Updated the state type to use 'batchDuration' ---
   const [procurementData, setProcurementData] = useState<{
     plan: any[];
     batchName: string;
-    averageDuration: number;
-    chickenCount: number; // <-- ADDED THIS LINE
+    batchDuration: number;
+    chickenCount: number;
   } | null>(null);
 
   // --- Filters and modal ---
@@ -97,21 +98,18 @@ const Batches: React.FC = () => {
   useEffect(() => {
     let filtered = [...allBatches];
 
-    // search filter
     if (debouncedSearchText) {
       filtered = filtered.filter((b) =>
         b.batchName.toLowerCase().includes(debouncedSearchText.toLowerCase())
       );
     }
 
-    // status filter
     if (statusFilter !== "All") {
       filtered = filtered.filter((b) => b.status === statusFilter);
     }
 
     setTotal(filtered.length);
 
-    // pagination slice
     const start = (page - 1) * pageSize;
     const paginated = filtered.slice(start, start + pageSize);
     setBatches(paginated);
@@ -140,8 +138,6 @@ const Batches: React.FC = () => {
     };
 
     try {
-      // NOTE: The procurement plan logic here was incorrect as it needs a batchID.
-      // It's better to create the batch first, then generate the plan separately.
       await api.post("/api/batches", payload);
       message.success("Batch created successfully!");
       setIsAddModalVisible(false);
@@ -187,7 +183,7 @@ const Batches: React.FC = () => {
         try {
           await api.delete(`/api/batches/${batchId}`);
           message.success("Batch deleted successfully.");
-          fetchBatches(); // Refresh list
+          fetchBatches();
         } catch (error: any) {
           const errorMsg =
             error.response?.data?.error || "Failed to delete batch.";
@@ -197,18 +193,22 @@ const Batches: React.FC = () => {
     });
   };
 
+  // --- CHANGE #2: This function is now updated to calculate and pass the correct prop ---
   const handleViewProcurementPlan = async (batch: Batch) => {
     try {
       message.loading({ content: "Generating smart plan...", key: "proc" });
       const startDate = dayjs(batch.startDate);
       const endDate = dayjs(batch.expectedHarvestDate);
-      const durationDays = endDate.diff(startDate, "day");
+
+      // Calculate the inclusive duration of the batch
+      const durationDays = endDate.diff(startDate, "day") + 1;
 
       if (durationDays <= 0) {
         message.error("The batch duration must be positive.");
         return;
       }
 
+      // API call remains the same, as the backend needs the duration
       const res = await api.post("/api/planning/procurement-plan", {
         batchID: batch.batchID,
         chickenCount: batch.totalChicken,
@@ -217,12 +217,12 @@ const Batches: React.FC = () => {
 
       message.success({ content: "Plan generated!", key: "proc", duration: 2 });
 
-      // --- FIX 2: Get chickenCount from the API response (res.data) ---
+      // Pass the locally calculated duration to the modal state
       setProcurementData({
         plan: res.data.plan,
         batchName: batch.batchName,
-        averageDuration: res.data.averageDuration,
-        chickenCount: res.data.chickenCount, // <-- ADDED THIS LINE
+        chickenCount: res.data.chickenCount,
+        batchDuration: durationDays, // <-- Passing the correct prop
       });
     } catch (error) {
       message.error({
@@ -287,7 +287,6 @@ const Batches: React.FC = () => {
       />
 
       <div className="space-y-6">
-        {/* --- Filters and Add Button Section --- */}
         <div className="bg-white p-4 rounded-lg shadow-sm">
           <Row gutter={[16, 16]} justify="space-between" align="middle">
             <Col xs={24} md={12} lg={8}>
@@ -451,7 +450,6 @@ const Batches: React.FC = () => {
             </table>
           </div>
 
-          {/* --- Pagination below table --- */}
           <div className="p-4 flex justify-center border-t">
             <Pagination
               current={page}
