@@ -18,8 +18,7 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
-// CLEANUP: Removed the duplicate CreateNewStockItem function.
-// All validation is now correctly in the main CreateStockItem function.
+
 func (s *Service) CreateStockItem(ctx context.Context, payload models.NewStockItemPayload) (int64, error) {
 	if strings.TrimSpace(payload.ItemName) == "" {
 		return 0, errors.New("item name cannot be empty")

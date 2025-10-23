@@ -316,31 +316,31 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
   const columns = [
     {
       title: "Harvest Date",
-      dataIndex: "HarvestDate",
+      dataIndex: "harvestDate",
       key: "HarvestDate",
       render: (text: string) => dayjs(text).format("YYYY-MM-DD"),
     },
     { title: "Product Type", dataIndex: "ProductType", key: "ProductType" },
     {
       title: "Qty Harvested",
-      dataIndex: "QuantityHarvested",
+      dataIndex: "quantityHarvested",
       key: "QuantityHarvested",
     },
     {
       title: "Weight Harvested (kg)",
-      dataIndex: "WeightHarvestedKg",
+      dataIndex: "weightHarvestedKg",
       key: "WeightHarvestedKg",
       render: (weight: number) =>
         typeof weight === "number" ? weight.toFixed(2) : "0.00",
     },
     {
       title: "Qty Remaining",
-      dataIndex: "QuantityRemaining",
+      dataIndex: "quantityRemaining",
       key: "QuantityRemaining",
     },
     {
       title: "Weight Remaining (kg)",
-      dataIndex: "WeightRemainingKg",
+      dataIndex: "weightRemainingKg",
       key: "WeightRemainingKg",
       render: (weight: number) =>
         typeof weight === "number" ? weight.toFixed(2) : "0.00",

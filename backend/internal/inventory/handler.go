@@ -41,6 +41,9 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 
 	router.Get("/api/harvested-products", h.getHarvestedProducts)	
 	router.Get("/api/harvested-products/summary", h.getHarvestedProductsSummary)
+
+	
+
 }
 
 func (h *Handler) createStockItem(w http.ResponseWriter, r *http.Request) {
@@ -195,17 +198,16 @@ func (h *Handler) deletePurchase(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getHarvestedProducts(w http.ResponseWriter, r *http.Request) {
-	// These names must match the parameters sent from the frontend useEffect
-	productType := r.URL.Query().Get("productType")
-	batchID := r.URL.Query().Get("batchId") // This should be "batchId" 
+    productType := r.URL.Query().Get("productType")
+    batchID := r.URL.Query().Get("batchId")
 
-	// The service handles converting "All" to 0 (no filter)
-	items, err := h.service.GetHarvestedProducts(r.Context(), productType, batchID)
-	if err != nil {
-		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch harvested products", err)
-		return
-	}
-	util.RespondJSON(w, http.StatusOK, items)
+    items, err := h.service.GetHarvestedProducts(r.Context(), productType, batchID)
+    if err != nil {
+        util.HandleError(w, http.StatusInternalServerError, "Failed to fetch harvested products", err)
+        return
+    }
+    
+    util.RespondJSON(w, http.StatusOK, items)
 }
 
 func (h *Handler) getHarvestedProductsSummary(w http.ResponseWriter, r *http.Request) {
@@ -220,3 +222,7 @@ func (h *Handler) getHarvestedProductsSummary(w http.ResponseWriter, r *http.Req
 	}
 	util.RespondJSON(w, http.StatusOK, summary)
 }
+
+
+
+

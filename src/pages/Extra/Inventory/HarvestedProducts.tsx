@@ -11,7 +11,7 @@ interface HarvestedInventoryItem {
   harvestProductID: number;
   harvestDate: string;
   productType: string;
-  batchOrigin: string;
+  batchName: string;
   quantityHarvested: number;
   weightHarvestedKg: number;
   quantityRemaining: number;
@@ -122,9 +122,14 @@ const HarvestedProducts: React.FC = () => {
     },
     {
       title: "Batch Origin",
-      dataIndex: "batchOrigin", // Correct
-      key: "batchOrigin",
-      sorter: (a: any, b: any) => a.batchOrigin.localeCompare(b.batchOrigin),
+      dataIndex: "batchName",
+      key: "batchName",
+      render: (batchName: string | null) => batchName || "N/A",
+      sorter: (a: any, b: any) => {
+        const aVal = a.batchName || "";
+        const bVal = b.batchName || "";
+        return aVal.localeCompare(bVal);
+      },
     },
     {
       title: "Qty Harvested",

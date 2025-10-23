@@ -43,7 +43,7 @@ func (r *Repository) GetHarvestedProductsByBatch(ctx context.Context, batchID in
 		var weightHarvestedKgStr, weightRemainingKgStr []byte
 		
 		if err := rows.Scan(
-			&item.HarvestProductID, &item.HarvestDate, &item.ProductType, &item.BatchOrigin, 
+			&item.HarvestProductID, &item.HarvestDate, &item.ProductType, &item.BatchName, 
 			&item.QuantityHarvested, &weightHarvestedKgStr, 
 			&item.QuantityRemaining, &weightRemainingKgStr, 
 			&item.IsActive); err != nil { 

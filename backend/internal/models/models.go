@@ -122,15 +122,15 @@ type StockLevelSummary struct {
 
 // for harvested inventory items
 type HarvestedInventoryItem struct {
-	HarvestProductID  int     `json:"HarvestProductID"`
-	HarvestDate       string  `json:"HarvestDate"`
-	ProductType       string  `json:"ProductType"`
-	BatchOrigin       string  `json:"BatchOrigin"` 
-	QuantityHarvested int     `json:"QuantityHarvested"`
-	WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
-	QuantityRemaining int     `json:"QuantityRemaining"`
-	WeightRemainingKg float64 `json:"WeightRemainingKg"`
-	IsActive          bool    `json:"IsActive"` 
+	HarvestProductID  int     `json:"harvestProductID"`
+	HarvestDate       string  `json:"harvestDate"`
+	ProductType       string  `json:"productType"`
+	BatchName         *string `json:"batchName"`
+	QuantityHarvested int     `json:"quantityHarvested"`
+	WeightHarvestedKg float64 `json:"weightHarvestedKg"`
+	QuantityRemaining int     `json:"quantityRemaining"`
+	WeightRemainingKg float64 `json:"weightRemainingKg"`
+	IsActive          bool    `json:"isActive"` 
 }
 
 type HarvestedProductsSummary struct {
