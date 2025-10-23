@@ -330,7 +330,8 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
       title: "Weight Harvested (kg)",
       dataIndex: "WeightHarvestedKg",
       key: "WeightHarvestedKg",
-      render: (weight: number) => weight.toFixed(2),
+      render: (weight: number) =>
+        typeof weight === "number" ? weight.toFixed(2) : "0.00",
     },
     {
       title: "Qty Remaining",
@@ -341,7 +342,8 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
       title: "Weight Remaining (kg)",
       dataIndex: "WeightRemainingKg",
       key: "WeightRemainingKg",
-      render: (weight: number) => weight.toFixed(2),
+      render: (weight: number) =>
+        typeof weight === "number" ? weight.toFixed(2) : "0.00",
     },
     {
       title: "Actions",

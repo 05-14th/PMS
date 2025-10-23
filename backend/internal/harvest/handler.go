@@ -19,7 +19,7 @@ func NewHandler(service *Service) *Handler {
 }
 
 func (h *Handler) RegisterRoutes(router *chi.Mux) {
-	router.Get("/api/harvested-products", h.getHarvestedInventory)
+	//router.Get("/api/harvested-products", h.getHarvestedInventory)
 	router.Get("/api/harvested-products/summary", h.getHarvestedSummary)
 	router.Get("/api/product-types", h.getProductTypes)
 	router.Get("/api/batch-list", h.getBatchList)
@@ -29,9 +29,10 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 	router.Post("/api/product-types", h.addProductType)
 	router.Get("/api/product-types/usage", h.getProductTypeUsage) 
 	router.Delete("/api/product-types", h.deleteProductType)    
+	router.Get("/api/batches/{batchId}/harvest-products", h.getHarvestedProductsByBatch)
 }
 
-func (h *Handler) getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
+/*func (h *Handler) getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
 	productType := r.URL.Query().Get("productType")
 	batchID := r.URL.Query().Get("batchId")
 
@@ -41,7 +42,7 @@ func (h *Handler) getHarvestedInventory(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	util.RespondJSON(w, http.StatusOK, inventory)
-}
+}*/
 
 func (h *Handler) getProductTypes(w http.ResponseWriter, r *http.Request) {
 	types, err := h.service.GetProductTypes(r.Context())
@@ -167,5 +168,27 @@ func (h *Handler) deleteProductType(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+
+
+func (h *Handler) getHarvestedProductsByBatch(w http.ResponseWriter, r *http.Request) {
+	// 1. Get BatchID from URL parameter
+	batchIDStr := chi.URLParam(r, "batchId")
+	batchID, err := strconv.Atoi(batchIDStr)
+	if err != nil {
+		util.HandleError(w, http.StatusBadRequest, "Invalid batch ID", err)
+		return
+	}
+
+	// 2. Call the new service function
+	products, err := h.service.GetHarvestedProductsByBatch(r.Context(), batchID)
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch batch harvest history", err)
+		return
+	}
+	
+	// 3. Respond with all products (including sold-out ones)
+	util.RespondJSON(w, http.StatusOK, products)
 }
 

@@ -16,15 +16,9 @@ func NewService(repo *Repository) *Service {
 	return &Service{repo: repo}
 }
 
-func (s *Service) GetHarvestedInventory(ctx context.Context, productType, batchID string) ([]models.HarvestedInventoryItem, error) {
-    // Simply call the repository - NO additional filtering
-    inventory, err := s.repo.GetHarvestedInventory(ctx, productType, batchID)
-    if err != nil {
-        return nil, err
-    }
-    
-    // NO FILTERING - return everything including sold out items
-    return inventory, nil
+func (s *Service) GetHarvestedProductsByBatch(ctx context.Context, batchID int) ([]models.HarvestedInventoryItem, error) {
+	// Simple passthrough since the repository function handles the logic
+	return s.repo.GetHarvestedProductsByBatch(ctx, batchID)
 }
 
 func (s *Service) GetProductTypes(ctx context.Context) ([]string, error) {

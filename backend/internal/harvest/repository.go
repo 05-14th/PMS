@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -18,50 +19,51 @@ func NewRepository(db *sql.DB) *Repository {
 	return &Repository{db: db}
 }
 
-func (r *Repository) GetHarvestedInventory(ctx context.Context, productType, batchID string) ([]models.HarvestedInventoryItem, error) {
-    query := `
+func (r *Repository) GetHarvestedProductsByBatch(ctx context.Context, batchID int) ([]models.HarvestedInventoryItem, error) {
+	query := `
         SELECT
             hp.HarvestProductID, h.HarvestDate, hp.ProductType, b.BatchName,
-            hp.QuantityHarvested, hp.WeightHarvestedKg, hp.QuantityRemaining, hp.WeightRemainingKg
+            hp.QuantityHarvested, hp.WeightHarvestedKg, hp.QuantityRemaining, hp.WeightRemainingKg, hp.IsActive
         FROM cm_harvest_products hp
         JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
         JOIN cm_batches b ON h.BatchID = b.BatchID
-        WHERE 1=1`
-    
-    var args []interface{}
+        WHERE b.BatchID = ? -- Filters ONLY by batch ID
+        ORDER BY h.HarvestDate DESC, hp.HarvestProductID DESC`
+	
+	rows, err := r.db.QueryContext(ctx, query, batchID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
 
-    if productType != "" && productType != "All" {
-        query += " AND hp.ProductType = ?"
-        args = append(args, productType)
-    }
-    if batchID != "" && batchID != "All" {
-        query += " AND b.BatchID = ?"
-        args = append(args, batchID)
-    }
-    query += " ORDER BY h.HarvestDate DESC, hp.HarvestProductID DESC"
+	var inventory []models.HarvestedInventoryItem
+	for rows.Next() {
+		var item models.HarvestedInventoryItem
+		// Use temporary variables for DECIMAL/FLOAT SCAN
+		var weightHarvestedKgStr, weightRemainingKgStr []byte
+		
+		if err := rows.Scan(
+			&item.HarvestProductID, &item.HarvestDate, &item.ProductType, &item.BatchOrigin, 
+			&item.QuantityHarvested, &weightHarvestedKgStr, 
+			&item.QuantityRemaining, &weightRemainingKgStr, 
+			&item.IsActive); err != nil { 
+			// Log the error detail
+			fmt.Printf("ERROR scanning Batch History row: %v\n", err)
+			return nil, err
+		}
+		
+		// MANUAL CONVERSION
+		item.WeightHarvestedKg, _ = strconv.ParseFloat(string(weightHarvestedKgStr), 64)
+		item.WeightRemainingKg, _ = strconv.ParseFloat(string(weightRemainingKgStr), 64)
 
-    fmt.Printf("DEBUG: Executing FULL inventory query (including IsActive=0): %s\n", query)
-    fmt.Printf("DEBUG: Query args: %v\n", args)
-
-    rows, err := r.db.QueryContext(ctx, query, args...)
-    if err != nil {
-        return nil, err
-    }
-    defer rows.Close()
-
-    var inventory []models.HarvestedInventoryItem
-    for rows.Next() {
-        var item models.HarvestedInventoryItem
-        if err := rows.Scan(&item.HarvestProductID, &item.HarvestDate, &item.ProductType, &item.BatchOrigin, 
-            &item.QuantityHarvested, &item.WeightHarvestedKg, &item.QuantityRemaining, &item.WeightRemainingKg); err != nil {
-            return nil, err
-        }
-        inventory = append(inventory, item)
-    }
-    
-    fmt.Printf("DEBUG: GetHarvestedInventory found %d products (including IsActive=0)\n", len(inventory))
-    
-    return inventory, nil
+		inventory = append(inventory, item)
+	}
+	
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	
+	return inventory, nil
 }
 
 func (r *Repository) GetProductTypes(ctx context.Context) ([]string, error) {
