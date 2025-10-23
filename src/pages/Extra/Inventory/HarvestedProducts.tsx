@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Table, Select, Card, Row, Col, Typography, message, Tag } from "antd";
 import axios from "axios";
 import dayjs from "dayjs";
@@ -8,18 +8,20 @@ const { Option } = Select;
 
 // --- Interfaces ---
 interface HarvestedInventoryItem {
-  HarvestProductID: number;
-  HarvestDate: string;
-  ProductType: string;
-  BatchOrigin: string;
-  QuantityHarvested: number;
-  WeightHarvestedKg: number;
-  QuantityRemaining: number;
-  WeightRemainingKg: number;
+  harvestProductID: number;
+  harvestDate: string;
+  productType: string;
+  batchOrigin: string;
+  quantityHarvested: number;
+  weightHarvestedKg: number;
+  quantityRemaining: number;
+  weightRemainingKg: number;
 }
+
 interface SummaryData {
   totalDressed: number;
   totalLive: number;
+  // NOTE: Assuming this covers all non-Dressed/Live products (e.g., Feet, Neck)
   totalByproductWeight: number;
 }
 interface BatchFilterItem {
@@ -37,17 +39,26 @@ const HarvestedProducts: React.FC = () => {
   const [summary, setSummary] = useState<SummaryData | null>(null);
   const [filters, setFilters] = useState({
     productType: "All",
+    // This MUST be a string to match the Option value="All"
     batchId: "All",
   });
   const [loading, setLoading] = useState(true);
   const [productTypes, setProductTypes] = useState<string[]>([]);
   const [batches, setBatches] = useState<BatchFilterItem[]>([]);
 
+  const handleFilterChange = (key: keyof typeof filters, value: any) => {
+    setFilters((prevFilters) => ({
+      ...prevFilters,
+      [key]: String(value),
+    }));
+  };
+
   useEffect(() => {
     // Fetch data for filter dropdowns on initial load
     const fetchFilterData = async () => {
       try {
         const [typesRes, batchesRes] = await Promise.all([
+          // Assuming /api/product-types returns the enum values from cm_harvest_products.ProductType
           api.get("/api/product-types"),
           api.get("/api/batch-list"),
         ]);
@@ -65,17 +76,16 @@ const HarvestedProducts: React.FC = () => {
     const fetchTableData = async () => {
       setLoading(true);
       try {
-        console.log("DEBUG: Fetching data with filters:", filters);
-
+        // Construct params: batchId needs to be converted back to string for the API call
+        // if it's not "All", or keep "All"
+        const apiParams = {
+          productType: filters.productType,
+          batchId: filters.batchId, // Correctly using 'batchId'
+        };
         const [inventoryRes, summaryRes] = await Promise.all([
-          api.get("/api/harvested-products", { params: filters }),
-          api.get("/api/harvested-products/summary", { params: filters }),
+          api.get("/api/harvested-products", { params: apiParams }),
+          api.get("/api/harvested-products/summary", { params: apiParams }),
         ]);
-
-        console.log("DEBUG: Raw inventory response:", inventoryRes);
-        console.log("DEBUG: Inventory data:", inventoryRes.data);
-        console.log("DEBUG: Raw summary response:", summaryRes);
-        console.log("DEBUG: Summary data:", summaryRes.data);
 
         setInventory(inventoryRes.data || []);
         setSummary(summaryRes.data || null);
@@ -87,7 +97,7 @@ const HarvestedProducts: React.FC = () => {
       }
     };
     fetchTableData();
-  }, [filters]);
+  }, [filters]); // Dependency array: re-run when filters change
 
   // FIX: Safe number formatting function
   const formatNumber = (value: number | undefined | null): string => {
@@ -98,49 +108,46 @@ const HarvestedProducts: React.FC = () => {
   const columns = [
     {
       title: "Harvest Date",
-      dataIndex: "HarvestDate",
-      key: "HarvestDate",
+      dataIndex: "harvestDate", // Correct
+      key: "harvestDate",
       render: (date: string) => dayjs(date).format("YYYY-MM-DD"),
       sorter: (a: any, b: any) =>
-        dayjs(a.HarvestDate).unix() - dayjs(b.HarvestDate).unix(),
+        dayjs(a.harvestDate).unix() - dayjs(b.harvestDate).unix(),
     },
     {
       title: "Product Type",
-      dataIndex: "ProductType",
-      key: "ProductType",
-      sorter: (a: any, b: any) => a.ProductType.localeCompare(b.ProductType),
+      dataIndex: "productType", // Correct
+      key: "productType",
+      sorter: (a: any, b: any) => a.productType.localeCompare(b.productType),
     },
     {
       title: "Batch Origin",
-      dataIndex: "BatchOrigin",
-      key: "BatchOrigin",
-      sorter: (a: any, b: any) => a.BatchOrigin.localeCompare(b.BatchOrigin),
+      dataIndex: "batchOrigin", // Correct
+      key: "batchOrigin",
+      sorter: (a: any, b: any) => a.batchOrigin.localeCompare(b.batchOrigin),
     },
     {
       title: "Qty Harvested",
-      dataIndex: "QuantityHarvested",
-      key: "QuantityHarvested",
-      // FIX: Safe rendering for numbers
+      dataIndex: "quantityHarvested", // Correct
+      key: "quantityHarvested",
       render: (val: number) => val ?? 0,
     },
     {
       title: "Weight Harvested (kg)",
-      dataIndex: "WeightHarvestedKg",
-      key: "WeightHarvestedKg",
-      // FIX: Use safe formatting function
+      dataIndex: "weightHarvestedKg", // Correct
+      key: "weightHarvestedKg",
       render: (val: number) => formatNumber(val),
     },
     {
       title: "Qty Remaining",
-      dataIndex: "QuantityRemaining",
-      key: "QuantityRemaining",
+      dataIndex: "quantityRemaining", // Correct
+      key: "quantityRemaining",
       render: (val: number) => val ?? 0,
     },
     {
       title: "Weight Remaining (kg)",
-      dataIndex: "WeightRemainingKg",
-      key: "WeightRemainingKg",
-      // FIX: Use safe formatting function
+      dataIndex: "weightRemainingKg", // Correct
+      key: "weightRemainingKg",
       render: (val: number) => formatNumber(val),
     },
     {
@@ -148,8 +155,8 @@ const HarvestedProducts: React.FC = () => {
       key: "status",
       render: (_: any, record: HarvestedInventoryItem) => {
         const isSoldOut =
-          (record.QuantityRemaining ?? 0) <= 0 &&
-          (record.WeightRemainingKg ?? 0) <= 0;
+          (record.quantityRemaining ?? 0) <= 0 && // Correct
+          (record.weightRemainingKg ?? 0) <= 0; // Correct
         return (
           <Tag color={isSoldOut ? "red" : "green"}>
             {isSoldOut ? "Sold Out" : "In Stock"}
@@ -184,12 +191,14 @@ const HarvestedProducts: React.FC = () => {
                 <Text>Batch Origin</Text>
                 <Select
                   value={filters.batchId}
+                  // FIX: Use batchID as string for consistency with filters state and API
                   onChange={(value) => handleFilterChange("batchId", value)}
                   style={{ width: "100%" }}
                 >
                   <Option value="All">All Batches</Option>
                   {batches.map((b) => (
-                    <Option key={b.BatchID} value={b.BatchID}>
+                    // FIX: Convert BatchID to string for the Select value
+                    <Option key={b.BatchID} value={String(b.BatchID)}>
                       {b.BatchName}
                     </Option>
                   ))}
@@ -233,9 +242,8 @@ const HarvestedProducts: React.FC = () => {
           columns={columns}
           dataSource={inventory}
           loading={loading}
-          rowKey="HarvestProductID"
+          rowKey="harvestProductID"
           scroll={{ x: "max-content" }}
-          // FIX: Add empty state for when no data
           locale={{ emptyText: "No harvested products found" }}
         />
       </Card>

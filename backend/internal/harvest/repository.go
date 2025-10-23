@@ -175,10 +175,9 @@ func (r *Repository) CreateHarvest(ctx context.Context, payload models.HarvestPa
 	harvestID, _ := res.LastInsertId()
 
 	// 3. Handle the harvest product and optional sale
-	// vvvv  THIS IS THE NEW LOGIC  vvvv
+	
 	if payload.SaleDetails != nil {
-		// --- INSTANT SALE LOGIC ---
-		// The product is created with 0 remaining quantity because it's sold immediately.
+
 		productQuery := `
 			INSERT INTO cm_harvest_products 
 			(HarvestID, ProductType, QuantityHarvested, WeightHarvestedKg, QuantityRemaining, WeightRemainingKg, IsActive) 
@@ -406,4 +405,5 @@ func (r *Repository) DeleteProductType(ctx context.Context, typeToDelete string)
 
 	return tx.Commit()
 }
+
 

@@ -73,3 +73,4 @@ func (s *Service) DeleteProductType(ctx context.Context, typeToDelete string) er
 	}
 	return s.repo.DeleteProductType(ctx, typeToDelete)
 }
+

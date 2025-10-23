@@ -30,6 +30,7 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 	router.Get("/api/product-types/usage", h.getProductTypeUsage) 
 	router.Delete("/api/product-types", h.deleteProductType)    
 	router.Get("/api/batches/{batchId}/harvest-products", h.getHarvestedProductsByBatch)
+
 }
 
 /*func (h *Handler) getHarvestedInventory(w http.ResponseWriter, r *http.Request) {
@@ -191,4 +192,5 @@ func (h *Handler) getHarvestedProductsByBatch(w http.ResponseWriter, r *http.Req
 	// 3. Respond with all products (including sold-out ones)
 	util.RespondJSON(w, http.StatusOK, products)
 }
+
 

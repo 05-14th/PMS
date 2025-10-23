@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"strings"
 )
 
@@ -387,4 +388,139 @@ func (r *Repository) GetUnits(ctx context.Context) ([]string, error) {
 
 func (r *Repository) GetSubCategories(ctx context.Context) ([]string, error) {
 	return r.getEnumValues(ctx, "cm_items", "SubCategory")
+}
+
+func (r *Repository) GetHarvestedProducts(ctx context.Context, productType string, batchID int) ([]models.HarvestedInventoryItem, error) {
+	query := `
+		SELECT 
+			hp.HarvestProductID, 
+			h.HarvestDate, 
+			hp.ProductType, 
+			b.BatchName AS BatchOrigin, 
+			hp.QuantityHarvested, 
+			hp.WeightHarvestedKg, 
+			hp.QuantityRemaining, 
+			hp.WeightRemainingKg
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		JOIN cm_batches b ON h.BatchID = b.BatchID
+		WHERE 1=1` 
+
+	var args []interface{}
+	
+	if productType != "All" && productType != "" {
+		query += " AND hp.ProductType = ?"
+		args = append(args, productType)
+	}
+	if batchID > 0 {
+		query += " AND h.BatchID = ?"
+		args = append(args, batchID)
+	}
+
+	query += " ORDER BY h.HarvestDate DESC;"
+
+	log.Printf("DEBUG: Executing GetHarvestedProducts query: %s", query)
+	log.Printf("DEBUG: With arguments: %v", args)
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var items []models.HarvestedInventoryItem
+	for rows.Next() {
+		var item models.HarvestedInventoryItem
+		if err := rows.Scan(
+			&item.HarvestProductID, 
+			&item.HarvestDate, 
+			&item.ProductType, 
+			&item.BatchOrigin, 
+			&item.QuantityHarvested, 
+			&item.WeightHarvestedKg, 
+			&item.QuantityRemaining, 
+			&item.WeightRemainingKg,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, item)
+	}
+
+	log.Printf("DEBUG: Query returned %d rows", len(items))
+	return items, nil
+}
+
+func (r *Repository) GetHarvestedProductsSummary(ctx context.Context, productType string, batchID int) (models.HarvestedProductsSummary, error) {
+	summary := models.HarvestedProductsSummary{}
+	
+	// Query to get total 'Dressed' and total 'Live' (QuantityRemaining)
+	liveDressedQuery := `
+		SELECT 
+			COALESCE(SUM(CASE WHEN hp.ProductType = 'Dressed' THEN hp.QuantityRemaining ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN hp.ProductType = 'Live' THEN hp.QuantityRemaining ELSE 0 END), 0)
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE hp.IsActive = 1`
+
+	var args []interface{}
+	
+	// Note: We ignore productType filter here to get totals for Dressed/Live, 
+	// unless we are filtering by a specific batch.
+	if batchID > 0 {
+		liveDressedQuery += " AND h.BatchID = ?"
+		args = append(args, batchID)
+	}
+
+	err := r.db.QueryRowContext(ctx, liveDressedQuery, args...).Scan(
+		&summary.TotalDressed,
+		&summary.TotalLive,
+	)
+	if err != nil {
+		return models.HarvestedProductsSummary{}, err
+	}
+
+	// Query to get total 'Byproduct Weight' (WeightRemainingKg for all non-Dressed/Live types)
+	byproductWeightQuery := `
+		SELECT 
+			COALESCE(SUM(CASE WHEN hp.ProductType NOT IN ('Dressed', 'Live') THEN hp.WeightRemainingKg ELSE 0 END), 0)
+		FROM cm_harvest_products hp
+		JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+		WHERE hp.IsActive = 1`
+
+	// Reset arguments for the second query, if batchID is used
+	byproductArgs := []interface{}{}
+	if batchID > 0 {
+		byproductWeightQuery += " AND h.BatchID = ?"
+		byproductArgs = append(byproductArgs, batchID)
+	}
+
+	// If productType is specifically set to a byproduct type (Feet/Neck), 
+	// we use that filter to ensure accurate summarization.
+	if productType != "All" && productType != "" && productType != "Dressed" && productType != "Live" {
+		// If we're filtering on a specific byproduct, we must only sum that byproduct's weight.
+		byproductWeightQuery = `
+			SELECT 
+				COALESCE(SUM(hp.WeightRemainingKg), 0)
+			FROM cm_harvest_products hp
+			JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
+			WHERE hp.IsActive = 1 AND hp.ProductType = ?`
+		
+		// If batchID is also present, we include it.
+		if batchID > 0 {
+			byproductWeightQuery += " AND h.BatchID = ?"
+			byproductArgs = []interface{}{productType, batchID}
+		} else {
+			byproductArgs = []interface{}{productType}
+		}
+	} else if productType != "All" && (productType == "Dressed" || productType == "Live") {
+		// If filtering on Dressed or Live, the byproduct total should be 0.
+		summary.TotalByproductWeight = 0
+		return summary, nil
+	}
+
+	if err := r.db.QueryRowContext(ctx, byproductWeightQuery, byproductArgs...).Scan(&summary.TotalByproductWeight); err != nil {
+		return models.HarvestedProductsSummary{}, err
+	}
+
+	return summary, nil
 }

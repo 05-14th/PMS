@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -132,4 +133,30 @@ func (s *Service) DeletePurchase(ctx context.Context, purchaseID int) error {
 
 func (s *Service) DeleteUsage(ctx context.Context, usageID int) error {
 	return s.repo.DeleteUsage(ctx, usageID)
+}
+
+func (s *Service) GetHarvestedProducts(ctx context.Context, productType string, batchID string) ([]models.HarvestedInventoryItem, error) {
+	var id int
+	if batchID != "All" && batchID != "" {
+		// Safely convert batchID string to integer
+		i, err := strconv.Atoi(batchID)
+		if err != nil {
+			return nil, fmt.Errorf("invalid batch ID format: %w", err)
+		}
+		id = i
+	}
+	return s.repo.GetHarvestedProducts(ctx, productType, id)
+}
+
+func (s *Service) GetHarvestedProductsSummary(ctx context.Context, productType string, batchID string) (models.HarvestedProductsSummary, error) {
+	var id int
+	if batchID != "All" && batchID != "" {
+		i, err := strconv.Atoi(batchID)
+		if err != nil {
+			return models.HarvestedProductsSummary{}, fmt.Errorf("invalid batch ID format: %w", err)
+		}
+		id = i
+	}
+
+	return s.repo.GetHarvestedProductsSummary(ctx, productType, id)
 }

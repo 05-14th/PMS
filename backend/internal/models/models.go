@@ -125,12 +125,18 @@ type HarvestedInventoryItem struct {
 	HarvestProductID  int     `json:"HarvestProductID"`
 	HarvestDate       string  `json:"HarvestDate"`
 	ProductType       string  `json:"ProductType"`
-	BatchOrigin       string  `json:"BatchOrigin"`
+	BatchOrigin       string  `json:"BatchOrigin"` 
 	QuantityHarvested int     `json:"QuantityHarvested"`
 	WeightHarvestedKg float64 `json:"WeightHarvestedKg"`
 	QuantityRemaining int     `json:"QuantityRemaining"`
 	WeightRemainingKg float64 `json:"WeightRemainingKg"`
-	IsActive           bool      `json:"IsActive"` 
+	IsActive          bool    `json:"IsActive"` 
+}
+
+type HarvestedProductsSummary struct {
+    TotalDressed         int     `json:"totalDressed"`
+    TotalLive            int     `json:"totalLive"`
+    TotalByproductWeight float64 `json:"totalByproductWeight"`
 }
 
 type PurchaseHistoryDetail struct {
