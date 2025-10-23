@@ -549,6 +549,7 @@ type DirectSalePayload struct {
     SaleDate      string           `json:"saleDate"`
     PaymentMethod string           `json:"paymentMethod"`
     Notes         string           `json:"notes"`
+    BatchID       int              `json:"batchID,omitempty"` // <-- ADD THIS LINE
     Items         []DirectSaleItem `json:"items"`
 }
 

@@ -39,6 +39,7 @@ interface HarvestedProduct {
   weightHarvestedKg: number;
   weightRemainingKg: number;
   batchName: string;
+  batchID: number;
 }
 
 interface OrderItem {
@@ -49,6 +50,7 @@ interface OrderItem {
   totalWeightKg: number;
   pricePerKg: number;
   batchName: string;
+  batchID: number;
 }
 
 const api = axios.create({
@@ -169,6 +171,7 @@ const DirectSale: React.FC = () => {
       totalWeightKg: values.totalWeightKg, // UPDATED
       pricePerKg: values.pricePerKg, // UPDATED
       batchName: selectedProduct.batchName,
+      batchID: selectedProduct.batchID,
     };
 
     setOrderItems((prev) => [...prev, newItem]);
@@ -202,20 +205,18 @@ const DirectSale: React.FC = () => {
       setIsSaving(true);
 
       const payload = {
-        // --- Main Sale Info (camelCase, no Discount) ---
-        customerID: orderInfo.CustomerID, // Changed from CustomerID
-        saleDate: dayjs(orderInfo.SaleDate).format("YYYY-MM-DD HH:mm:ss"), // Changed from SaleDate
-        paymentMethod: orderInfo.PaymentMethod, // Changed from PaymentMethod
-        notes: orderInfo.Notes || "", // Changed from Notes
+        customerID: orderInfo.CustomerID,
+        saleDate: dayjs(orderInfo.SaleDate).format("YYYY-MM-DD HH:mm:ss"),
+        paymentMethod: orderInfo.PaymentMethod,
+        notes: orderInfo.Notes || "",
 
-        // --- Sale Items Array (camelCase) ---
+        batchID: orderItems.length > 0 ? orderItems[0].batchID : null,
         items: orderItems.map((item) => ({
-          // Changed from Items
-          harvestProductID: item.harvestProductID, // Changed from HarvestProductID
-          productType: item.productType, // Changed from ProductType
-          quantitySold: item.quantitySold, // Changed from QuantitySold
-          totalWeightKg: item.totalWeightKg, // Changed from TotalWeightKg
-          pricePerKg: item.pricePerKg, // Changed from PricePerKg
+          harvestProductID: item.harvestProductID,
+          productType: item.productType,
+          quantitySold: item.quantitySold,
+          totalWeightKg: item.totalWeightKg,
+          pricePerKg: item.pricePerKg,
         })),
       };
 

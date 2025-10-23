@@ -569,12 +569,12 @@ func (r *Repository) CreateDirectSale(ctx context.Context, payload models.Direct
     defer tx.Rollback()
 
     // 1. Create the sale order (no batch ID for direct sales)
-    saleQuery := `INSERT INTO cm_sales_orders 
-                  (CustomerID, SaleDate, Status, PaymentMethod, Notes, IsActive) 
-                  VALUES (?, ?, 'Fulfilled', ?, ?, 1)`
+saleQuery := `INSERT INTO cm_sales_orders 
+                  (CustomerID, SaleDate, Status, PaymentMethod, Notes, BatchID, IsActive) 
+                  VALUES (?, ?, 'Fulfilled', ?, ?, ?, 1)` 
     
     res, err := tx.ExecContext(ctx, saleQuery, 
-        payload.CustomerID, payload.SaleDate, payload.PaymentMethod, payload.Notes)
+        payload.CustomerID, payload.SaleDate, payload.PaymentMethod, payload.Notes, payload.BatchID) 
     if err != nil {
         return 0, fmt.Errorf("failed to create sale order: %w", err)
     }
