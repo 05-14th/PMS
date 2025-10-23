@@ -5,6 +5,7 @@
 
 #define DHTPIN D7
 #define DHTTYPE DHT22
+#define GAS_SENSOR_PIN A0
 
 DHT dht(DHTPIN, DHTTYPE);
 
@@ -53,6 +54,7 @@ void setup() {
   Serial.println(serverUrl);
   Serial.print("Cage Number: ");
   Serial.println(cageNum);
+  
 }
 
 void loop() {
@@ -60,12 +62,21 @@ void loop() {
   
   float humidity = dht.readHumidity();
   float temperature = dht.readTemperature();
+  int gasValue = analogRead(GAS_SENSOR_PIN);
+
+  if (isnan(gasValue)) {
+    Serial.println("Failed to read from gas sensor!");
+    return;
+  }
   
   if (isnan(humidity) || isnan(temperature)) {
     Serial.println("Failed to read from DHT sensor!");
     return;
   }
 
+  Serial.print("Gas Sensor Value: ");
+  Serial.print(gasValue);
+  Serial.print("\t");
   Serial.print("Humidity: ");
   Serial.print(humidity);
   Serial.print("%\t");
@@ -74,10 +85,10 @@ void loop() {
   Serial.println("°C");
 
   // Send data to server
-  sendToServer(temperature, humidity);
+  sendToServer(temperature, humidity, gasValue);
 }
 
-void sendToServer(float temperature, float humidity) {
+void sendToServer(float temperature, float humidity, int gasValue) {
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi not connected!");
     return;
@@ -93,7 +104,8 @@ void sendToServer(float temperature, float humidity) {
   // Create JSON payload with configured cage number
   String payload = "{\"temperature\":" + String(temperature) + 
                   ",\"humidity\":" + String(humidity) + 
-                  ",\"cage_num\":" + String(cageNum) + "}";
+                  ",\"cage_num\":" + String(cageNum) + 
+                  ",\"gas_value\":" + String(gasValue) + "}";
 
   // Send HTTP POST request
   int httpResponseCode = http.POST(payload);

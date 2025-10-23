@@ -15,6 +15,7 @@ import (
 	"chickmate-api/internal/customer"
 	"chickmate-api/internal/dashboard"
 	"chickmate-api/internal/database"
+	"chickmate-api/internal/device"
 	"chickmate-api/internal/harvest"
 	"chickmate-api/internal/inventory"
 	"chickmate-api/internal/planning"
@@ -28,7 +29,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplierHandler *supplier.Handler, inventoryHandler *inventory.Handler, 
+func buildRouter(userHandler *user.Handler, deviceHandler *device.Handler, batchHandler *batch.Handler, supplierHandler *supplier.Handler, inventoryHandler *inventory.Handler, 
 	harvestHandler *harvest.Handler, customerHandler *customer.Handler, salesHandler *sales.Handler, reportHandler *report.Handler,
 	dashboardHandler *dashboard.Handler, planningHandler *planning.Handler) http.Handler {
 	r := chi.NewRouter()
@@ -43,6 +44,7 @@ func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplie
 
 	// Handler routes
 	userHandler.RegisterRoutes(r)
+	deviceHandler.RegisterRoutes(r)
 	batchHandler.RegisterRoutes(r)
 	supplierHandler.RegisterRoutes(r)
 	inventoryHandler.RegisterRoutes(r)
@@ -69,9 +71,15 @@ func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplie
 func main() {
 	database.InitDB()
 
+	// Initialize layers for the user feature
 	userRepo := user.NewRepository(database.DB)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
+
+	// Initialize layers for the device feature
+	deviceRepo := device.NewRepository(database.DB)
+    deviceService := device.NewService(deviceRepo)
+    deviceHandler := device.NewHandler(deviceService)
 
 	// Initialize layers for the inventory feature
 	inventoryRepo := inventory.NewRepository(database.DB)
@@ -118,7 +126,7 @@ func main() {
 	planningService := planning.NewService(planningRepo)
 	planningHandler := planning.NewHandler(planningService)
 
-	router := buildRouter(userHandler, batchHandler, supplierHandler, inventoryHandler, harvestHandler, customerHandler, salesHandler, reportHandler, dashboardHandler, planningHandler)
+	router := buildRouter(userHandler, deviceHandler, batchHandler, supplierHandler, inventoryHandler, harvestHandler, customerHandler, salesHandler, reportHandler, dashboardHandler, planningHandler)
 
 	server := &http.Server{
 		Addr:         "0.0.0.0:8080",

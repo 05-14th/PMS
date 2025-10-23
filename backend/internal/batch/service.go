@@ -112,3 +112,7 @@ func (s *Service) DeleteBatch(ctx context.Context, batchID int) error {
 	// so the service just needs to call it.
 	return s.repo.DeleteBatch(ctx, batchID)
 }
+
+func (s *Service) GetActiveBatches(ctx context.Context) ([]models.Batch, error) {
+	return s.repo.GetActiveBatches(ctx)
+}

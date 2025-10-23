@@ -652,3 +652,30 @@ func (r *Repository) GetBatchCostsWithDetails(ctx context.Context, batchID int) 
 	}
 	return costs, nil
 }
+
+//for IoT functions
+
+func (r *Repository) GetActiveBatches(ctx context.Context) ([]models.Batch, error) {
+	query := `
+		SELECT BatchID, BatchName
+		FROM cm_batches 
+		WHERE Status = 'Active' 
+		ORDER BY StartDate DESC`
+
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var batches []models.Batch
+	for rows.Next() {
+		var b models.Batch
+		// Only scan the fields needed for the dropdown
+		if err := rows.Scan(&b.BatchID, &b.BatchName); err != nil {
+			return nil, err
+		}
+		batches = append(batches, b)
+	}
+	return batches, nil
+}

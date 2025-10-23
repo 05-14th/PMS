@@ -27,6 +27,8 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
 	router.Get("/api/batches", h.getBatches)
 	router.Post("/api/batches", h.createBatch)
 
+	router.Get("/api/batches/active", h.getActiveBatches)
+
 	// Group routes for a specific batch under /api/batches/{id}
 	router.Route("/api/batches/{id}", func(r chi.Router) {
 		r.Get("/vitals", h.getBatchVitals)
@@ -251,4 +253,13 @@ func (h *Handler) deleteBatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	util.RespondJSON(w, http.StatusOK, map[string]interface{}{"success": true})
+}
+
+func (h *Handler) getActiveBatches(w http.ResponseWriter, r *http.Request) {
+	batches, err := h.service.GetActiveBatches(r.Context())
+	if err != nil {
+		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch active batches", err)
+		return
+	}
+	util.RespondJSON(w, http.StatusOK, batches)
 }

@@ -566,3 +566,32 @@ type UserRegistrationPayload struct {
 	Role        string `json:"role"`
 }
 
+/* ===========================
+    Models for IoT
+=========================== */
+
+type DhtData struct {
+	ID          int     `json:"temp_id"`
+	Temperature float64 `json:"temp_temperature"`
+	Humidity    float64 `json:"temp_humidity"`
+	GasSensor   float64 `json:"gas_sensor"` 
+	CageNum     int     `json:"cage_num"`
+	CreatedAt   string  `json:"created_at"`
+}
+
+// Device represents a registered IoT device (in-memory)
+type Device struct {
+	IPAddress  string `json:"ipAddress"`
+	DeviceType string `json:"deviceType"`
+}
+
+// DeviceRequest is used for registering a new device
+type DeviceRequest struct {
+	IPAddress  string `json:"ipAddress"`
+	DeviceType string `json:"deviceType"`
+}
+
+
+/* ===========================
+   End of Space for Models for IoT
+=========================== */

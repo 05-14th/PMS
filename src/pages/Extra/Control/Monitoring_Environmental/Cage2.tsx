@@ -1,20 +1,22 @@
-import React from 'react';
+import React from "react";
 import { Wind, Thermometer, Droplet } from "lucide-react";
 
 interface CageProps {
   isAutoMode: boolean;
+  batchID: number | undefined;
 }
 
-const Cage2: React.FC<CageProps> = ({ isAutoMode }) => {
+const Cage2: React.FC<CageProps> = ({ isAutoMode, batchID }) => {
   return (
     <div className="p-4 bg-white rounded-lg shadow">
-    
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Air Quality */}
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-center gap-2 mb-3 h-8">
             <Wind className="w-5 h-5 text-green-600 flex-shrink-0" />
-            <span className="font-semibold text-green-700 text-lg whitespace-nowrap">Air Quality</span>
+            <span className="font-semibold text-green-700 text-lg whitespace-nowrap">
+              Air Quality
+            </span>
           </div>
           <div className="flex-1 p-4 bg-white border-2 border-green-200 shadow-sm rounded-xl">
             <div className="h-32 bg-green-50 rounded flex items-center justify-center text-green-400">
@@ -27,7 +29,9 @@ const Cage2: React.FC<CageProps> = ({ isAutoMode }) => {
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-center gap-2 mb-3 h-8">
             <Thermometer className="w-5 h-5 text-green-600 flex-shrink-0" />
-            <span className="font-semibold text-green-700 text-lg whitespace-nowrap">Temperature</span>
+            <span className="font-semibold text-green-700 text-lg whitespace-nowrap">
+              Temperature
+            </span>
           </div>
           <div className="flex-1 p-4 bg-white border-2 border-green-200 shadow-sm rounded-xl">
             <div className="h-32 bg-green-50 rounded flex items-center justify-center text-green-400">
@@ -40,7 +44,9 @@ const Cage2: React.FC<CageProps> = ({ isAutoMode }) => {
         <div className="flex flex-col h-full">
           <div className="flex items-center justify-center gap-2 mb-3 h-8">
             <Droplet className="w-5 h-5 text-green-600 flex-shrink-0" />
-            <span className="font-semibold text-green-700 text-lg whitespace-nowrap">Current Humidity</span>
+            <span className="font-semibold text-green-700 text-lg whitespace-nowrap">
+              Current Humidity
+            </span>
           </div>
           <div className="flex-1 p-4 bg-white border-2 border-green-200 shadow-sm rounded-xl">
             <div className="h-32 bg-green-50 rounded flex items-center justify-center text-green-400">
