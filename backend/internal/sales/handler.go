@@ -30,6 +30,9 @@ func (h *Handler) RegisterRoutes(router *chi.Mux) {
     router.Get("/api/batches-for-sale", h.getActiveBatchesForSale)
     router.Get("/api/payment-methods", h.getPaymentMethods)
     router.Get("/api/harvested-products", h.getHarvestedProducts)
+    router.Get("/api/sales/products", h.getHarvestedProducts) 
+    
+    
 
 	router.Post("/api/direct-sales", h.createDirectSale)
 
@@ -117,14 +120,15 @@ func (h *Handler) getPaymentMethods(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getHarvestedProducts(w http.ResponseWriter, r *http.Request) {
-	products, err := h.service.GetHarvestedProducts(r.Context())
+    productType := r.URL.Query().Get("type")
+
+	products, err := h.service.GetHarvestedProducts(r.Context(), productType)
 	if err != nil {
 		util.HandleError(w, http.StatusInternalServerError, "Failed to fetch harvested products", err)
 		return
 	}
 
-	// --- 2. ADD THIS LOGGING LINE ---
-	// This will print the data to your backend terminal.
+
 	log.Printf("DEBUG: Fetched harvested products from DB: %+v\n", products)
 
 	util.RespondJSON(w, http.StatusOK, products)

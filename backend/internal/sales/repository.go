@@ -333,10 +333,7 @@ func (r *Repository) GetRevenueByActiveBatch(ctx context.Context) (map[int]float
 	return revenueMap, nil
 }
 
-// In sales/repository.go - Fix GetHarvestedProducts function
-// In sales/repository.go - Ensure we always return an array, not nil
-// In sales/repository.go - Update GetHarvestedProducts function
-func (r *Repository) GetHarvestedProducts(ctx context.Context) ([]models.HarvestedProduct, error) {
+func (r *Repository) GetHarvestedProducts(ctx context.Context, productType string) ([]models.HarvestedProduct, error) { // <--- ADD productType string
     query := `
         SELECT 
             hp.HarvestProductID, 
@@ -350,10 +347,16 @@ func (r *Repository) GetHarvestedProducts(ctx context.Context) ([]models.Harvest
         FROM cm_harvest_products hp
         JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
         JOIN cm_batches b ON h.BatchID = b.BatchID
-        WHERE hp.QuantityRemaining > 0 AND hp.IsActive = 1
-        ORDER BY h.HarvestDate DESC`
+        WHERE hp.QuantityRemaining > 0 AND hp.IsActive = 1`
+        
+    var args []interface{}
+    if productType != "" {
+        query += " AND hp.ProductType = ?"
+        args = append(args, productType)
+    }
+    query += " ORDER BY h.HarvestDate DESC"
 
-    rows, err := r.db.QueryContext(ctx, query)
+    rows, err := r.db.QueryContext(ctx, query, args...)
     if err != nil {
         log.Printf("ERROR: GetHarvestedProducts query failed: %v", err)
         return []models.HarvestedProduct{}, err

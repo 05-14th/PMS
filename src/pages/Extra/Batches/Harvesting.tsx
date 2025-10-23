@@ -157,7 +157,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
           api.get("/api/customers"),
           api.get("/api/payment-methods"),
           api.get("/api/product-types"),
-          api.get("/api/sale-products?type=Dressed"),
+          api.get("/api/sales/products?type=Dressed"),
           api.get(`/api/batches/${batch.batchID}/vitals`),
         ]);
         setCustomers(customersRes.data || []);
@@ -276,7 +276,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
   };
   const fetchDressedInventory = async () => {
     try {
-      const dressedRes = await api.get("/api/sale-products?type=Dressed");
+      const dressedRes = await api.get("/api/sales/products?type=Dressed");
       setDressedInventory(dressedRes.data || []);
     } catch (error) {
       message.error("Could not load Dressed chicken inventory.");

@@ -71,8 +71,8 @@ func (s *Service) GetPaymentMethods(ctx context.Context) ([]string, error) {
 	return s.repo.GetPaymentMethods(ctx)
 }
 
-func (s *Service) GetHarvestedProducts(ctx context.Context) ([]models.HarvestedProduct, error) {
-	return s.repo.GetHarvestedProducts(ctx)
+func (s *Service) GetHarvestedProducts(ctx context.Context, productType string) ([]models.HarvestedProduct, error) { 
+	return s.repo.GetHarvestedProducts(ctx, productType)
 }
 
 func (s *Service) VoidSale(ctx context.Context, saleID int) error {
@@ -83,7 +83,7 @@ func (s *Service) VoidSale(ctx context.Context, saleID int) error {
 func (s *Service) CreateDirectSale(ctx context.Context, payload models.DirectSalePayload) (int64, error) {
     // Business logic: Check if harvested products have sufficient quantity
     for _, item := range payload.Items {
-        products, err := s.repo.GetHarvestedProducts(ctx)
+        products, err := s.repo.GetHarvestedProducts(ctx, "")
         if err != nil {
             return 0, err
         }

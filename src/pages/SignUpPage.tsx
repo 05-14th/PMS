@@ -314,6 +314,18 @@ const SignUpPage: React.FC = () => {
         >
           {loading ? "Signing up..." : "Create Account"}
         </button>
+
+        {/* NEW: Navigation Link */}
+        <div className="text-center mt-4 text-sm">
+          <span className="text-gray-600">Already have an account? </span>
+          <button
+            type="button"
+            onClick={() => navigate("/login")} // Use navigate to go to the login route
+            className="text-green-500 font-semibold hover:underline"
+          >
+            Log In
+          </button>
+        </div>
       </form>
     </div>
   );

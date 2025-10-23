@@ -82,27 +82,46 @@ func (s *Service) GenerateDashboardData(ctx context.Context) (*models.DashboardD
 	}()
 
 	// 4. Fetch Stock Status & Alerts
-	wg.Add(1)
+wg.Add(1)
 	go func() {
 		defer wg.Done()
 		var err error
 		stockItems, err = s.inventoryRepo.GetStockStatus(ctx)
 		if err != nil { errs <- err; return }
-		lowThresholds := map[string]float64{"Feed": 50.0, "Vitamins": 10.0, "Medicine": 15.0}
-		plentyThresholdMultiplier := 5.0
+		
+		// Reworked Thresholds (These are the MINIMUM values for the next-highest status)
+		// 150.0 kg is now the Low limit (below this is CRITICAL/OUT OF STOCK)
+		// 300.0 kg is now the Adequate limit (below this is LOW)
+		const (
+			ADEQUATE_THRESHOLD_MULTIPLIER = 4.0 // e.g., 4 sacks is adequate
+			PLENTY_THRESHOLD_MULTIPLIER   = 8.0 // e.g., 8 sacks is plenty
+		)
+
+		// Low Threshold is the point below which stock is considered insufficient (e.g., 2 sacks or 100 kg)
+		lowThresholds := map[string]float64{
+			"Feed":     100.0, // Low threshold is 100 kg (2 sacks). Below this is CRITICAL/OUT OF STOCK.
+			"Vitamins": 10.0,
+			"Medicine": 15.0,
+		}
+		
 		for i, item := range stockItems {
 			if lowThreshold, ok := lowThresholds[item.Category]; ok {
-				plentyThreshold := lowThreshold * plentyThresholdMultiplier
+				adequateThreshold := lowThreshold * ADEQUATE_THRESHOLD_MULTIPLIER // e.g., 100 * 4 = 400 kg is adequate
+				plentyThreshold := lowThreshold * PLENTY_THRESHOLD_MULTIPLIER     // e.g., 100 * 8 = 800 kg is plenty
+				
 				if item.RawQty <= 0 {
 					stockItems[i].Level, stockItems[i].Status = 0, "Out of Stock"
 					alerts = append(alerts, models.Alert{Type: "critical", Message: fmt.Sprintf("%s is out of stock.", item.Name)})
 				} else if item.RawQty < lowThreshold {
-					stockItems[i].Level, stockItems[i].Status = 25, "Low"
-					alerts = append(alerts, models.Alert{Type: "warning", Message: fmt.Sprintf("%s stock is low (%.2f %s remaining).", item.Name, item.RawQty, item.Unit)})
-				} else if item.RawQty >= plentyThreshold {
-					stockItems[i].Level, stockItems[i].Status = 100, "Plenty"
+					stockItems[i].Level, stockItems[i].Status = 25, "Critical" // Below 100 kg is critical
+					alerts = append(alerts, models.Alert{Type: "critical", Message: fmt.Sprintf("%s stock is critical (%.2f %s remaining).", item.Name, item.RawQty, item.Unit)})
+				} else if item.RawQty < adequateThreshold {
+					stockItems[i].Level, stockItems[i].Status = 50, "Low" // Between 100 kg and 400 kg is low
+					alerts = append(alerts, models.Alert{Type: "warning", Message: fmt.Sprintf("%s stock is low (%.2f %s remaining). Reorder soon.", item.Name, item.RawQty, item.Unit)})
+				} else if item.RawQty < plentyThreshold {
+					stockItems[i].Level, stockItems[i].Status = 75, "Good" // Between 400 kg and 800 kg is good
 				} else {
-					stockItems[i].Level, stockItems[i].Status = 75, "Good"
+					stockItems[i].Level, stockItems[i].Status = 100, "Plenty" // Above 800 kg is plenty
 				}
 			}
 		}

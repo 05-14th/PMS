@@ -22,10 +22,11 @@ interface LiveOperationProps {
 }
 
 const statusStyles = {
-  "out of stock": { bar: "bg-red-500", text: "bg-red-100 text-red-800" },
+  critical: { bar: "bg-red-600", text: "bg-red-100 text-red-800" },
+  "out of stock": { bar: "bg-red-600", text: "bg-red-100 text-red-800" },
   low: { bar: "bg-amber-500", text: "bg-amber-100 text-amber-800" },
   good: { bar: "bg-green-500", text: "bg-green-100 text-green-800" },
-  plenty: { bar: "bg-blue-500", text: "bg-blue-100 text-blue-800" },
+  plenty: { bar: "bg-cyan-600", text: "bg-cyan-100 text-cyan-800" },
   default: { bar: "bg-gray-500", text: "bg-gray-100 text-gray-800" },
 };
 
