@@ -80,8 +80,6 @@ const DirectSale: React.FC = () => {
           api.get("/api/payment-methods"),
         ]);
 
-        console.log("🔍 Raw customers data:", customersRes.data);
-
         // Map products data
         const rawProducts = productsRes.data || [];
         const mappedProducts = rawProducts.map((product: any) => ({
@@ -113,9 +111,6 @@ const DirectSale: React.FC = () => {
             const name =
               customer.name || customer.Name || customer.customerName;
 
-            console.log(`🔍 Mapping customer:`, customer);
-            console.log(`🔍 Found ID: ${customerID}, Name: ${name}`);
-
             return {
               customerID: customerID,
               name: name,
@@ -125,8 +120,6 @@ const DirectSale: React.FC = () => {
             };
           })
           .filter((customer: Customer) => customer.customerID && customer.name); // Filter out invalid customers
-
-        console.log("✅ Final mapped customers:", mappedCustomers);
 
         setCustomers(mappedCustomers);
         setHarvestedProducts(mappedProducts);

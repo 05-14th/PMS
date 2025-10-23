@@ -34,14 +34,14 @@ interface SaleHistoryRecord {
 }
 
 interface HarvestedProduct {
-  HarvestProductID: number;
-  HarvestDate: string;
-  ProductType: string;
-  QuantityHarvested: number;
-  QuantityRemaining: number;
-  WeightHarvestedKg: number;
-  WeightRemainingKg: number;
-  BatchName?: string;
+  harvestProductID: number;
+  harvestDate: string;
+  productType: string;
+  quantityHarvested: number;
+  quantityRemaining: number;
+  weightHarvestedKg: number;
+  weightRemainingKg: number;
+  batchName?: string;
 }
 
 interface FulfillmentModalProps {
@@ -122,18 +122,18 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({
 
       if (harvestProductID && enteredWeight > 0) {
         const selectedProduct = harvestedProducts.find(
-          (p) => p.HarvestProductID === harvestProductID
+          (p) => p.harvestProductID === harvestProductID
         );
 
         if (
           selectedProduct &&
-          enteredWeight > selectedProduct.WeightRemainingKg
+          enteredWeight > selectedProduct.weightRemainingKg
         ) {
           discrepancies.push({
             saleDetailID: detail.saleDetailID,
             productType: detail.productType,
             enteredWeight,
-            availableWeight: selectedProduct.WeightRemainingKg,
+            availableWeight: selectedProduct.weightRemainingKg,
             harvestProductID,
           });
         }
@@ -181,7 +181,7 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({
           values[`harvestProductID_${detail.saleDetailID}`];
         const actualWeight = values[`weight_${detail.saleDetailID}`] || 0;
         const selectedProduct = harvestedProducts.find(
-          (p) => p.HarvestProductID === harvestProductID
+          (p) => p.harvestProductID === harvestProductID
         );
 
         if (!selectedProduct) {
@@ -189,9 +189,9 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({
             `Please select a harvested product for ${detail.productType}.`
           );
         }
-        if (selectedProduct.QuantityRemaining < detail.quantitySold) {
+        if (selectedProduct.quantityRemaining < detail.quantitySold) {
           throw new Error(
-            `Not enough stock for ${detail.productType}. Required: ${detail.quantitySold}, Available: ${selectedProduct.QuantityRemaining}`
+            `Not enough stock for ${detail.productType}. Required: ${detail.quantitySold}, Available: ${selectedProduct.quantityRemaining}`
           );
         }
 
@@ -258,16 +258,16 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({
 
     if (harvestProductID && enteredWeight > 0) {
       const selectedProduct = harvestedProducts.find(
-        (p) => p.HarvestProductID === harvestProductID
+        (p) => p.harvestProductID === harvestProductID
       );
 
       if (
         selectedProduct &&
-        enteredWeight > selectedProduct.WeightRemainingKg
+        enteredWeight > selectedProduct.weightRemainingKg
       ) {
         return {
           hasWarning: true,
-          message: `Note: Entered weight (${enteredWeight}kg) exceeds recorded available weight (${selectedProduct.WeightRemainingKg}kg). The actual measured weight will be used for pricing.`,
+          message: `Note: Entered weight (${enteredWeight}kg) exceeds recorded available weight (${selectedProduct.weightRemainingKg}kg). The actual measured weight will be used for pricing.`,
         };
       }
     }
@@ -278,10 +278,19 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({
   // Get available products for dropdown with stock info
   const getAvailableProducts = (productType: string) => {
     return harvestedProducts
-      .filter((p) => p.ProductType === productType && p.QuantityRemaining > 0)
+      .filter(
+        (p) =>
+          // ADDED CHECK: Ensure p.ProductType exists before trying to use it
+          p.productType &&
+          p.productType.trim().toLowerCase() ===
+            productType.trim().toLowerCase() &&
+          p.quantityRemaining > 0
+      )
       .map((p) => ({
         ...p,
-        displayText: `${p.BatchName || "Batch"} - ${p.QuantityRemaining}pcs, ${p.WeightRemainingKg}kg recorded (${p.HarvestDate})`,
+        displayText: `${p.batchName || "Batch"} - ${p.quantityRemaining}pcs, ${
+          p.weightRemainingKg
+        }kg recorded (${p.harvestDate})`,
       }));
   };
 
@@ -370,8 +379,8 @@ const FulfillmentModal: React.FC<FulfillmentModalProps> = ({
                         >
                           {availableProducts.map((p) => (
                             <Option
-                              key={p.HarvestProductID}
-                              value={p.HarvestProductID}
+                              key={p.harvestProductID}
+                              value={p.harvestProductID}
                             >
                               {p.displayText}
                             </Option>

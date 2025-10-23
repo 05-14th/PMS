@@ -473,22 +473,22 @@ func (r *Repository) VoidSale(ctx context.Context, saleID int) error {
     // based on the batch and product type
     for _, detail := range details {
         if batchID.Valid && detail.QuantitySold > 0 {
+            // CORRECTED QUERY: Removed the "AND hp.IsActive = 0" condition
             updateQuery := `
                 UPDATE cm_harvest_products hp
                 JOIN cm_harvest h ON hp.HarvestID = h.HarvestID
-                SET 
+                SET
                     hp.QuantityRemaining = hp.QuantityRemaining + ?,
                     hp.WeightRemainingKg = hp.WeightRemainingKg + ?,
                     hp.IsActive = 1
-                WHERE 
-                    h.BatchID = ? 
+                WHERE
+                    h.BatchID = ?
                     AND hp.ProductType = ?
-                    AND hp.IsActive = 0
                 ORDER BY hp.HarvestProductID DESC
                 LIMIT 1`
-            
-            result, err := tx.ExecContext(ctx, updateQuery, 
-                detail.QuantitySold, 
+
+            result, err := tx.ExecContext(ctx, updateQuery,
+                detail.QuantitySold,
                 detail.TotalWeightKg,
                 batchID.Int64,
                 detail.ProductType,

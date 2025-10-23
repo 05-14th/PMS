@@ -547,9 +547,9 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
                   >
                     {" "}
                     {customers.map((c) => (
-                      <Option key={c.CustomerID} value={c.CustomerID}>
+                      <Option key={c.customerID} value={c.customerID}>
                         {" "}
-                        {c.Name}{" "}
+                        {c.name}{" "}
                       </Option>
                     ))}{" "}
                   </Select>{" "}
@@ -658,11 +658,11 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
                   >
                     {dressedInventory.map((p) => (
                       <Option
-                        key={p.harvestProductID} // Corrected from HarvestProductID
-                        value={p.harvestProductID} // Corrected from HarvestProductID
+                        key={p.harvestProductID} // Already correct
+                        value={p.harvestProductID} // Already correct
                       >
-                        Harvested on {dayjs(p.harvestDate).format("MMM D")} ({" "}
-                        {p.quantityRemaining} pcs remaining){" "}
+                        Harvested on {dayjs(p.harvestDate).format("MMM D")} (
+                        {p.quantityRemaining} pcs remaining)
                       </Option>
                     ))}
                   </Select>
@@ -682,15 +682,15 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
                         );
                         if (!sourceId || !value) return Promise.resolve();
                         const selectedProduct = dressedInventory.find(
-                          (p) => p.HarvestProductID === sourceId
+                          (p) => p.harvestProductID === sourceId
                         );
                         if (
                           selectedProduct &&
-                          value > selectedProduct.QuantityRemaining
+                          value > selectedProduct.quantityRemaining
                         ) {
                           return Promise.reject(
                             new Error(
-                              `Max available is ${selectedProduct.QuantityRemaining} pcs`
+                              `Max available is ${selectedProduct.quantityRemaining} pcs`
                             )
                           );
                         }
@@ -734,7 +734,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
                 <>
                   {fields.map((field) => (
                     <Space
-                      key={field.key}
+                      key={field.key} // This is correct
                       style={{ display: "flex", marginBottom: 8 }}
                       align="baseline"
                     >
@@ -798,7 +798,7 @@ const Harvesting: React.FC<HarvestingProps> = ({ batch, onDataChange }) => {
       <Table
         columns={columns}
         dataSource={harvestedProducts}
-        rowKey="HarvestProductID"
+        rowKey="harvestProductID" // Changed to lowercase
         pagination={false}
       />
 
