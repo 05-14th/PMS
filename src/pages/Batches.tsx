@@ -37,10 +37,20 @@ interface Batch {
   totalChicken: number;
   currentChicken: number;
   status: string;
+  cageNumber: string;
   notes?: {
     String: string;
     Valid: boolean;
   };
+}
+
+// MODIFICATION: The state for procurement data now includes the start date
+interface ProcurementDataState {
+  plan: any[];
+  batchName: string;
+  batchDuration: number;
+  chickenCount: number;
+  startDate: string; // <-- New field
 }
 
 const api = axios.create({
@@ -54,39 +64,33 @@ const Batches: React.FC = () => {
     title: string;
   } | null>(null);
   const [selectedBatch, setSelectedBatch] = useState<Batch | null>(null);
-  const [allBatches, setAllBatches] = useState<Batch[]>([]); // store all data
-  const [batches, setBatches] = useState<Batch[]>([]); // paginated data
+  const [allBatches, setAllBatches] = useState<Batch[]>([]);
+  const [batches, setBatches] = useState<Batch[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [editingBatch, setEditingBatch] = useState<Batch | null>(null);
-
-  // --- CHANGE #1: Updated the state type to use 'batchDuration' ---
-  const [procurementData, setProcurementData] = useState<{
-    plan: any[];
-    batchName: string;
-    batchDuration: number;
-    chickenCount: number;
-  } | null>(null);
-
-  // --- Filters and modal ---
+  const [procurementData, setProcurementData] =
+    useState<ProcurementDataState | null>(null); // Uses the new interface
   const [isAddModalVisible, setIsAddModalVisible] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [searchText, setSearchText] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const debouncedSearchText = useDebounce(searchText, 500);
-
-  // --- Pagination state ---
   const [page, setPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(5);
   const [total, setTotal] = useState<number>(0);
 
-  // Fetch all batches once
   const fetchBatches = async () => {
     setLoading(true);
     try {
       const response = await api.get("/api/batches");
-      const data = response.data?.data || response.data || [];
-      setAllBatches(data);
+      let data = response.data?.data || response.data || [];
+      const cages = ["Cage 1", "Cage 2", "Reserve"];
+      const dataWithCages = data.map((batch: any) => ({
+        ...batch,
+        cageNumber: batch.cageNumber || cages[batch.batchID % cages.length],
+      }));
+      setAllBatches(dataWithCages);
     } catch (error) {
       message.error("Failed to fetch batches.");
     } finally {
@@ -94,28 +98,22 @@ const Batches: React.FC = () => {
     }
   };
 
-  // Apply search + filter + pagination
   useEffect(() => {
     let filtered = [...allBatches];
-
     if (debouncedSearchText) {
       filtered = filtered.filter((b) =>
         b.batchName.toLowerCase().includes(debouncedSearchText.toLowerCase())
       );
     }
-
     if (statusFilter !== "All") {
       filtered = filtered.filter((b) => b.status === statusFilter);
     }
-
     setTotal(filtered.length);
-
     const start = (page - 1) * pageSize;
     const paginated = filtered.slice(start, start + pageSize);
     setBatches(paginated);
   }, [allBatches, debouncedSearchText, statusFilter, page, pageSize]);
 
-  // Reset to page 1 on search/filter change
   useEffect(() => {
     setPage(1);
   }, [debouncedSearchText, statusFilter]);
@@ -128,6 +126,7 @@ const Batches: React.FC = () => {
     setIsSaving(true);
     const payload = {
       BatchName: values.BatchName,
+      CageNumber: values.CageNumber,
       TotalChicken: values.TotalChicken,
       ChickCost: values.TotalChickCost,
       StartDate: dayjs(values.StartDate).format("YYYY-MM-DD"),
@@ -136,7 +135,6 @@ const Batches: React.FC = () => {
       ),
       Notes: values.Notes || "",
     };
-
     try {
       await api.post("/api/batches", payload);
       message.success("Batch created successfully!");
@@ -193,14 +191,11 @@ const Batches: React.FC = () => {
     });
   };
 
-  // --- CHANGE #2: This function is now updated to calculate and pass the correct prop ---
   const handleViewProcurementPlan = async (batch: Batch) => {
     try {
       message.loading({ content: "Generating smart plan...", key: "proc" });
       const startDate = dayjs(batch.startDate);
       const endDate = dayjs(batch.expectedHarvestDate);
-
-      // Calculate the inclusive duration of the batch
       const durationDays = endDate.diff(startDate, "day") + 1;
 
       if (durationDays <= 0) {
@@ -208,7 +203,6 @@ const Batches: React.FC = () => {
         return;
       }
 
-      // API call remains the same, as the backend needs the duration
       const res = await api.post("/api/planning/procurement-plan", {
         batchID: batch.batchID,
         chickenCount: batch.totalChicken,
@@ -217,12 +211,13 @@ const Batches: React.FC = () => {
 
       message.success({ content: "Plan generated!", key: "proc", duration: 2 });
 
-      // Pass the locally calculated duration to the modal state
+      // MODIFICATION: Pass the batch's start date to the modal data
       setProcurementData({
         plan: res.data.plan,
         batchName: batch.batchName,
         chickenCount: res.data.chickenCount,
-        batchDuration: durationDays, // <-- Passing the correct prop
+        batchDuration: durationDays,
+        startDate: batch.startDate, // <-- Pass the start date here
       });
     } catch (error) {
       message.error({
@@ -332,6 +327,10 @@ const Batches: React.FC = () => {
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Batch Name
                   </th>
+                  {/* Table header for the new column */}
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                    Cage
+                  </th>
                   <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                     Start Date
                   </th>
@@ -355,12 +354,15 @@ const Batches: React.FC = () => {
                   </th>
                 </tr>
               </thead>
-
               <tbody className="bg-white divide-y divide-gray-200">
                 {batches.map((batch) => (
                   <tr key={batch.batchID} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {batch.batchName}
+                    </td>
+                    {/* Table cell that displays the cage number */}
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                      {batch.cageNumber}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                       {formatDate(batch.startDate)}

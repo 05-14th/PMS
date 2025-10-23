@@ -1,8 +1,9 @@
 // File: src/pages/Extra/Batches/ProcurementListModal.tsx
 import React from "react";
-import { Modal, Button, Table, Typography, Card, Empty } from "antd";
+import { Modal, Button, Table, Typography } from "antd";
+import dayjs from "dayjs"; // Import dayjs for date calculations
 
-const { Title, Text, Paragraph } = Typography;
+const { Title, Paragraph } = Typography;
 
 interface Item {
   itemName: string;
@@ -14,11 +15,13 @@ interface CategoryPlan {
   items: Item[];
 }
 
+// MODIFICATION: The data interface now expects a startDate
 interface ProcurementData {
   plan: CategoryPlan[];
   batchName: string;
-  batchDuration?: number; // Made optional to prevent crashes
+  batchDuration?: number;
   chickenCount: number;
+  startDate: string; // <-- New field
 }
 
 const ProcurementListModal: React.FC<{
@@ -28,10 +31,24 @@ const ProcurementListModal: React.FC<{
 }> = ({ visible, onClose, data }) => {
   if (!data) return null;
 
-  // **THE FIX**: Use the provided batchDuration or default to 0 to prevent the 'toFixed' error.
   const duration = data.batchDuration || 0;
 
   const handlePrint = () => window.print();
+
+  // Helper function to format date ranges
+  const formatDateRange = (startDay: number, endDay: number) => {
+    if (!data.startDate) return `Days ${startDay} - ${endDay}`;
+    const baseDate = dayjs(data.startDate);
+    // Subtract 1 day because dayjs.add() is 0-indexed for the first day
+    const phaseStart = baseDate.add(startDay - 1, "day");
+    const phaseEnd = baseDate.add(endDay - 1, "day");
+
+    // Check if the dates are in the same year to avoid redundancy
+    if (phaseStart.year() === phaseEnd.year()) {
+      return `${phaseStart.format("MMM D")} - ${phaseEnd.format("MMM D, YYYY")}`;
+    }
+    return `${phaseStart.format("MMM D, YYYY")} - ${phaseEnd.format("MMM D, YYYY")}`;
+  };
 
   const baseColumns = [
     {
@@ -50,16 +67,17 @@ const ProcurementListModal: React.FC<{
   const feedsColumns = [
     ...baseColumns,
     {
-      title: "Days of Intake",
-      key: "daysOfIntake",
+      // MODIFICATION: Changed column title
+      title: "Intake Period",
+      key: "intakePeriod",
+      // MODIFICATION: Updated render logic to calculate and format dates
       render: (_: any, record: Item) => {
         const name = record.itemName.toLowerCase();
-        if (name.includes("starter")) return "Days 1 - 14";
-        if (name.includes("grower")) return "Days 15 - 21";
+        if (name.includes("starter")) return formatDateRange(1, 14);
+        if (name.includes("grower")) return formatDateRange(15, 21);
         if (name.includes("finisher")) {
-          // Now uses the safe 'duration' variable
           const endDate = Math.round(duration);
-          return `Days 22 - ${endDate}`;
+          return formatDateRange(22, endDate);
         }
         return "N/A";
       },
@@ -98,7 +116,6 @@ const ProcurementListModal: React.FC<{
         </Title>
         <Paragraph type="secondary">
           This plan is based on industry standards for a lifecycle of{" "}
-          {/* Now uses the safe 'duration' variable */}
           <strong>{duration.toFixed(0)} days</strong>.
         </Paragraph>
 
