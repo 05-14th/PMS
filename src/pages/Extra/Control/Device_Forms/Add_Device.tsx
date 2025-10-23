@@ -11,10 +11,11 @@ type GatewayStatus = "online" | "offline" | "unknown";
 
 interface Gateway {
   id: string;
-  name?: string;        // optional display name if your API provides it
-  ip?: string;          // optional IP if your API provides it
+  name?: string;
+  ip?: string;
   status?: GatewayStatus;
-  lastSeenAt?: string;  // ISO timestamp optional
+  lastSeenAt?: string;   // NEW
+  claimed?: boolean;     // NEW
 }
 
 const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) => {
@@ -36,7 +37,7 @@ const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) =
 
     const fetchOnce = async () => {
       try {
-        const { data } = await axios.get<Gateway[]>(`${serverHost}/iot/gateways`);
+        const { data } = await axios.get<Gateway[]>(`${serverHost}/api/iot/gateways`);
         if (!cancelled) {
           setGateways(Array.isArray(data) ? data : []);
           setLoading(false);
@@ -65,27 +66,21 @@ const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) =
     };
   }, [isOpen, serverHost]);
 
-  const handleClaim = async (gw: Gateway) => {
+  const handleClaim = async (gateway: Gateway) => {
+    if (claimingId || gateway.claimed) return;  // Prevent multiple claims
+    setClaimingId(gateway.id);
     setError("");
-    setClaimingId(gw.id);
     try {
-      // Adjust this path if your claim endpoint differs
-      await axios.post(`${serverHost}/api/gateways/${encodeURIComponent(gw.id)}/claim`);
-
-      // Notify parent. Use id as the device handle. Device type is Gateway.
-      onAddDevice(gw.id, "Gateway");
-
-      // Close after success
-      setClaimingId(null);
-      onClose();
+      await axios.post(`${serverHost}/api/iot/gateways/${gateway.id}/claim`);
+      onAddDevice(gateway.id, "gateway");
     } catch (e: any) {
-      setClaimingId(null);
       setError(
         e?.response?.data?.message ||
         e?.message ||
-        "Failed to claim device"
+        "Failed to claim gateway"
       );
     }
+    setClaimingId(null);
   };
 
   if (!isOpen) return null;
@@ -124,12 +119,15 @@ const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) =
                 status === "offline" ? "bg-gray-400" :
                 "bg-yellow-500";
 
+              const isBusy = claimingId === gw.id;
+              const isClaimed = !!gw.claimed;
+
               return (
                 <li key={gw.id}>
                   <button
                     onClick={() => handleClaim(gw)}
-                    disabled={claimingId === gw.id}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-md border border-gray-200 bg-white hover:bg-gray-50 transition-colors"
+                    disabled={isBusy || isClaimed}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-md border border-gray-200 bg-white hover:bg-gray-50 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
                   >
                     <div className="min-w-0 text-left">
                       <div className="flex items-center space-x-2">
@@ -139,13 +137,15 @@ const AddDevice: React.FC<AddDeviceProps> = ({ isOpen, onClose, onAddDevice }) =
                         </span>
                       </div>
                       <div className="text-xs text-gray-500 mt-0.5 truncate">
-                        {gw.ip ? `IP ${gw.ip}` : "IP unknown"} • {status}
+                        {(gw.ip ? `IP ${gw.ip}` : "IP unknown")}
+                        {" • "}
+                        {status}
                         {gw.lastSeenAt ? ` • seen ${new Date(gw.lastSeenAt).toLocaleString()}` : ""}
                       </div>
                     </div>
                     <div className="ml-3">
                       <span className="text-sm font-medium text-green-700">
-                        {claimingId === gw.id ? "Claiming..." : "Add"}
+                        {isBusy ? "Claiming..." : isClaimed ? "Added" : "Add"}
                       </span>
                     </div>
                   </button>

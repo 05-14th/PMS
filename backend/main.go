@@ -562,6 +562,7 @@ var (
 =========================== */
 
 var db *sql.DB
+var claimed = map[string]bool{}
 
 /* ===========================
     Bootstrapping / DB
@@ -3964,33 +3965,31 @@ func handleGatewayWS(w http.ResponseWriter, r *http.Request) {
 
 // getGateways lists all connected gateways (for React polling)
 func getGateways(w http.ResponseWriter, r *http.Request) {
-	type gwInfo struct {
-		ID     string `json:"id"`
-		Status string `json:"status"`
+	type gatewayInfo struct {
+		ID      string `json:"id"`
+		Status  string `json:"status"`
+		Claimed bool   `json:"claimed"`
 	}
 	gatewayMu.RLock()
-	list := make([]gwInfo, 0, len(gateways))
+	var list []gatewayInfo
 	for id := range gateways {
-		list = append(list, gwInfo{ID: id, Status: "online"})
+		list = append(list, gatewayInfo{
+			ID:      id,
+			Status:  "online",
+			Claimed: claimed[id],
+		})
 	}
 	gatewayMu.RUnlock()
-	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(list)
 }
 
 // claimGateway handles POST /api/gateways/{id}/claim
 func claimGateway(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	gatewayMu.RLock()
-	_, ok := gateways[id]
-	gatewayMu.RUnlock()
-	if !ok {
-		http.Error(w, "gateway not found", http.StatusNotFound)
-		return
-	}
-	json.NewEncoder(w).Encode(map[string]string{
-		"success": "true",
-		"message": fmt.Sprintf("Gateway %s claimed", id),
+	claimed[id] = true
+	json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"message": "Gateway claimed",
 	})
 }
 
@@ -4026,15 +4025,7 @@ func sendCommand(w http.ResponseWriter, r *http.Request) {
 
 // RegisterGatewayRoutes mounts the endpoints
 func RegisterGatewayRoutes(r chi.Router) {
-	// WebSocket for the ESP8266 gateway
 	r.HandleFunc("/ws/gateway", handleGatewayWS)
-
-	// Primary API
-	r.Get("/api/gateways", getGateways)
-	r.Post("/api/gateways/{id}/claim", claimGateway)
-	r.Post("/api/gateways/{id}/command", sendCommand)
-
-	// Aliases to match your current frontend calls
 	r.Get("/iot/gateways", getGateways)
 	r.Post("/iot/gateways/{id}/claim", claimGateway)
 	r.Post("/iot/gateways/{id}/command", sendCommand)
