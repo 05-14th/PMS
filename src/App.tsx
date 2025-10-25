@@ -1,0 +1,43 @@
+import React from 'react'
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom"
+import './App.css'
+import LoginModal from './pages/LoginModal'
+import SignUpPage from './pages/SignUpPage'
+import HomePage from './pages/HomePage'
+import Inventory from './pages/Inventory'
+import Control from './pages/Control'
+import Sales from './pages/Sales'
+import Reports from './pages/Reports'
+import Notification from './controlPage/Notification'
+import TargetModal from './components/TargetModal'
+import Products from './pages/Product'
+import Batches from './pages/Batches'
+
+function App() {
+  return (
+    <div className="min-h-screen bg-black flex flex-col">
+      <div className="flex-1 flex flex-col">
+        <Router>
+          <main className="mobile-scrollable">
+            <Routes>
+              <Route path="/" element={<LoginModal />} />
+              <Route path="/login" element={<LoginModal />} />
+              <Route path="/signup" element={<SignUpPage />} />
+              <Route path="/homepage" element={<HomePage />} />
+              <Route path="/inventory" element={<Inventory />} />
+              <Route path="/batches" element={<Batches />} />
+              <Route path="/batches/:id" element={<Batches />} />
+              <Route path="/products" element={<Products />}/>
+              <Route path="/sales" element={<Sales />} />
+              <Route path="/reports" element={<Reports />} />
+              <Route path="/control" element={<Control />} />
+              <Route path="/notification" element={<Notification />} />
+            </Routes>
+          </main>
+        </Router>
+      </div>
+    </div>
+  )
+}
+
+export default App;
