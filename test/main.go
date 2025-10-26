@@ -2,6 +2,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -15,10 +16,14 @@ import (
 	"time"
 )
 
+// Device now tracks last sensors and watering state
 type Device struct {
-	ID        string
-	IP        string
-	LastHello time.Time
+	ID          string
+	IP          string
+	LastHello   time.Time
+	LastSensors map[string]float64 // from /upload
+	Mode        string             // "automatic" or "manual"
+	Relays      [3]int             // relay1..relay3
 }
 
 type Command struct {
@@ -44,6 +49,8 @@ var (
 	queues   = map[string][]Command{}
 	inflight = map[string]map[string]bool{}
 )
+
+// ---------- utility helpers ----------
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -76,22 +83,72 @@ func getClientIP(r *http.Request) string {
 	return strings.TrimSpace(r.RemoteAddr)
 }
 
+func normalizeMode(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	switch s {
+	case "auto", "automatic":
+		return "automatic"
+	case "manual":
+		return "manual"
+	default:
+		return s
+	}
+}
+
+// forwards a request to a known device IP and returns its response verbatim
+func passthroughToDevice(devID, method, path string, body []byte) (int, []byte, error) {
+	devMu.RLock()
+	d := devices[devID]
+	devMu.RUnlock()
+	if d == nil || d.IP == "" {
+		return http.StatusNotFound, nil, fmt.Errorf("unknown device or no IP")
+	}
+
+	url := fmt.Sprintf("http://%s%s", d.IP, path)
+	req, err := http.NewRequest(method, url, bytes.NewReader(body))
+	if err != nil {
+		return http.StatusInternalServerError, nil, fmt.Errorf("build request failed")
+	}
+	if len(body) > 0 {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return http.StatusBadGateway, nil, fmt.Errorf("forward failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(resp.Body)
+	return resp.StatusCode, respBody, nil
+}
+
+// ---------- handlers ----------
+
+// Root shows devices and cached context
 func getRoot(w http.ResponseWriter, r *http.Request) {
 	type DevView struct {
-		ID        string    `json:"id"`
-		IP        string    `json:"ip"`
-		LastHello time.Time `json:"last_hello"`
-		QueueLen  int       `json:"queue_len"`
+		ID          string             `json:"id"`
+		IP          string             `json:"ip"`
+		LastHello   time.Time          `json:"last_hello"`
+		QueueLen    int                `json:"queue_len"`
+		LastSensors map[string]float64 `json:"last_sensors,omitempty"`
+		Mode        string             `json:"mode,omitempty"`
+		Relays      [3]int             `json:"relays,omitempty"`
 	}
-	out := make([]DevView, 0)
+	out := make([]DevView, 0, len(devices))
 	devMu.RLock()
 	qMu.Lock()
 	for id, d := range devices {
 		out = append(out, DevView{
-			ID:        id,
-			IP:        d.IP,
-			LastHello: d.LastHello,
-			QueueLen:  len(queues[id]),
+			ID:          id,
+			IP:          d.IP,
+			LastHello:   d.LastHello,
+			QueueLen:    len(queues[id]),
+			LastSensors: d.LastSensors,
+			Mode:        d.Mode,
+			Relays:      d.Relays,
 		})
 	}
 	qMu.Unlock()
@@ -99,6 +156,7 @@ func getRoot(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"devices": out})
 }
 
+// Device says hello so we can learn its IP
 func postHello(w http.ResponseWriter, r *http.Request) {
 	var msg struct {
 		ID string `json:"id"`
@@ -120,6 +178,7 @@ func postHello(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "ip": ip})
 }
 
+// Device uploads sensor readings
 func postUpload(w http.ResponseWriter, r *http.Request) {
 	var raw map[string]interface{}
 	if err := parseJSON(r, &raw); err != nil {
@@ -145,6 +204,7 @@ func postUpload(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
+		// flat legacy keys like sensor1, sensor2
 		for k, v := range raw {
 			if strings.HasPrefix(k, "sensor") {
 				switch t := v.(type) {
@@ -168,6 +228,25 @@ func postUpload(w http.ResponseWriter, r *http.Request) {
 	}
 	d.IP = ip
 	d.LastHello = time.Now()
+	// keep last sensors
+	if len(sensorMap) > 0 {
+		if d.LastSensors == nil {
+			d.LastSensors = map[string]float64{}
+		}
+		for k, v := range sensorMap {
+			d.LastSensors[k] = v
+		}
+		// infer relays if present as floats in sensors
+		if v, ok := d.LastSensors["relay1"]; ok {
+			d.Relays[0] = int(v)
+		}
+		if v, ok := d.LastSensors["relay2"]; ok {
+			d.Relays[1] = int(v)
+		}
+		if v, ok := d.LastSensors["relay3"]; ok {
+			d.Relays[2] = int(v)
+		}
+	}
 	devMu.Unlock()
 
 	up := Upload{
@@ -180,6 +259,7 @@ func postUpload(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
+// Command queue compatibility
 func postCommand(w http.ResponseWriter, r *http.Request) {
 	dev := strings.TrimPrefix(r.URL.Path, "/command/")
 	if dev == "" {
@@ -247,6 +327,7 @@ func postAck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
+// Feeder push passthrough to device /rotate-servo
 func postPush(w http.ResponseWriter, r *http.Request) {
 	dev := strings.TrimPrefix(r.URL.Path, "/push/")
 	if dev == "" {
@@ -283,7 +364,7 @@ func postPush(w http.ResponseWriter, r *http.Request) {
 	b, _ := json.Marshal(body)
 	url := fmt.Sprintf("http://%s/rotate-servo", d.IP)
 
-	req, err := http.NewRequest("POST", url, strings.NewReader(string(b)))
+	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(b)))
 	if err != nil {
 		http.Error(w, "push build failed", http.StatusInternalServerError)
 		return
@@ -300,10 +381,10 @@ func postPush(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }
 
-// GET or POST mode for a device. Forwards to device /mode.
+// Watering system: /mode/{id} -> forwards to device /mode
 func modeHandler(w http.ResponseWriter, r *http.Request) {
 	dev := strings.TrimPrefix(r.URL.Path, "/mode/")
 	if dev == "" {
@@ -334,7 +415,22 @@ func modeHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_ = r.Body.Close()
-		req, err = http.NewRequest(http.MethodPost, targetURL, strings.NewReader(string(bodyBytes)))
+
+		// normalize and cache intended mode
+		var payload map[string]interface{}
+		_ = json.Unmarshal(bodyBytes, &payload)
+		if m, ok := payload["mode"].(string); ok {
+			m = normalizeMode(m)
+			devMu.Lock()
+			if d := devices[dev]; d != nil {
+				d.Mode = m
+			}
+			devMu.Unlock()
+			payload["mode"] = m
+			bodyBytes, _ = json.Marshal(payload)
+		}
+
+		req, err = http.NewRequest(http.MethodPost, targetURL, bytes.NewReader(bodyBytes))
 		req.Header.Set("Content-Type", "application/json")
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -355,20 +451,140 @@ func modeHandler(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(resp.StatusCode)
-	io.Copy(w, resp.Body)
+	_, _ = io.Copy(w, resp.Body)
 }
 
-// Simple CORS wrapper for all routes
+// Watering system: POST /set-relays/{id} -> forwards to device /set-relays
+// Accepts optional {"mode":"manual"|"automatic"} and relay1..relay3 ints
+func setRelaysHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	dev := strings.TrimPrefix(r.URL.Path, "/set-relays/")
+	if dev == "" {
+		http.Error(w, "missing device id", http.StatusBadRequest)
+		return
+	}
+
+	devMu.RLock()
+	d := devices[dev]
+	devMu.RUnlock()
+	if d == nil || d.IP == "" {
+		http.Error(w, "unknown device or no IP", http.StatusNotFound)
+		return
+	}
+	url := fmt.Sprintf("http://%s/set-relays", d.IP)
+
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "bad request body", http.StatusBadRequest)
+		return
+	}
+	_ = r.Body.Close()
+
+	// update cached state from intended payload and normalize mode
+	var payload map[string]interface{}
+	_ = json.Unmarshal(bodyBytes, &payload)
+	devMu.Lock()
+	if d := devices[dev]; d != nil {
+		if m, ok := payload["mode"].(string); ok {
+			d.Mode = normalizeMode(m)
+			payload["mode"] = d.Mode
+		}
+		if v, ok := payload["relay1"].(float64); ok {
+			d.Relays[0] = int(v)
+		}
+		if v, ok := payload["relay2"].(float64); ok {
+			d.Relays[1] = int(v)
+		}
+		if v, ok := payload["relay3"].(float64); ok {
+			d.Relays[2] = int(v)
+		}
+	}
+	devMu.Unlock()
+	bodyBytes, _ = json.Marshal(payload)
+
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(bodyBytes))
+	if err != nil {
+		http.Error(w, "build request failed", http.StatusInternalServerError)
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, "forward failed: "+err.Error(), http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
+}
+
+// Return last known telemetry that came via /upload
+func getTelemetryCached(w http.ResponseWriter, r *http.Request) {
+	dev := strings.TrimPrefix(r.URL.Path, "/telemetry/")
+	if dev == "" {
+		http.Error(w, "missing device id", http.StatusBadRequest)
+		return
+	}
+	devMu.RLock()
+	d := devices[dev]
+	devMu.RUnlock()
+	if d == nil {
+		http.Error(w, "unknown device", http.StatusNotFound)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"id":           d.ID,
+		"ip":           d.IP,
+		"last_hello":   d.LastHello,
+		"last_sensors": d.LastSensors,
+		"mode":         d.Mode,
+		"relays":       d.Relays,
+	})
+}
+
+// GET /status/{id} -> forwards to device GET /status
+func getStatusPassthrough(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	dev := strings.TrimPrefix(r.URL.Path, "/status/")
+	if dev == "" {
+		http.Error(w, "missing device id", http.StatusBadRequest)
+		return
+	}
+	code, body, err := passthroughToDevice(dev, http.MethodGet, "/status", nil)
+	if err != nil {
+		http.Error(w, err.Error(), code)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_, _ = w.Write(body)
+}
+
+// CORS wrapper for all routes
 func withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// If you need to restrict, replace "*" with "http://localhost:5173"
+		// Change "*" to your UI origin if you want to restrict
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
 		if r.Method == http.MethodOptions {
-			// Preflight
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
@@ -383,18 +599,27 @@ func main() {
 	}
 
 	mux := http.NewServeMux()
+	// Inventory
 	mux.HandleFunc("/", getRoot)
+	// Device registration and uploads
 	mux.HandleFunc("/hello", postHello)
 	mux.HandleFunc("/upload", postUpload)
+	// Command queue compatibility
 	mux.HandleFunc("/command/", postCommand)
 	mux.HandleFunc("/next", getNext)
 	mux.HandleFunc("/ack", postAck)
+	// Feeder control passthrough
 	mux.HandleFunc("/push/", postPush)
+	// Watering system control passthroughs
 	mux.HandleFunc("/mode/", modeHandler)
+	mux.HandleFunc("/set-relays/", setRelaysHandler)
+	// Cached telemetry and live status view
+	mux.HandleFunc("/telemetry/", getTelemetryCached)
+	mux.HandleFunc("/status/", getStatusPassthrough)
 
 	srv := &http.Server{
 		Addr:              addr,
-		Handler:           withCORS(mux), // wrap all routes with CORS
+		Handler:           withCORS(mux),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	log.Printf("server listening on %s", addr)

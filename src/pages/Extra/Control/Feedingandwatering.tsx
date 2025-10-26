@@ -1,13 +1,157 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Droplets, Pill, Utensils } from "lucide-react";
 import axios from "axios";
 import ToggleManualAutoMode from "./Toggle_Manual_Auto_Mode";
 import Feeding from "./Monitoring_FeedingWatering/Feeding";
-import WaterAndMedicine from "./Monitoring_FeedingWatering/WaterAndMedicine";
 
 interface FeedingandwateringProps {
   batchID: number | undefined;
 }
+
+/* ------------------------ helpers for monitoring ------------------------ */
+
+type Telemetry = {
+  id: string;
+  last_sensors?: Record<string, number>;
+  last_hello?: string;
+  mode?: string;
+  relays?: number[];
+};
+
+const clamp = (v: number, lo = 0, hi = 100) => Math.max(lo, Math.min(hi, v));
+
+function computePercent(distanceCm: number | undefined, maxDepthCm: number): number | null {
+  if (distanceCm === undefined || Number.isNaN(distanceCm) || distanceCm < 0) return null;
+  const pct = 100 * (1 - distanceCm / maxDepthCm);
+  return clamp(Math.round(pct));
+}
+
+const LevelGauge: React.FC<{
+  label: string;
+  percent: number | null;
+  distanceCm?: number;
+  maxDepthCm: number;
+}> = ({ label, percent, distanceCm, maxDepthCm }) => {
+  const p = percent ?? 0;
+  return (
+    <div className="p-3 bg-white border-2 border-pink-200 rounded-xl shadow-sm flex flex-col">
+      <div className="text-sm font-semibold text-green-700 mb-2 text-center">{label}</div>
+
+      <div className="flex items-end gap-3">
+        <div className="relative w-16 h-36 border-2 border-green-400 rounded-md overflow-hidden bg-gray-50">
+          <div
+            className="absolute bottom-0 left-0 right-0 bg-green-300 transition-all duration-700 ease-out"
+            style={{ height: `${p}%` }}
+            aria-label={`${label} level`}
+          />
+          <div className="absolute inset-0 pointer-events-none">
+            {[0, 25, 50, 75, 100].map((t) => (
+              <div
+                key={t}
+                className="absolute left-0 right-0 border-t border-green-200"
+                style={{ bottom: `${t}%` }}
+              />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex-1">
+          <div className="text-2xl font-bold text-green-700 leading-tight">
+            {percent == null ? "N/A" : `${p}%`}
+          </div>
+          <div className="text-xs text-gray-600">
+            {distanceCm == null || Number.isNaN(distanceCm)
+              ? "No distance"
+              : `${distanceCm.toFixed(1)} cm gap`}
+          </div>
+          <div className="text-[10px] text-gray-400">Max depth {maxDepthCm} cm</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const MonitoringPanel: React.FC<{
+  serverHost: string;
+  deviceId: string;
+  maxDepthCm?: [number, number, number];
+  labels?: [string, string, string];
+  pollMs?: number;
+}> = ({
+  serverHost,
+  deviceId,
+  maxDepthCm = [40, 40, 40],
+  labels = ["Water 1", "Water 2", "Medicine"],
+  pollMs = 2000,
+}) => {
+  const [data, setData] = useState<Telemetry | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const fetcher = useMemo(
+    () => async () => {
+      const { data } = await axios.get<Telemetry>(`${serverHost}/telemetry/${deviceId}`);
+      return data;
+    },
+    [serverHost, deviceId]
+  );
+
+  useEffect(() => {
+    let stop = false;
+    const tick = async () => {
+      try {
+        const d = await fetcher();
+        if (!stop) {
+          setData(d);
+          setError(null);
+        }
+      } catch (e: any) {
+        if (!stop) setError(e?.message || "Fetch failed");
+      } finally {
+        if (!stop) window.setTimeout(tick, pollMs);
+      }
+    };
+    tick();
+    return () => {
+      stop = true;
+    };
+  }, [fetcher, pollMs]);
+
+  const s1 = data?.last_sensors?.sensor1;
+  const s2 = data?.last_sensors?.sensor2;
+  const s3 = data?.last_sensors?.sensor3;
+
+  const p1 = computePercent(s1, maxDepthCm[0]);
+  const p2 = computePercent(s2, maxDepthCm[1]);
+  const p3 = computePercent(s3, maxDepthCm[2]);
+
+  return (
+    <div className="w-full">
+      <div className="mb-3 flex items-center justify-between">
+        <div className="text-sm text-gray-600">
+          Device <span className="font-semibold text-green-700">{deviceId}</span>
+          {data?.mode ? (
+            <span className="ml-2 px-2 py-[2px] rounded bg-green-50 text-green-700 border border-green-200">
+              {data.mode}
+            </span>
+          ) : null}
+        </div>
+        <div className="text-xs text-gray-500">
+          {error ? <span className="text-red-600">Fetch error: {error}</span> : "Live"}
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <LevelGauge label={labels[0]} percent={p1} distanceCm={s1} maxDepthCm={maxDepthCm[0]} />
+        <LevelGauge label={labels[1]} percent={p2} distanceCm={s2} maxDepthCm={maxDepthCm[1]} />
+        <LevelGauge label={labels[2]} percent={p3} distanceCm={s3} maxDepthCm={maxDepthCm[2]} />
+      </div>
+
+      
+    </div>
+  );
+};
+
+/* ------------------------------ main screen ----------------------------- */
 
 const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
   const [relayState, setRelayState] = useState({ relay1: 0, relay2: 0, relay3: 0 });
@@ -17,44 +161,95 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
 
   const serverHost = (import.meta.env.VITE_APP_SERVERHOST as string)?.replace(/\/+$/, "") || "";
 
+  // Device IDs
+  const FEEDER_DEVICE_ID = "esp-0F6088";
+  const WATER_DEVICE_ID = "esp-8A3850";
+  const MED_DEVICE_ID = "esp-11F549";
+  const LEVEL_DEVICE_ID = "gw-6b3e32"; // level monitoring id
+
   const tabComponents: Record<string, React.ReactNode> = {
     Control: <Feeding batchID={batchID} />,
-    Monitoring: <WaterAndMedicine batchID={batchID} />,
+    Monitoring: (
+      <MonitoringPanel
+        serverHost={serverHost}
+        deviceId={LEVEL_DEVICE_ID}
+        maxDepthCm={[40, 40, 40]} // set to your tank heights
+        labels={["Feed", "Water", "Medicine"]}
+      />
+    ),
   };
 
-  const handleToggleMode = (isAuto: boolean) => {
-    setIsAutoMode(isAuto);
-    // No device detection or proxy calls
-  };
+  const handleToggleMode = async (isAuto: boolean) => {
+  setIsAutoMode(isAuto);
 
-  // Modified: call gateway server directly, using serverHost, like your PowerShell curl
-  // curl -Method POST "http://192.168.1.111:8080/push/esp-0F6088" -Headers @{ "Content-Type" = "application/json" } -Body '{"relay":3,"pulse_ms":1000}'
+  const payload = { mode: isAuto ? "automatic" : "manual" };
+
+  // Only try devices that support mode on device
+  const targets = [FEEDER_DEVICE_ID, WATER_DEVICE_ID, MED_DEVICE_ID];
+
+  for (const id of targets) {
+    try {
+      await axios.post(`${serverHost}/mode/${id}`, payload, {
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (e) {
+      // keep UI responsive even if a device does not respond
+      console.warn(`mode set failed for ${id}`);
+    }
+  }
+
+  // Never call /mode for LEVEL_DEVICE_ID
+};
+  // Feeder rotate via server push
   const handleFeedRotate = async (relay: number) => {
     try {
       await axios.post(
-        `${serverHost}/push/esp-0F6088`,
+        `${serverHost}/push/${FEEDER_DEVICE_ID}`,
         { relay, pulse_ms: 1000 },
         { headers: { "Content-Type": "application/json" } }
       );
       console.log(`Feed rotation triggered for relay ${relay}`);
-    } catch (e) {
+    } catch {
       console.warn("Feed rotate request failed");
     }
   };
 
-  // Placeholders to keep UI compiling without device discovery
+  // Watering: toggle using /set-relays/{deviceId}
   const handleWaterToggle = async (relay: number) => {
-    console.warn("Water toggle is not configured in this build");
+    if (isAutoMode) return;
     const key = `relay${relay}` as keyof typeof relayState;
     const next = relayState[key] ? 0 : 1;
-    setRelayState((prev) => ({ ...prev, [key]: next } as any));
+
+    try {
+      await axios.post(
+        `${serverHost}/set-relays/${WATER_DEVICE_ID}`,
+        { [key]: next },
+        { headers: { "Content-Type": "application/json" } }
+      );
+      setRelayState((prev) => ({ ...prev, [key]: next }));
+      console.log(`Water relay ${relay} -> ${next}`);
+    } catch {
+      console.warn(`Failed to toggle water relay ${relay}`);
+    }
   };
 
+  // Medicine: same as watering but MED_DEVICE_ID
   const handleMedicine = async (relay: number) => {
-    console.warn("Medicine toggle is not configured in this build");
-    const key = `relay_med${relay}` as keyof typeof medRelayState;
-    const next = medRelayState[key] ? 0 : 1;
-    setMedRelayState((prev) => ({ ...prev, [key]: next } as any));
+    if (isAutoMode) return;
+    const uiKey = `relay_med${relay}` as keyof typeof medRelayState;
+    const next = medRelayState[uiKey] ? 0 : 1;
+
+    try {
+      await axios.post(
+        `${serverHost}/set-relays/${MED_DEVICE_ID}`,
+        { [`relay${relay}`]: next },
+        { headers: { "Content-Type": "application/json" } }
+      );
+      setMedRelayState((prev) => ({ ...prev, [uiKey]: next }));
+      console.log(`Medicine relay ${relay} -> ${next}`);
+    } catch {
+      console.warn(`Failed to toggle medicine relay ${relay}`);
+    }
   };
 
   return (
@@ -126,13 +321,13 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
               {[1, 2, 3].map((num) => (
                 <div key={num} className="flex flex-col">
                   <div className="mb-2 p-2 bg-gray-0 border border-pink-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-600 text-center">
-                    Water level monitoring placeholder
+                    Water level is in Monitoring tab
                   </div>
                   <button
                     className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
                       isAutoMode
                         ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
-                        : relayState[`relay${num}` as keyof typeof relayState]
+                        : (relayState as any)[`relay${num}`]
                           ? "bg-green-200 border-green-500 text-green-900"
                           : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
                     }`}
@@ -159,13 +354,13 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
               {[1, 2, 3].map((num) => (
                 <div key={num} className="flex flex-col">
                   <div className="mb-2 p-2 bg-gray-0 border border-pink-200 rounded-lg h-16 flex items-center justify-center text-xs text-gray-600 text-center">
-                    Medicine level monitoring placeholder
+                    Medicine level is in Monitoring tab
                   </div>
                   <button
                     className={`aspect-square w-full flex items-center justify-center text-lg font-semibold transition border-2 rounded-full ${
                       isAutoMode
                         ? "bg-gray-100 border-gray-300 text-gray-400 cursor-not-allowed"
-                        : medRelayState[`relay_med${num}` as keyof typeof medRelayState]
+                        : (medRelayState as any)[`relay_med${num}`]
                           ? "bg-green-200 border-green-500 text-green-900"
                           : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
                     }`}
