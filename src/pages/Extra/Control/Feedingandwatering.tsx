@@ -145,8 +145,6 @@ const MonitoringPanel: React.FC<{
         <LevelGauge label={labels[1]} percent={p2} distanceCm={s2} maxDepthCm={maxDepthCm[1]} />
         <LevelGauge label={labels[2]} percent={p3} distanceCm={s3} maxDepthCm={maxDepthCm[2]} />
       </div>
-
-      
     </div>
   );
 };
@@ -164,44 +162,53 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
   // Device IDs
   const FEEDER_DEVICE_ID = "esp-0F6088";
   const WATER_DEVICE_ID = "esp-8A3850";
-  const MED_DEVICE_ID = "esp-11F549";
-  const LEVEL_DEVICE_ID = "gw-6b3e32"; // level monitoring id
+  const MED_DEVICE_ID   = "esp-11F549";
+  const LEVEL_DEVICE_ID = "gw-6b3e32"; // never touched by the global mode toggle
 
-  const tabComponents: Record<string, React.ReactNode> = {
-    Control: <Feeding batchID={batchID} />,
-    Monitoring: (
-      <MonitoringPanel
-        serverHost={serverHost}
-        deviceId={LEVEL_DEVICE_ID}
-        maxDepthCm={[40, 40, 40]} // set to your tank heights
-        labels={["Feed", "Water", "Medicine"]}
-      />
-    ),
+  // Only devices that should receive mode changes
+  const TARGET_DEVICE_IDS = [FEEDER_DEVICE_ID, WATER_DEVICE_ID, MED_DEVICE_ID];
+
+  // Helper to set mode on one device and return success boolean
+  const setDeviceMode = async (deviceId: string, isAuto: boolean): Promise<boolean> => {
+    try {
+      await axios.post(
+        `${serverHost}/mode/${deviceId}`,
+        { mode: isAuto ? "automatic" : "manual" },
+        { headers: { "Content-Type": "application/json" } }
+      );
+      return true;
+    } catch {
+      console.warn(`mode set failed for ${deviceId}`);
+      return false;
+    }
   };
 
+  // Global mode toggle for all present control devices, skipping LEVEL_DEVICE_ID
   const handleToggleMode = async (isAuto: boolean) => {
-  setIsAutoMode(isAuto);
+    // Optimistic UI
+    const prev = isAutoMode;
+    setIsAutoMode(isAuto);
 
-  const payload = { mode: isAuto ? "automatic" : "manual" };
+    // Try all targets in parallel, treat non responsive devices as not present
+    const results = await Promise.allSettled(
+      TARGET_DEVICE_IDS.map((id) => setDeviceMode(id, isAuto))
+    );
 
-  // Only try devices that support mode on device
-  const targets = [FEEDER_DEVICE_ID, WATER_DEVICE_ID, MED_DEVICE_ID];
+    const successes = results
+      .filter((r) => r.status === "fulfilled" && r.value === true).length;
 
-  for (const id of targets) {
-    try {
-      await axios.post(`${serverHost}/mode/${id}`, payload, {
-        headers: { "Content-Type": "application/json" },
-      });
-    } catch (e) {
-      // keep UI responsive even if a device does not respond
-      console.warn(`mode set failed for ${id}`);
+    if (successes === 0) {
+      // Nobody accepted the mode change, revert UI
+      setIsAutoMode(prev);
+      console.warn("No devices accepted the mode change, reverting UI");
     }
-  }
+    // If at least one device accepted, keep the UI state as chosen
+    // LEVEL_DEVICE_ID is intentionally excluded, so it stays unaffected
+  };
 
-  // Never call /mode for LEVEL_DEVICE_ID
-};
   // Feeder rotate via server push
   const handleFeedRotate = async (relay: number) => {
+    if (isAutoMode) return;
     try {
       await axios.post(
         `${serverHost}/push/${FEEDER_DEVICE_ID}`,
@@ -250,6 +257,18 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
     } catch {
       console.warn(`Failed to toggle medicine relay ${relay}`);
     }
+  };
+
+  const tabComponents: Record<string, React.ReactNode> = {
+    Control: <Feeding batchID={batchID} />,
+    Monitoring: (
+      <MonitoringPanel
+        serverHost={serverHost}
+        deviceId={LEVEL_DEVICE_ID}
+        maxDepthCm={[40, 40, 40]}
+        labels={["Feed", "Water", "Medicine"]}
+      />
+    ),
   };
 
   return (

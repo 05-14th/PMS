@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ToggleManualAutoMode from "./Toggle_Manual_Auto_Mode";
 import { FaFan, FaLightbulb, FaFireAlt } from "react-icons/fa";
 import { Wind, Thermometer, Droplet } from "lucide-react";
@@ -15,6 +15,25 @@ type Telemetry = {
   mode?: string;       // "automatic" | "manual"
   relays?: number[];   // [relay1, relay2, relay3]
 };
+
+// Single source of truth for relay indices
+const RELAY_INDEX = { light: 0, heater: 1, fan: 2 } as const;
+
+function toRelayState(sourceRelays?: number[], ls?: Record<string, number>) {
+  const arr = Array.isArray(sourceRelays)
+    ? sourceRelays
+    : [
+        Number(ls?.relay1 || 0),
+        Number(ls?.relay2 || 0),
+        Number(ls?.relay3 || 0),
+      ];
+
+  return {
+    light: arr[RELAY_INDEX.light] ? 1 : 0,
+    heater: arr[RELAY_INDEX.heater] ? 1 : 0,
+    fan: arr[RELAY_INDEX.fan] ? 1 : 0,
+  };
+}
 
 const Environmental: React.FC<EnvironmentalProps> = () => {
   // server host and device id
@@ -41,6 +60,9 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
   const [error, setError] = useState<string | null>(null);
   const [lastHello, setLastHello] = useState<Date | null>(null);
 
+  // SSE heartbeat to let polling know when to back off
+  const sseHeartbeat = useRef<number>(0);
+
   // realtime via SSE
   useEffect(() => {
     if (!serverHost) return;
@@ -64,24 +86,15 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
             mq135: ls.mq135_ppm,
           });
 
-          const arr = Array.isArray(data.relays)
-            ? data.relays
-            : [
-                Number((ls as any).relay1 || 0),
-                Number((ls as any).relay2 || 0),
-                Number((ls as any).relay3 || 0),
-              ];
-          setRelays({
-            heater: arr[0] ? 1 : 0,
-            light: arr[1] ? 1 : 0,
-            fan: arr[2] ? 1 : 0,
-          });
+          setRelays(toRelayState(data.relays, ls));
 
           if (data.mode) setIsAutoMode(data.mode === "automatic");
           if (data.last_hello) {
             const dt = new Date(data.last_hello);
             if (!Number.isNaN(dt.getTime())) setLastHello(dt);
           }
+
+          sseHeartbeat.current = Date.now();
           setError(null);
         } catch {
           // ignore malformed packet
@@ -89,7 +102,8 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
       };
 
       es.onerror = () => {
-        setError((prev) => prev || null);
+        // keep previous error to avoid flicker
+        setError((prev) => prev || "SSE connection error");
         es && es.close();
         es = null;
       };
@@ -105,8 +119,16 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
   // polling fallback every 2s
   useEffect(() => {
     let stop = false;
+
     const tick = async () => {
       try {
+        // If SSE has delivered a message in the last 5s, skip polling fetch
+        const sseIsFresh = Date.now() - sseHeartbeat.current < 5000;
+        if (sseIsFresh) {
+          if (!stop) setTimeout(tick, 2000);
+          return;
+        }
+
         const { data } = await axios.get<Telemetry>(
           `${serverHost}/telemetry/${ENV_DEVICE_ID}`
         );
@@ -120,18 +142,7 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
           mq135: ls.mq135_ppm,
         });
 
-        const arr = Array.isArray(data.relays)
-          ? data.relays
-          : [
-              Number((ls as any).relay1 || 0),
-              Number((ls as any).relay2 || 0),
-              Number((ls as any).relay3 || 0),
-            ];
-        setRelays({
-          heater: arr[0] ? 1 : 0,
-          light: arr[1] ? 1 : 0,
-          fan: arr[2] ? 1 : 0,
-        });
+        setRelays(toRelayState(data.relays, ls));
 
         if (data.mode) setIsAutoMode(data.mode === "automatic");
         if (data.last_hello) {
@@ -145,6 +156,7 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
         if (!stop) setTimeout(tick, 2000);
       }
     };
+
     tick();
     return () => {
       stop = true;
@@ -169,8 +181,8 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
   // helper to build payload for single relay toggle
   const buildRelayPayload = (key: "heater" | "light" | "fan", value: 0 | 1) => {
     const payload: Record<string, any> = { mode: "manual" };
-    if (key === "heater") payload.relay1 = value;
-    if (key === "light")  payload.relay2 = value;
+    if (key === "heater") payload.relay2 = value;
+    if (key === "light")  payload.relay1 = value;
     if (key === "fan")    payload.relay3 = value;
     return payload;
   };
@@ -187,6 +199,7 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
         { headers: { "Content-Type": "application/json" } }
       );
     } catch {
+      // revert UI on failure
       setRelays((r) => ({ ...r, [key]: r[key] ? 0 : 1 }));
       console.warn(`Failed to toggle ${key}`);
     }
@@ -216,58 +229,7 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
         className="fixed top-4 right-4 z-50"
       />
 
-      {/* Readings box 
-      <div className="mb-4">
-        <div className="rounded-lg border border-gray-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm text-gray-600">
-              Context • Source <span className="font-semibold text-green-700">Go server</span> • Device <span className="font-semibold text-green-700">{ENV_DEVICE_ID}</span>
-            </div>
-            <div className="flex items-center gap-2 text-sm">
-              <span
-                className={`inline-block h-2 w-2 rounded-full ${error ? "bg-red-500" : "bg-emerald-500 animate-pulse"}`}
-                aria-hidden
-              />
-              <span className={error ? "text-red-600" : "text-gray-500"}>
-                {error ? `Telemetry error: ${error}` : `Live • Last seen ${lastSeenText}`}
-              </span>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="rounded-md bg-gray-50 p-3">
-              <div className="text-xs text-gray-500">Temperature</div>
-              <div className="text-lg font-semibold">
-                {sensors.tempC?.toFixed(1) ?? "N/A"}°C
-              </div>
-            </div>
-            <div className="rounded-md bg-gray-50 p-3">
-              <div className="text-xs text-gray-500">Humidity</div>
-              <div className="text-lg font-semibold">
-                {sensors.humidity?.toFixed(0) ?? "N/A"}%
-              </div>
-            </div>
-            <div className="rounded-md bg-gray-50 p-3">
-              <div className="text-xs text-gray-500">Lux</div>
-              <div className="text-lg font-semibold">
-                {sensors.lux?.toFixed(0) ?? "N/A"}
-              </div>
-            </div>
-            <div className="rounded-md bg-gray-50 p-3">
-              <div className="text-xs text-gray-500">Air MQ135</div>
-              <div className="text-lg font-semibold">
-                {sensors.mq135?.toFixed(0) ?? "N/A"} ppm
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-3 text-xs text-gray-500">
-            Mode <b className="text-gray-700">{isAutoMode ? "Automatic" : "Manual"}</b>
-          </div>
-        </div>
-      </div>*/}
-
-      {/* Three cards using your design */}
+      {/* Three cards */}
       <div className="p-4 bg-white rounded-lg shadow">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {/* Air Quality */}
