@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Calendar, Plus } from 'lucide-react';
 import Automation_Form from './Automation/Automation_Form';
 import Add_Device from './Device_Forms/Add_Device';
@@ -21,16 +21,18 @@ type DeviceView = {
 };
 
 // Known devices to always render rows for
-export const FEEDER_DEVICE_ID = 'esp-0F6088';
+export const FEEDER_DEVICE_ID = "esp-A97A47";
 export const WATER_DEVICE_ID  = 'esp-8A3850';
 export const MED_DEVICE_ID    = 'esp-11F549';
 export const ENV_DEVICE_ID    = 'gw-16ebb';
+export const LEVEL_DEVICE_ID = "gw-6b3e32";
 
 const KNOWN_DEVICE_ORDER = [
   FEEDER_DEVICE_ID,
   WATER_DEVICE_ID,
   MED_DEVICE_ID,
   ENV_DEVICE_ID,
+  LEVEL_DEVICE_ID,
 ] as const;
 
 const KNOWN_LABELS: Record<string, string> = {
@@ -38,6 +40,7 @@ const KNOWN_LABELS: Record<string, string> = {
   [WATER_DEVICE_ID]: 'Water',
   [MED_DEVICE_ID]: 'Medication',
   [ENV_DEVICE_ID]: 'Env Gateway',
+  [LEVEL_DEVICE_ID]: 'Level Guide'
 };
 
 const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
@@ -49,15 +52,11 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
 }) => {
   const [devices, setDevices] = useState<DeviceView[]>([]);
   const [loadingDevices, setLoadingDevices] = useState<boolean>(true);
-  
 
-  // Per device mode state: true = auto
+  // true means auto
   const [deviceModes, setDeviceModes] = useState<Record<string, boolean>>({});
 
-  // helper
-  const isFeeder = (id: string) => id === FEEDER_DEVICE_ID;
-
-  // UI modals
+  // UI
   const [showAddDevice, setShowAddDevice] = useState(false);
   const [scheduleForId, setScheduleForId] = useState<string | null>(null);
 
@@ -65,14 +64,20 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
   const serverHost =
     ((import.meta as any).env?.VITE_APP_SERVERHOST as string)?.replace(/\/+$/, '') || '';
 
-  // Devices map for quick lookup
+  // Track devices we already forced to manual one time
+  const forcedOnceRef = useRef<Set<string>>(new Set());
+
+  // Track ids with a toggle request in flight
+  const pendingTogglesRef = useRef<Set<string>>(new Set());
+
+  // Fast lookup
   const deviceMap = useMemo(() => {
     const m: Record<string, DeviceView> = {};
     for (const d of devices) m[d.id] = d;
     return m;
   }, [devices]);
 
-  // Build rows: all known devices first (even if offline), then any extra discovered
+  // Build rows: known first then extras
   const rows = useMemo(() => {
     const knownRows = KNOWN_DEVICE_ORDER.map((id) => {
       const d = deviceMap[id];
@@ -89,7 +94,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
   const discoveredCount = devices.length;
   const totalCount = rows.length;
 
-  // Fetch devices
+  // Poll devices
   useEffect(() => {
     if (!serverHost) return;
     let cancelled = false;
@@ -103,17 +108,22 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
         const list = Array.isArray(data?.devices) ? data.devices.filter((d) => !!d.id) : [];
         setDevices(list);
 
-        // Seed per-device mode if first time
+        // Reconcile modes with server - skip ids that are toggling now
         setDeviceModes((prev) => {
           const next = { ...prev };
+
           for (const d of list) {
-            if (next[d.id] === undefined) {
-              if (typeof d.mode === 'string') next[d.id] = d.mode === 'automatic';
-              else if (typeof initialIsAutoAll === 'boolean') next[d.id] = initialIsAutoAll;
-              else next[d.id] = false; // default manual
+            if (pendingTogglesRef.current.has(d.id)) continue;
+
+            if (typeof d.mode === 'string') {
+              next[d.id] = d.mode === 'automatic';
+            } else if (next[d.id] === undefined) {
+              next[d.id] =
+                typeof initialIsAutoAll === 'boolean' ? initialIsAutoAll : false;
             }
           }
-          // Also seed known devices that are not yet discovered
+
+          // Seed known devices that are still undefined
           for (const id of KNOWN_DEVICE_ORDER) {
             if (next[id] === undefined) {
               next[id] =
@@ -129,7 +139,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
       }
     };
 
-    fetchDevices();
+    void fetchDevices();
     const t = setInterval(fetchDevices, 5000);
     return () => {
       cancelled = true;
@@ -140,7 +150,14 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
   // Optionally force newly seen devices into manual once
   useEffect(() => {
     if (!serverHost || !enforceManualOnMount) return;
-    const idsNeedingManual = devices.map((d) => d.id).filter((id) => deviceModes[id] === true);
+
+    const newlySeenIds = devices
+      .map((d) => d.id)
+      .filter((id) => !forcedOnceRef.current.has(id));
+
+    if (newlySeenIds.length === 0) return;
+
+    const idsNeedingManual = newlySeenIds.filter((id) => deviceModes[id] === true);
 
     const setManual = async () => {
       await Promise.allSettled(
@@ -152,6 +169,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
           )
         )
       );
+
       if (idsNeedingManual.length > 0) {
         setDeviceModes((prev) => {
           const next = { ...prev };
@@ -159,11 +177,12 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
           return next;
         });
       }
+
+      for (const id of newlySeenIds) forcedOnceRef.current.add(id);
     };
 
-    if (idsNeedingManual.length > 0) void setManual();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverHost, devices.map((d) => d.id).join('|')]);
+    void setManual();
+  }, [serverHost, devices, deviceModes, enforceManualOnMount]);
 
   // Toggle a single device
   const setMode = async (id: string, toAuto: boolean) => {
@@ -171,6 +190,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
     const targetMode: 'automatic' | 'manual' = toAuto ? 'automatic' : 'manual';
 
     setDeviceModes((prev) => ({ ...prev, [id]: toAuto }));
+    pendingTogglesRef.current.add(id);
     try {
       await axios.post(
         `${serverHost}/mode/${encodeURIComponent(id)}`,
@@ -179,6 +199,8 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
       );
     } catch {
       setDeviceModes((prev) => ({ ...prev, [id]: !toAuto }));
+    } finally {
+      pendingTogglesRef.current.delete(id);
     }
   };
 
@@ -203,9 +225,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
           <div className="flex items-center justify-between">
             <span className="mr-3 text-sm font-medium text-gray-700">{label}</span>
             <div className="text-xs text-gray-500">
-              {loadingDevices
-                ? 'Loading devices...'
-                : `${discoveredCount}/${totalCount} online`}
+              {loadingDevices ? 'Loading devices...' : `${discoveredCount}/${totalCount} online`}
             </div>
           </div>
 
@@ -220,9 +240,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
                 >
                   <div className="min-w-0">
                     <div className="flex items-center space-x-2">
-                      <span className="font-medium text-gray-800 truncate">
-                        {label}
-                      </span>
+                      <span className="font-medium text-gray-800 truncate">{label}</span>
                       <span className={`text-xs ${isDiscovered ? 'text-green-600' : 'text-gray-400'}`}>
                         {isDiscovered ? 'Online' : 'Offline'}
                       </span>
@@ -237,60 +255,45 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
                   </div>
 
                   <div className="flex items-center space-x-2">
-  {/* status text */}
-  <span className={`text-sm font-semibold ${isAuto ? 'text-green-600' : 'text-gray-700'}`}>
-    {isAuto ? 'Auto' : 'Manual'}
-  </span>
+                    <span className={`text-sm font-semibold ${isAuto ? 'text-green-600' : 'text-gray-700'}`}>
+                      {isAuto ? 'Auto' : 'Manual'}
+                    </span>
 
-  {/* per-device toggle (all devices have it, disabled if offline) */}
-  <button
-    type="button"
-    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500
-      ${isAuto ? 'bg-green-500' : 'bg-gray-300'}
-      ${disabled || !isDiscovered ? 'opacity-50 cursor-not-allowed' : ''}`}
-    onClick={() => handleToggleOne(id, isDiscovered)}
-    aria-pressed={isAuto}
-    aria-label={`Toggle automatic mode for ${id}`}
-    disabled={disabled || !isDiscovered}
-  >
-    <span
-      className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform
-        ${isAuto ? 'translate-x-6' : 'translate-x-1'}`}
-    />
-  </button>
+                    <button
+                      type="button"
+                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500
+                        ${isAuto ? 'bg-green-500' : 'bg-gray-300'}
+                        ${disabled || !isDiscovered ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      onClick={() => handleToggleOne(id, isDiscovered)}
+                      aria-pressed={isAuto}
+                      aria-label={`Toggle automatic mode for ${id}`}
+                      disabled={disabled || !isDiscovered}
+                    >
+                      <span
+                        className={`inline-block h-5 w-5 transform rounded-full bg-white transition-transform
+                          ${isAuto ? 'translate-x-6' : 'translate-x-1'}`}
+                      />
+                    </button>
 
-  {/* Schedule button only for Feeder */}
-  {isFeeder(id) && (
-    <button
-      onClick={() => isDiscovered && isAuto && setScheduleForId(id)}
-      disabled={!isDiscovered || !isAuto || disabled}
-      className={`flex items-center justify-center px-2.5 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors whitespace-nowrap
-        ${isDiscovered && isAuto && !disabled
-          ? 'bg-green-500 text-white hover:bg-green-600 focus:ring-green-500'
-          : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
-    >
-      <Calendar className="w-4 h-4 mr-1" />
-      <span className="hidden sm:inline">Schedule</span>
-      <span className="sm:hidden">Sched</span>
-    </button>
-  )}
-</div>
+                    <button
+                      onClick={() => isDiscovered && isAuto && setScheduleForId(id)}
+                      disabled={!isDiscovered || !isAuto || disabled}
+                      className={`flex items-center justify-center px-2.5 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors whitespace-nowrap
+                        ${isDiscovered && isAuto && !disabled
+                          ? 'bg-green-500 text-white hover:bg-green-600 focus:ring-green-500'
+                          : 'bg-gray-300 text-gray-500 cursor-not-allowed'}`}
+                    >
+                      <Calendar className="w-4 h-4 mr-1" />
+                      <span className="hidden sm:inline">Schedule</span>
+                      <span className="sm:hidden">Sched</span>
+                    </button>
+                  </div>
                 </div>
               );
             })}
           </div>
 
-          {/*<div className="flex justify-end">
-            <button
-              onClick={() => setShowAddDevice(true)}
-              className="flex items-center justify-center px-3 py-1.5 text-sm font-medium rounded-md focus:outline-none focus:ring-2 focus:ring-offset-2 transition-colors
-                       bg-green-500 text-white hover:bg-green-600 focus:ring-green-500 whitespace-nowrap"
-            >
-              <Plus className="w-4 h-4 mr-1" />
-              <span className="hidden sm:inline">Add Device</span>
-              <span className="sm:hidden">Add</span>
-            </button>
-          </div>*/}
+         
         </div>
       </div>
 

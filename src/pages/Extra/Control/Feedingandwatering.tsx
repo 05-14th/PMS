@@ -154,15 +154,16 @@ const MonitoringPanel: React.FC<{
 const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
   const [relayState, setRelayState] = useState({ relay1: 0, relay2: 0, relay3: 0 });
   const [medRelayState, setMedRelayState] = useState({ relay_med1: 0, relay_med2: 0, relay_med3: 0 });
-  const [isAutoMode, setIsAutoMode] = useState<boolean>(true);
+  const [isAutoMode, setIsAutoMode] = useState<boolean>(false);
   const [activeTab, setActiveTab] = useState<string>("Control");
 
   const serverHost = (import.meta.env.VITE_APP_SERVERHOST as string)?.replace(/\/+$/, "") || "";
 
   // Device IDs
-  const FEEDER_DEVICE_ID = "esp-0F6088";
+  const FEEDER_DEVICE_ID = "esp-A97A47";
   const WATER_DEVICE_ID = "esp-8A3850";
   const MED_DEVICE_ID   = "esp-11F549";
+  const ENV_DEVICE_ID = "gw-16ebb";
   const LEVEL_DEVICE_ID = "gw-6b3e32"; // never touched by the global mode toggle
 
   // Only devices that should receive mode changes
@@ -207,19 +208,29 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
   };
 
   // Feeder rotate via server push
-  const handleFeedRotate = async (relay: number) => {
-    if (isAutoMode) return;
-    try {
-      await axios.post(
-        `${serverHost}/push/${FEEDER_DEVICE_ID}`,
-        { relay, pulse_ms: 1000 },
-        { headers: { "Content-Type": "application/json" } }
+ const handleFeedRotate = async (degrees: 0 | 90 | 180) => {
+  if (isAutoMode) return;
+  try {
+    await axios.post(
+      `${serverHost}/push/${FEEDER_DEVICE_ID}`,
+      { degrees, pulse_ms: 1000 },
+      { headers: { "Content-Type": "application/json" } }
+    );
+    console.log(`Feed rotation triggered at ${degrees} degrees`);
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err)) {
+      console.warn(
+        "Feed rotate request failed",
+        err.response?.status,
+        err.response?.data
       );
-      console.log(`Feed rotation triggered for relay ${relay}`);
-    } catch {
-      console.warn("Feed rotate request failed");
+    } else {
+      console.warn("Feed rotate request failed", err);
     }
-  };
+  }
+};
+
+
 
   // Watering: toggle using /set-relays/{deviceId}
   const handleWaterToggle = async (relay: number) => {
@@ -320,7 +331,7 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
                   }`}
                   disabled={isAutoMode}
                   aria-disabled={isAutoMode}
-                  onClick={() => handleFeedRotate(num)}
+                  onClick={() => handleFeedRotate(num === 1 ? 0 : num === 2 ? 90 : 180)}
                 >
                   {["Starter", "Grower", "Finisher"][num - 1]}
                 </button>
@@ -351,8 +362,8 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
                           : "bg-white border-pink-200 text-green-700 hover:bg-green-100 active:bg-green-200"
                     }`}
                     onClick={() => handleWaterToggle(num)}
-                    disabled={isAutoMode}
-                    aria-disabled={isAutoMode}
+                    disabled={false}
+                    aria-disabled={false}
                   >
                     {num}
                   </button>

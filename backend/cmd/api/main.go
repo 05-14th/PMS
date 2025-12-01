@@ -15,7 +15,6 @@ import (
 	"chickmate-api/internal/customer"
 	"chickmate-api/internal/dashboard"
 	"chickmate-api/internal/database"
-	gateway "chickmate-api/internal/device"
 	"chickmate-api/internal/harvest"
 	"chickmate-api/internal/inventory"
 	"chickmate-api/internal/planning"
@@ -25,16 +24,44 @@ import (
 	"chickmate-api/internal/user"
 	"chickmate-api/internal/util"
 
+	gateway "chickmate-api/internal/device" // IoT module
+
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 )
 
-func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplierHandler *supplier.Handler, inventoryHandler *inventory.Handler,
-	harvestHandler *harvest.Handler, customerHandler *customer.Handler, salesHandler *sales.Handler, reportHandler *report.Handler,
-	dashboardHandler *dashboard.Handler, planningHandler *planning.Handler, gatewayHandler *gateway.Handler) http.Handler {
+func withCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Change "*" to your UI origin if you want to restrict
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+func buildRouter(
+	userHandler *user.Handler,
+	batchHandler *batch.Handler,
+	supplierHandler *supplier.Handler,
+	inventoryHandler *inventory.Handler,
+	harvestHandler *harvest.Handler,
+	customerHandler *customer.Handler,
+	salesHandler *sales.Handler,
+	reportHandler *report.Handler,
+	dashboardHandler *dashboard.Handler,
+	planningHandler *planning.Handler,
+	deviceHandler *gateway.HTTPHandler,
+) http.Handler {
 	r := chi.NewRouter()
 
-	// Setup middleware from our new util package
+	// Middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -42,7 +69,7 @@ func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplie
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(util.Cors)
 
-	// Handler routes
+	// Feature routes
 	userHandler.RegisterRoutes(r)
 	batchHandler.RegisterRoutes(r)
 	supplierHandler.RegisterRoutes(r)
@@ -53,17 +80,7 @@ func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplie
 	reportHandler.RegisterRoutes(r)
 	dashboardHandler.RegisterRoutes(r)
 	planningHandler.RegisterRoutes(r)
-	gatewayHandler.RegisterRoutes(r)
-
-	/*
-		// TODO: Refactor and re-enable these routes later
-		r.Route("/api", func(r chi.Router) {
-			r.Get("/dashboard", getDashboardData)
-			r.Post("/dht22-data", handleDhtData)
-			r.Post("/login", loginHandler)
-			// ... and so on for all other routes ...
-		})
-	*/
+	deviceHandler.RegisterRoutes(r) // IoT routes
 
 	return r
 }
@@ -71,61 +88,73 @@ func buildRouter(userHandler *user.Handler, batchHandler *batch.Handler, supplie
 func main() {
 	database.InitDB()
 
-	// Initialize layers for the user feature
+	// User
 	userRepo := user.NewRepository(database.DB)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
-	// Initialize layers for the inventory feature
+	// Inventory
 	inventoryRepo := inventory.NewRepository(database.DB)
 	inventoryService := inventory.NewService(inventoryRepo)
 	inventoryHandler := inventory.NewHandler(inventoryService)
 
-	// Initialize layers for the batch feature
+	// Batch
 	batchRepo := batch.NewRepository(database.DB)
 	batchService := batch.NewService(batchRepo, inventoryService)
 	batchHandler := batch.NewHandler(batchService)
 
-	// Initialize layers for the supplier feature
+	// Supplier
 	supplierRepo := supplier.NewRepository(database.DB)
 	supplierService := supplier.NewService(supplierRepo)
 	supplierHandler := supplier.NewHandler(supplierService)
 
-	// Initialize layers for the harvest feature
+	// Harvest
 	harvestRepo := harvest.NewRepository(database.DB)
 	harvestService := harvest.NewService(harvestRepo)
 	harvestHandler := harvest.NewHandler(harvestService)
 
-	// Initialize layers for the customer feature
+	// Customer
 	customerRepo := customer.NewRepository(database.DB)
 	customerService := customer.NewService(customerRepo)
 	customerHandler := customer.NewHandler(customerService)
 
-	// Initialize layers for the sales feature
+	// Sales
 	salesRepo := sales.NewRepository(database.DB)
 	salesService := sales.NewService(salesRepo)
 	salesHandler := sales.NewHandler(salesService)
 
-	// Initialize layers for the report feature
+	// Report
 	reportRepo := report.NewRepository(database.DB)
 	reportService := report.NewService(reportRepo, batchRepo, salesRepo, inventoryRepo, harvestRepo)
 	reportHandler := report.NewHandler(reportService)
 
-	// Initialize layers for the dashboard feature
+	// Dashboard
 	dashboardService := dashboard.NewService(batchRepo, salesRepo, inventoryRepo, harvestRepo)
 	dashboardHandler := dashboard.NewHandler(dashboardService)
 
-	// Initialize layers for the planning feature
+	// Planning
 	planningRepo := planning.NewRepository(database.DB)
 	planningService := planning.NewService(planningRepo)
 	planningHandler := planning.NewHandler(planningService)
 
-	// Initialize layers for IoT feature
-	gatewayRepo := gateway.NewRepository()
+	// IoT gateway feature (in memory repo, service, handler)
+	gatewayRepo := gateway.NewMemoryRepository()
 	gatewayService := gateway.NewService(gatewayRepo)
-	gatewayHandler := gateway.NewHandler(gatewayService)
+	gatewayHandler := gateway.NewHTTPHandler(gatewayService)
 
-	router := buildRouter(userHandler, batchHandler, supplierHandler, inventoryHandler, harvestHandler, customerHandler, salesHandler, reportHandler, dashboardHandler, planningHandler, gatewayHandler)
+	router := buildRouter(
+		userHandler,
+		batchHandler,
+		supplierHandler,
+		inventoryHandler,
+		harvestHandler,
+		customerHandler,
+		salesHandler,
+		reportHandler,
+		dashboardHandler,
+		planningHandler,
+		gatewayHandler,
+	)
 
 	server := &http.Server{
 		Addr:         "0.0.0.0:8080",
@@ -135,7 +164,7 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Graceful shutdown logic remains the same
+	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

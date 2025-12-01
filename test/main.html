@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Stepper Controller</title>
+  <style>
+    body {
+      font-family: system-ui, Arial, sans-serif;
+      background: #0b0b0f;
+      color: #f5f5f7;
+      display: grid;
+      place-items: center;
+      min-height: 100vh;
+      margin: 0;
+      padding: 24px;
+    }
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: #15151b;
+      border: 1px solid #23232b;
+      border-radius: 16px;
+      padding: 18px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+    }
+    h1 {
+      font-size: 20px;
+      margin: 0 0 12px 0;
+    }
+    .ip-row {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    input {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 10px;
+      border: 1px solid #2b2b35;
+      background: #0f0f14;
+      color: #fff;
+      outline: none;
+    }
+    button {
+      width: 100%;
+      padding: 12px;
+      margin: 6px 0;
+      border-radius: 12px;
+      border: 1px solid #2b2b35;
+      background: #1d1d25;
+      color: #fff;
+      font-size: 16px;
+      cursor: pointer;
+      transition: transform 0.05s ease, background 0.15s ease;
+    }
+    button:hover { background: #24242e; }
+    button:active { transform: translateY(1px); }
+    .danger { background: #3a1010; border-color: #5e1a1a; }
+    .danger:hover { background: #4a1414; }
+    .status {
+      margin-top: 10px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: #0f0f14;
+      border: 1px solid #2b2b35;
+      font-size: 14px;
+      min-height: 20px;
+      white-space: pre-wrap;
+    }
+    .row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Stepper Controller</h1>
+
+    <div class="ip-row">
+      <input id="ip" placeholder="Device IP (example: 192.168.1.50)" />
+      <button style="width:auto; padding:10px 12px;" onclick="saveIp()">Save</button>
+    </div>
+
+    <div class="row">
+      <button onclick="callApi('/pos1')">Pos1</button>
+      <button onclick="callApi('/pos2')">Pos2</button>
+    </div>
+    <button onclick="callApi('/pos3')">Pos3</button>
+
+    <button class="danger" onclick="callApi('/reset', true)">Reset WiFi + Reboot</button>
+
+    <div class="status" id="status">Status: idle</div>
+  </div>
+
+  <script>
+    // Load saved IP if you used Save before
+    const ipInput = document.getElementById('ip');
+    const saved = localStorage.getItem('DEVICE_IP');
+    if (saved) ipInput.value = saved;
+
+    function saveIp() {
+      localStorage.setItem('DEVICE_IP', ipInput.value.trim());
+      setStatus("Saved IP: " + ipInput.value.trim());
+    }
+
+    function getBaseUrl() {
+      const ip = ipInput.value.trim();
+      if (!ip) throw new Error("Enter your device IP first.");
+      return "http://" + ip;
+    }
+
+    async function callApi(path, confirmDanger=false) {
+      try {
+        if (confirmDanger) {
+          const ok = confirm("This will clear WiFi and reboot the device. Continue?");
+          if (!ok) return;
+        }
+
+        setStatus("Calling " + path + " ...");
+
+        const url = getBaseUrl() + path;
+        const res = await fetch(url, { method: "GET" });
+        const text = await res.text();
+
+        setStatus("Response from " + path + ":\n" + text);
+      } catch (err) {
+        setStatus("Error:\n" + err.message);
+      }
+    }
+
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+  </script>
+</body>
+</html>

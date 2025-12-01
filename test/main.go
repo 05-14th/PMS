@@ -328,43 +328,49 @@ func postAck(w http.ResponseWriter, r *http.Request) {
 }
 
 // Feeder push passthrough to device /rotate-servo
+// Feeder push passthrough to device /rotate-servo
 func postPush(w http.ResponseWriter, r *http.Request) {
 	dev := strings.TrimPrefix(r.URL.Path, "/push/")
 	if dev == "" {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
 	}
-	var c Command
-	if err := parseJSON(r, &c); err != nil {
+
+	// Expect {"degrees":90|120|180, "pulse_ms":optional}
+	var payload struct {
+		Degrees int `json:"degrees"`
+		PulseMs int `json:"pulse_ms"`
+	}
+
+	if err := parseJSON(r, &payload); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if c.Type == "" {
-		c.Type = "rotate"
+	if payload.Degrees == 0 {
+		http.Error(w, "missing degrees", http.StatusBadRequest)
+		return
 	}
-	if c.OpenDeg == 0 {
-		c.OpenDeg = 120
-	}
-	if c.PulseMs == 0 {
-		c.PulseMs = 1000
+	if payload.PulseMs == 0 {
+		payload.PulseMs = 1000
 	}
 
 	devMu.RLock()
 	d := devices[dev]
 	devMu.RUnlock()
+
 	if d == nil || d.IP == "" {
 		http.Error(w, "unknown device or no IP", http.StatusNotFound)
 		return
 	}
 
 	body := map[string]any{
-		"relay":    c.Relay,
-		"pulse_ms": c.PulseMs,
+		"degrees":  payload.Degrees,
+		"pulse_ms": payload.PulseMs,
 	}
 	b, _ := json.Marshal(body)
-	url := fmt.Sprintf("http://%s/rotate-servo", d.IP)
 
-	req, err := http.NewRequest(http.MethodPost, url, strings.NewReader(string(b)))
+	url := fmt.Sprintf("http://%s/rotate-servo", d.IP)
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(b))
 	if err != nil {
 		http.Error(w, "push build failed", http.StatusInternalServerError)
 		return

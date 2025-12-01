@@ -30,7 +30,7 @@ func (h *Handler) RegisterRoutes(router chi.Router) {
 	// Public Auth Routes
 	router.Post("/api/login", h.login)
 	router.Post("/api/register", h.register)
-	
+
 	// Static File Server for profile pictures
 	fileServer := http.FileServer(http.Dir("uploads/profile_pics"))
 	router.Get("/uploads/profile_pics/*", http.StripPrefix("/uploads/profile_pics/", fileServer).ServeHTTP)
@@ -81,7 +81,7 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	file, header, err := r.FormFile("profilePic")
 	if err == nil {
 		defer file.Close()
-		
+
 		if err := os.MkdirAll("uploads/profile_pics", 0755); err != nil {
 			util.HandleError(w, http.StatusInternalServerError, "Failed to create upload directory", err)
 			return
@@ -109,9 +109,9 @@ func (h *Handler) register(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.RegisterUser(r.Context(), payload, profilePicPath); err != nil {
 		// If registration failed and a file was saved, clean it up (optional but good practice)
 		if profilePicPath != "" {
-			os.Remove(profilePicPath) 
+			os.Remove(profilePicPath)
 		}
-		
+
 		util.HandleError(w, http.StatusBadRequest, err.Error(), err)
 		return
 	}
