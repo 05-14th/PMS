@@ -74,14 +74,14 @@ const LevelGauge: React.FC<{
 const MonitoringPanel: React.FC<{
   serverHost: string;
   deviceId: string;
-  maxDepthCm?: [number, number, number];
-  labels?: [string, string, string];
+  maxDepthCm?: [number, number];
+  labels?: [string, string];
   pollMs?: number;
 }> = ({
   serverHost,
   deviceId,
-  maxDepthCm = [40, 40, 40],
-  labels = ["Water 1", "Water 2", "Medicine"],
+  maxDepthCm = [40, 40],
+  labels = ["Water", "Medicine"],
   pollMs = 2000,
 }) => {
   const [data, setData] = useState<Telemetry | null>(null);
@@ -122,7 +122,7 @@ const MonitoringPanel: React.FC<{
 
   const p1 = computePercent(s1, maxDepthCm[0]);
   const p2 = computePercent(s2, maxDepthCm[1]);
-  const p3 = computePercent(s3, maxDepthCm[2]);
+
 
   return (
     <div className="w-full">
@@ -143,7 +143,6 @@ const MonitoringPanel: React.FC<{
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <LevelGauge label={labels[0]} percent={p1} distanceCm={s1} maxDepthCm={maxDepthCm[0]} />
         <LevelGauge label={labels[1]} percent={p2} distanceCm={s2} maxDepthCm={maxDepthCm[1]} />
-        <LevelGauge label={labels[2]} percent={p3} distanceCm={s3} maxDepthCm={maxDepthCm[2]} />
       </div>
     </div>
   );
@@ -276,8 +275,8 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
       <MonitoringPanel
         serverHost={serverHost}
         deviceId={LEVEL_DEVICE_ID}
-        maxDepthCm={[40, 40, 40]}
-        labels={["Feed", "Water", "Medicine"]}
+        maxDepthCm={[40, 40]}
+        labels={["Water", "Medicine"]}                          
       />
     ),
   };
@@ -333,7 +332,7 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
                   aria-disabled={isAutoMode}
                   onClick={() => handleFeedRotate(num === 1 ? 0 : num === 2 ? 90 : 180)}
                 >
-                  {["Starter", "Grower", "Finisher"][num - 1]}
+                  {["Cage 1", "Cage 2", "Cage 3"][num - 1]}
                 </button>
               ))}
             </div>

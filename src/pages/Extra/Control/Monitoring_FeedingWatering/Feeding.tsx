@@ -68,7 +68,7 @@ const FeedMonitoring: React.FC<FeedMonitorProps> = ({ serverHost, deviceId }) =>
             className="p-3 bg-white border-2 border-pink-200 rounded-xl shadow-sm flex flex-col"
           >
             <div className="text-sm font-semibold text-green-700 mb-2 text-center">
-              {["Starter", "Grower", "Finisher"][i]}
+              {["Cage 1", "Cage 2", "Cage 3"][i]}
             </div>
 
             <div className="flex items-end gap-3">
