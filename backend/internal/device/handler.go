@@ -287,10 +287,6 @@ func (h *HTTPHandler) postPush(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if payload.Degrees == 0 {
-		http.Error(w, "missing degrees", http.StatusBadRequest)
-		return
-	}
 	if payload.PulseMs == 0 {
 		payload.PulseMs = 1000
 	}
