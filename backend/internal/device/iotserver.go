@@ -1,4 +1,5 @@
-package device
+// main.go
+package iotserver
 
 import (
 	"bytes"
@@ -10,40 +11,45 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
-
-	"github.com/go-chi/chi/v5"
 )
 
-type HTTPHandler struct {
-	svc Service
+// Device now tracks last sensors and watering state
+type Device struct {
+	ID          string
+	IP          string
+	LastHello   time.Time
+	LastSensors map[string]float64 // from /upload
+	Mode        string             // "automatic" or "manual"
+	Relays      [3]int             // relay1..relay3
 }
 
-func NewHTTPHandler(svc Service) *HTTPHandler {
-	return &HTTPHandler{svc: svc}
+type Command struct {
+	CmdID   string                 `json:"cmd_id"`
+	Type    string                 `json:"type"`     // "rotate"
+	Relay   int                    `json:"relay"`    // 1..3
+	OpenDeg int                    `json:"open_deg"` // default 120 here
+	PulseMs int                    `json:"pulse_ms"` // default 1000
+	Meta    map[string]interface{} `json:"meta,omitempty"`
 }
 
-func (h *HTTPHandler) RegisterRoutes(r chi.Router) {
-	// Inventory
-	r.HandleFunc("/", h.getRoot)
-	// Device registration and uploads
-	r.HandleFunc("/hello", h.postHello)
-	r.HandleFunc("/upload", h.postUpload)
-	// Command queue
-	r.HandleFunc("/command/", h.postCommand)
-	r.HandleFunc("/next", h.getNext)
-	r.HandleFunc("/ack", h.postAck)
-	// Feeder control passthrough
-	// Watering system control passthroughs
-	r.HandleFunc("/mode/", h.modeHandler)
-	r.HandleFunc("/set-relays/", h.setRelaysHandler)
-	// Cached telemetry and live status view
-	r.HandleFunc("/telemetry/", h.getTelemetryCached)
-	r.HandleFunc("/status/", h.getStatusPassthrough)
-	r.Post("/push/{deviceID}", h.postPush)
+type Upload struct {
+	ID      string                 `json:"id"`
+	Sensors map[string]float64     `json:"sensors"`
+	Raw     map[string]interface{} `json:"-"`
+	Time    time.Time              `json:"time"`
 }
 
-/* utility helpers */
+var (
+	devMu    sync.RWMutex
+	devices  = map[string]*Device{}
+	qMu      sync.Mutex
+	queues   = map[string][]Command{}
+	inflight = map[string]map[string]bool{}
+)
+
+// ---------- utility helpers ----------
 
 func writeJSON(w http.ResponseWriter, v any) {
 	w.Header().Set("Content-Type", "application/json")
@@ -89,9 +95,11 @@ func normalizeMode(s string) string {
 }
 
 // forwards a request to a known device IP and returns its response verbatim
-func (h *HTTPHandler) passthroughToDevice(devID, method, path string, body []byte) (int, []byte, error) {
-	d, err := h.svc.GetDevice(devID)
-	if err != nil || d == nil || d.IP == "" {
+func passthroughToDevice(devID, method, path string, body []byte) (int, []byte, error) {
+	devMu.RLock()
+	d := devices[devID]
+	devMu.RUnlock()
+	if d == nil || d.IP == "" {
 		return http.StatusNotFound, nil, fmt.Errorf("unknown device or no IP")
 	}
 
@@ -115,10 +123,10 @@ func (h *HTTPHandler) passthroughToDevice(devID, method, path string, body []byt
 	return resp.StatusCode, respBody, nil
 }
 
-/* handlers */
+// ---------- handlers ----------
 
 // Root shows devices and cached context
-func (h *HTTPHandler) getRoot(w http.ResponseWriter, r *http.Request) {
+func getRoot(w http.ResponseWriter, r *http.Request) {
 	type DevView struct {
 		ID          string             `json:"id"`
 		IP          string             `json:"ip"`
@@ -128,30 +136,27 @@ func (h *HTTPHandler) getRoot(w http.ResponseWriter, r *http.Request) {
 		Mode        string             `json:"mode,omitempty"`
 		Relays      [3]int             `json:"relays,omitempty"`
 	}
-
-	devs, err := h.svc.ListDevices()
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
-
-	out := make([]DevView, 0, len(devs))
-	for _, d := range devs {
+	out := make([]DevView, 0, len(devices))
+	devMu.RLock()
+	qMu.Lock()
+	for id, d := range devices {
 		out = append(out, DevView{
-			ID:          d.ID,
+			ID:          id,
 			IP:          d.IP,
 			LastHello:   d.LastHello,
-			QueueLen:    h.svc.GetQueueLen(d.ID),
+			QueueLen:    len(queues[id]),
 			LastSensors: d.LastSensors,
 			Mode:        d.Mode,
 			Relays:      d.Relays,
 		})
 	}
+	qMu.Unlock()
+	devMu.RUnlock()
 	writeJSON(w, map[string]any{"devices": out})
 }
 
 // Device says hello so we can learn its IP
-func (h *HTTPHandler) postHello(w http.ResponseWriter, r *http.Request) {
+func postHello(w http.ResponseWriter, r *http.Request) {
 	var msg struct {
 		ID string `json:"id"`
 	}
@@ -160,16 +165,20 @@ func (h *HTTPHandler) postHello(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ip := getClientIP(r)
-
-	if _, err := h.svc.RegisterHello(msg.ID, ip); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	devMu.Lock()
+	d := devices[msg.ID]
+	if d == nil {
+		d = &Device{ID: msg.ID}
+		devices[msg.ID] = d
 	}
+	d.IP = ip
+	d.LastHello = time.Now()
+	devMu.Unlock()
 	writeJSON(w, map[string]any{"ok": true, "ip": ip})
 }
 
 // Device uploads sensor readings
-func (h *HTTPHandler) postUpload(w http.ResponseWriter, r *http.Request) {
+func postUpload(w http.ResponseWriter, r *http.Request) {
 	var raw map[string]interface{}
 	if err := parseJSON(r, &raw); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
@@ -181,7 +190,6 @@ func (h *HTTPHandler) postUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// build sensor map from payload (same logic as original)
 	sensorMap := map[string]float64{}
 	if s, ok := raw["sensors"].(map[string]interface{}); ok {
 		for k, v := range s {
@@ -195,6 +203,7 @@ func (h *HTTPHandler) postUpload(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	} else {
+		// flat legacy keys like sensor1, sensor2
 		for k, v := range raw {
 			if strings.HasPrefix(k, "sensor") {
 				switch t := v.(type) {
@@ -210,16 +219,48 @@ func (h *HTTPHandler) postUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ip := getClientIP(r)
-	if _, _, err := h.svc.HandleUpload(id, ip, sensorMap, raw); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	devMu.Lock()
+	d := devices[id]
+	if d == nil {
+		d = &Device{ID: id}
+		devices[id] = d
 	}
+	d.IP = ip
+	d.LastHello = time.Now()
+	// keep last sensors
+	if len(sensorMap) > 0 {
+		if d.LastSensors == nil {
+			d.LastSensors = map[string]float64{}
+		}
+		for k, v := range sensorMap {
+			d.LastSensors[k] = v
+		}
+		// infer relays if present as floats in sensors
+		if v, ok := d.LastSensors["relay1"]; ok {
+			d.Relays[0] = int(v)
+		}
+		if v, ok := d.LastSensors["relay2"]; ok {
+			d.Relays[1] = int(v)
+		}
+		if v, ok := d.LastSensors["relay3"]; ok {
+			d.Relays[2] = int(v)
+		}
+	}
+	devMu.Unlock()
+
+	up := Upload{
+		ID:      id,
+		Sensors: sensorMap,
+		Raw:     raw,
+		Time:    time.Now(),
+	}
+	log.Printf("upload from %s sensors=%v", up.ID, up.Sensors)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
 // Command queue compatibility
-func (h *HTTPHandler) postCommand(w http.ResponseWriter, r *http.Request) {
-	dev := chi.URLParam(r, "/command/")
+func postCommand(w http.ResponseWriter, r *http.Request) {
+	dev := strings.TrimPrefix(r.URL.Path, "/command/")
 	if dev == "" {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
@@ -229,30 +270,44 @@ func (h *HTTPHandler) postCommand(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-
-	cmd, err := h.svc.EnqueueCommand(dev, c)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	if c.CmdID == "" {
+		c.CmdID = fmt.Sprintf("%s-%d", dev, time.Now().UnixNano())
 	}
-	writeJSON(w, map[string]any{"enqueued": true, "cmd_id": cmd.CmdID})
+	if c.Type == "" {
+		c.Type = "rotate"
+	}
+	if c.OpenDeg == 0 {
+		c.OpenDeg = 120
+	}
+	if c.PulseMs == 0 {
+		c.PulseMs = 1000
+	}
+
+	qMu.Lock()
+	queues[dev] = append(queues[dev], c)
+	if inflight[dev] == nil {
+		inflight[dev] = map[string]bool{}
+	}
+	inflight[dev][c.CmdID] = true
+	qMu.Unlock()
+
+	writeJSON(w, map[string]any{"enqueued": true, "cmd_id": c.CmdID})
 }
 
-func (h *HTTPHandler) getNext(w http.ResponseWriter, r *http.Request) {
+func getNext(w http.ResponseWriter, r *http.Request) {
 	dev := r.URL.Query().Get("dev")
 	if dev == "" {
 		http.Error(w, "missing dev", http.StatusBadRequest)
 		return
 	}
-	items, err := h.svc.GetNextCommands(dev)
-	if err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
-	}
+	qMu.Lock()
+	items := queues[dev]
+	queues[dev] = nil
+	qMu.Unlock()
 	writeJSON(w, map[string]any{"cmds": items})
 }
 
-func (h *HTTPHandler) postAck(w http.ResponseWriter, r *http.Request) {
+func postAck(w http.ResponseWriter, r *http.Request) {
 	var a struct {
 		ID    string `json:"id"`
 		CmdID string `json:"cmd_id"`
@@ -262,16 +317,19 @@ func (h *HTTPHandler) postAck(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := h.svc.AckCommand(a.ID, a.CmdID, a.OK); err != nil {
-		http.Error(w, "internal error", http.StatusInternalServerError)
-		return
+	qMu.Lock()
+	if inflight[a.ID] != nil {
+		delete(inflight[a.ID], a.CmdID)
 	}
+	qMu.Unlock()
+	log.Printf("ack from %s cmd=%s ok=%v", a.ID, a.CmdID, a.OK)
 	writeJSON(w, map[string]any{"ok": true})
 }
 
 // Feeder push passthrough to device /rotate-servo
-func (h *HTTPHandler) postPush(w http.ResponseWriter, r *http.Request) {
-	dev := chi.URLParam(r, "deviceID")
+// Feeder push passthrough to device /rotate-servo
+func postPush(w http.ResponseWriter, r *http.Request) {
+	dev := strings.TrimPrefix(r.URL.Path, "/push/")
 	if dev == "" {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
@@ -292,11 +350,11 @@ func (h *HTTPHandler) postPush(w http.ResponseWriter, r *http.Request) {
 	}
 
 	devMu.RLock()
-	d, ok := devices[dev]
+	d := devices[dev]
 	devMu.RUnlock()
 
-	if !ok || d.IP == "" {
-		http.Error(w, "unknown device or no IP", http.StatusBadRequest)
+	if d == nil || d.IP == "" {
+		http.Error(w, "unknown device or no IP", http.StatusNotFound)
 		return
 	}
 
@@ -328,15 +386,17 @@ func (h *HTTPHandler) postPush(w http.ResponseWriter, r *http.Request) {
 }
 
 // Watering system: /mode/{id} -> forwards to device /mode
-func (h *HTTPHandler) modeHandler(w http.ResponseWriter, r *http.Request) {
-	dev := chi.URLParam(r, "/mode/")
+func modeHandler(w http.ResponseWriter, r *http.Request) {
+	dev := strings.TrimPrefix(r.URL.Path, "/mode/")
 	if dev == "" {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
 	}
 
-	d, err := h.svc.GetDevice(dev)
-	if err != nil || d == nil || d.IP == "" {
+	devMu.RLock()
+	d := devices[dev]
+	devMu.RUnlock()
+	if d == nil || d.IP == "" {
 		http.Error(w, "unknown device or no IP", http.StatusNotFound)
 		return
 	}
@@ -344,6 +404,7 @@ func (h *HTTPHandler) modeHandler(w http.ResponseWriter, r *http.Request) {
 	targetURL := fmt.Sprintf("http://%s/mode", d.IP)
 
 	var req *http.Request
+	var err error
 
 	switch r.Method {
 	case http.MethodGet:
@@ -356,13 +417,16 @@ func (h *HTTPHandler) modeHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		_ = r.Body.Close()
 
+		// normalize and cache intended mode
 		var payload map[string]interface{}
 		_ = json.Unmarshal(bodyBytes, &payload)
 		if m, ok := payload["mode"].(string); ok {
 			m = normalizeMode(m)
-			if err := h.svc.UpdateMode(dev, m); err != nil {
-				log.Printf("failed to update mode cache: %v", err)
+			devMu.Lock()
+			if d := devices[dev]; d != nil {
+				d.Mode = m
 			}
+			devMu.Unlock()
 			payload["mode"] = m
 			bodyBytes, _ = json.Marshal(payload)
 		}
@@ -393,7 +457,7 @@ func (h *HTTPHandler) modeHandler(w http.ResponseWriter, r *http.Request) {
 
 // Watering system: POST /set-relays/{id} -> forwards to device /set-relays
 // Accepts optional {"mode":"manual"|"automatic"} and relay1..relay3 ints
-func (h *HTTPHandler) setRelaysHandler(w http.ResponseWriter, r *http.Request) {
+func setRelaysHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodOptions {
 		w.WriteHeader(http.StatusNoContent)
 		return
@@ -403,14 +467,16 @@ func (h *HTTPHandler) setRelaysHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dev := chi.URLParam(r, "/set-relays/")
+	dev := strings.TrimPrefix(r.URL.Path, "/set-relays/")
 	if dev == "" {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
 	}
 
-	d, err := h.svc.GetDevice(dev)
-	if err != nil || d == nil || d.IP == "" {
+	devMu.RLock()
+	d := devices[dev]
+	devMu.RUnlock()
+	if d == nil || d.IP == "" {
 		http.Error(w, "unknown device or no IP", http.StatusNotFound)
 		return
 	}
@@ -423,30 +489,26 @@ func (h *HTTPHandler) setRelaysHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = r.Body.Close()
 
+	// update cached state from intended payload and normalize mode
 	var payload map[string]interface{}
 	_ = json.Unmarshal(bodyBytes, &payload)
-
-	modeStr := ""
-	if m, ok := payload["mode"].(string); ok {
-		modeStr = normalizeMode(m)
-		payload["mode"] = modeStr
+	devMu.Lock()
+	if d := devices[dev]; d != nil {
+		if m, ok := payload["mode"].(string); ok {
+			d.Mode = normalizeMode(m)
+			payload["mode"] = d.Mode
+		}
+		if v, ok := payload["relay1"].(float64); ok {
+			d.Relays[0] = int(v)
+		}
+		if v, ok := payload["relay2"].(float64); ok {
+			d.Relays[1] = int(v)
+		}
+		if v, ok := payload["relay3"].(float64); ok {
+			d.Relays[2] = int(v)
+		}
 	}
-
-	var relays [3]int
-	if v, ok := payload["relay1"].(float64); ok {
-		relays[0] = int(v)
-	}
-	if v, ok := payload["relay2"].(float64); ok {
-		relays[1] = int(v)
-	}
-	if v, ok := payload["relay3"].(float64); ok {
-		relays[2] = int(v)
-	}
-
-	if err := h.svc.UpdateModeAndRelays(dev, modeStr, relays); err != nil {
-		log.Printf("failed to update relay cache: %v", err)
-	}
-
+	devMu.Unlock()
 	bodyBytes, _ = json.Marshal(payload)
 
 	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(bodyBytes))
@@ -470,14 +532,16 @@ func (h *HTTPHandler) setRelaysHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Return last known telemetry that came via /upload
-func (h *HTTPHandler) getTelemetryCached(w http.ResponseWriter, r *http.Request) {
-	dev := chi.URLParam(r, "/telemetry/")
+func getTelemetryCached(w http.ResponseWriter, r *http.Request) {
+	dev := strings.TrimPrefix(r.URL.Path, "/telemetry/")
 	if dev == "" {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
 	}
-	d, err := h.svc.GetTelemetry(dev)
-	if err != nil {
+	devMu.RLock()
+	d := devices[dev]
+	devMu.RUnlock()
+	if d == nil {
 		http.Error(w, "unknown device", http.StatusNotFound)
 		return
 	}
@@ -492,17 +556,17 @@ func (h *HTTPHandler) getTelemetryCached(w http.ResponseWriter, r *http.Request)
 }
 
 // GET /status/{id} -> forwards to device GET /status
-func (h *HTTPHandler) getStatusPassthrough(w http.ResponseWriter, r *http.Request) {
+func getStatusPassthrough(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	dev := chi.URLParam(r, "/status/")
+	dev := strings.TrimPrefix(r.URL.Path, "/status/")
 	if dev == "" {
 		http.Error(w, "missing device id", http.StatusBadRequest)
 		return
 	}
-	code, body, err := h.passthroughToDevice(dev, http.MethodGet, "/status", nil)
+	code, body, err := passthroughToDevice(dev, http.MethodGet, "/status", nil)
 	if err != nil {
 		http.Error(w, err.Error(), code)
 		return
@@ -510,4 +574,104 @@ func (h *HTTPHandler) getStatusPassthrough(w http.ResponseWriter, r *http.Reques
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_, _ = w.Write(body)
+}
+
+// CORS wrapper for all routes
+func withCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Change "*" to your UI origin if you want to restrict
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Vary", "Origin")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
+}
+
+type TelemetryData map[string]interface{} // adjust to your real model
+
+// FetchTelemetry calls this server's /telemetry/{id} endpoints and returns
+// the JSON payloads for the feeder, watering, and medicine devices.
+func FetchTelemetry(serverHost, feederID, waterID, medID string) (TelemetryData, TelemetryData, TelemetryData, error) {
+	client := &http.Client{Timeout: 10 * time.Second}
+
+	base := strings.TrimRight(serverHost, "/")
+
+	get := func(deviceID string) (TelemetryData, error) {
+		url := fmt.Sprintf("%s/telemetry/%s", base, deviceID)
+
+		res, err := client.Get(url)
+		if err != nil {
+			return nil, err
+		}
+		defer res.Body.Close()
+
+		if res.StatusCode != http.StatusOK {
+			return nil, fmt.Errorf("telemetry request failed for %s: %s", deviceID, res.Status)
+		}
+
+		var data TelemetryData
+		if err := json.NewDecoder(res.Body).Decode(&data); err != nil {
+			return nil, err
+		}
+		return data, nil
+	}
+
+	feeding, err := get(feederID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	watering, err := get(waterID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	medicine, err := get(medID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return feeding, watering, medicine, nil
+}
+
+// RegisterRoutes attaches all handlers to the given mux, under the root path.
+func RegisterRoutes(mux *http.ServeMux) {
+	// Inventory
+	mux.HandleFunc("/", getRoot)
+	// Device registration and uploads
+	mux.HandleFunc("/hello", postHello)
+	mux.HandleFunc("/upload", postUpload)
+	// Command queue compatibility
+	mux.HandleFunc("/command/", postCommand)
+	mux.HandleFunc("/next", getNext)
+	mux.HandleFunc("/ack", postAck)
+	// Feeder control passthrough
+	mux.HandleFunc("/push/", postPush)
+	// Watering system control passthroughs
+	mux.HandleFunc("/mode/", modeHandler)
+	mux.HandleFunc("/set-relays/", setRelaysHandler)
+	// Cached telemetry and live status view
+	mux.HandleFunc("/telemetry/", getTelemetryCached)
+	mux.HandleFunc("/status/", getStatusPassthrough)
+}
+
+// NewServer creates an http.Server with all routes registered.
+func NewServer(addr string) *http.Server {
+	if addr == "" {
+		addr = ":8080"
+	}
+	mux := http.NewServeMux()
+	RegisterRoutes(mux)
+
+	return &http.Server{
+		Addr:              addr,
+		Handler:           withCORS(mux),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
 }

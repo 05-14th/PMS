@@ -1,4 +1,3 @@
-// File: backend/cmd/api/main.go
 package main
 
 import (
@@ -12,6 +11,7 @@ import (
 	"time"
 
 	"chickmate-api/internal/batch"
+	"chickmate-api/internal/cagestatus"
 	"chickmate-api/internal/customer"
 	"chickmate-api/internal/dashboard"
 	"chickmate-api/internal/database"
@@ -24,7 +24,7 @@ import (
 	"chickmate-api/internal/user"
 	"chickmate-api/internal/util"
 
-	gateway "chickmate-api/internal/device" // IoT module
+	gateway "chickmate-api/internal/device"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -32,7 +32,6 @@ import (
 
 func withCORS(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Change "*" to your UI origin if you want to restrict
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Vary", "Origin")
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
@@ -57,11 +56,11 @@ func buildRouter(
 	reportHandler *report.Handler,
 	dashboardHandler *dashboard.Handler,
 	planningHandler *planning.Handler,
-	deviceHandler *gateway.HTTPHandler,
+	cageStatusHandler *cagestatus.Handler,
+	deviceHandler http.Handler,
 ) http.Handler {
 	r := chi.NewRouter()
 
-	// Middleware
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
@@ -69,7 +68,6 @@ func buildRouter(
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(util.Cors)
 
-	// Feature routes
 	userHandler.RegisterRoutes(r)
 	batchHandler.RegisterRoutes(r)
 	supplierHandler.RegisterRoutes(r)
@@ -80,7 +78,9 @@ func buildRouter(
 	reportHandler.RegisterRoutes(r)
 	dashboardHandler.RegisterRoutes(r)
 	planningHandler.RegisterRoutes(r)
-	deviceHandler.RegisterRoutes(r) // IoT routes
+	cageStatusHandler.RegisterRoutes(r)
+
+	r.Mount("/device", deviceHandler)
 
 	return r
 }
@@ -88,59 +88,51 @@ func buildRouter(
 func main() {
 	database.InitDB()
 
-	// User
 	userRepo := user.NewRepository(database.DB)
 	userService := user.NewService(userRepo)
 	userHandler := user.NewHandler(userService)
 
-	// Inventory
 	inventoryRepo := inventory.NewRepository(database.DB)
 	inventoryService := inventory.NewService(inventoryRepo)
 	inventoryHandler := inventory.NewHandler(inventoryService)
 
-	// Batch
 	batchRepo := batch.NewRepository(database.DB)
 	batchService := batch.NewService(batchRepo, inventoryService)
 	batchHandler := batch.NewHandler(batchService)
 
-	// Supplier
 	supplierRepo := supplier.NewRepository(database.DB)
 	supplierService := supplier.NewService(supplierRepo)
 	supplierHandler := supplier.NewHandler(supplierService)
 
-	// Harvest
 	harvestRepo := harvest.NewRepository(database.DB)
 	harvestService := harvest.NewService(harvestRepo)
 	harvestHandler := harvest.NewHandler(harvestService)
 
-	// Customer
 	customerRepo := customer.NewRepository(database.DB)
 	customerService := customer.NewService(customerRepo)
 	customerHandler := customer.NewHandler(customerService)
 
-	// Sales
 	salesRepo := sales.NewRepository(database.DB)
 	salesService := sales.NewService(salesRepo)
 	salesHandler := sales.NewHandler(salesService)
 
-	// Report
 	reportRepo := report.NewRepository(database.DB)
 	reportService := report.NewService(reportRepo, batchRepo, salesRepo, inventoryRepo, harvestRepo)
 	reportHandler := report.NewHandler(reportService)
 
-	// Dashboard
 	dashboardService := dashboard.NewService(batchRepo, salesRepo, inventoryRepo, harvestRepo)
 	dashboardHandler := dashboard.NewHandler(dashboardService)
 
-	// Planning
 	planningRepo := planning.NewRepository(database.DB)
 	planningService := planning.NewService(planningRepo)
 	planningHandler := planning.NewHandler(planningService)
 
-	// IoT gateway feature (in memory repo, service, handler)
-	gatewayRepo := gateway.NewMemoryRepository()
-	gatewayService := gateway.NewService(gatewayRepo)
-	gatewayHandler := gateway.NewHTTPHandler(gatewayService)
+	cageStatusRepo := cagestatus.NewRepository(database.DB)
+	cageStatusService := cagestatus.NewService(cageStatusRepo)
+	cageStatusHandler := cagestatus.NewHandler(cageStatusService)
+
+	gatewayServer := gateway.NewServer("")
+	deviceHandler := gatewayServer.Handler
 
 	router := buildRouter(
 		userHandler,
@@ -153,7 +145,8 @@ func main() {
 		reportHandler,
 		dashboardHandler,
 		planningHandler,
-		gatewayHandler,
+		cageStatusHandler,
+		deviceHandler,
 	)
 
 	server := &http.Server{
@@ -164,7 +157,6 @@ func main() {
 		IdleTimeout:  60 * time.Second,
 	}
 
-	// Graceful shutdown
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
@@ -183,5 +175,6 @@ func main() {
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		log.Printf("Shutdown error: %v", err)
 	}
+
 	fmt.Println("Shutdown complete.")
 }
