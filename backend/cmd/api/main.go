@@ -17,7 +17,9 @@ import (
 	"chickmate-api/internal/database"
 	"chickmate-api/internal/harvest"
 	"chickmate-api/internal/inventory"
+	"chickmate-api/internal/login"
 	"chickmate-api/internal/planning"
+	"chickmate-api/internal/register"
 	"chickmate-api/internal/report"
 	"chickmate-api/internal/sales"
 	"chickmate-api/internal/supplier"
@@ -46,6 +48,8 @@ func withCORS(h http.Handler) http.Handler {
 }
 
 func buildRouter(
+	loginHandler *login.Handler,
+	registerHandler *register.Handler,
 	userHandler *user.Handler,
 	batchHandler *batch.Handler,
 	supplierHandler *supplier.Handler,
@@ -58,7 +62,8 @@ func buildRouter(
 	planningHandler *planning.Handler,
 	cageStatusHandler *cagestatus.Handler,
 	deviceHandler http.Handler,
-) http.Handler {
+	) http.Handler {
+
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -68,6 +73,8 @@ func buildRouter(
 	r.Use(middleware.Timeout(30 * time.Second))
 	r.Use(util.Cors)
 
+	loginHandler.RegisterRoutes(r)
+	registerHandler.RegisterRoutes(r)
 	userHandler.RegisterRoutes(r)
 	batchHandler.RegisterRoutes(r)
 	supplierHandler.RegisterRoutes(r)
@@ -87,6 +94,14 @@ func buildRouter(
 
 func main() {
 	database.InitDB()
+
+	loginRepo := login.NewRepository(database.DB)
+	loginService := login.NewService(loginRepo)
+	loginHandler := login.NewHandler(loginService)		
+
+	registerRepo := register.NewRepository(database.DB)
+	registerService := register.NewService(registerRepo)
+	registerHandler := register.NewHandler(registerService)	
 
 	userRepo := user.NewRepository(database.DB)
 	userService := user.NewService(userRepo)
@@ -135,6 +150,8 @@ func main() {
 	deviceHandler := gatewayServer.Handler
 
 	router := buildRouter(
+		loginHandler,
+		registerHandler,
 		userHandler,
 		batchHandler,
 		supplierHandler,
