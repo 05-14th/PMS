@@ -80,7 +80,7 @@ const MonitoringPanel: React.FC<{
 }> = ({
   serverHost,
   deviceId,
-  maxDepthCm = [40, 40],
+  maxDepthCm = [10, 10],
   labels = ["Water", "Medicine"],
   pollMs = 2000,
 }) => {
@@ -116,13 +116,12 @@ const MonitoringPanel: React.FC<{
     };
   }, [fetcher, pollMs]);
 
-  const s1 = data?.last_sensors?.sensor1;
-  const s2 = data?.last_sensors?.sensor2;
-  const s3 = data?.last_sensors?.sensor3;
+  // Firmware now uses only sensor1 and sensor3 for real distances
+  const s1 = data?.last_sensors?.["sensor1"];
+  const s3 = data?.last_sensors?.["sensor3"];
 
   const p1 = computePercent(s1, maxDepthCm[0]);
-  const p2 = computePercent(s2, maxDepthCm[1]);
-
+  const p2 = computePercent(s3, maxDepthCm[1]);
 
   return (
     <div className="w-full">
@@ -140,9 +139,9 @@ const MonitoringPanel: React.FC<{
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <LevelGauge label={labels[0]} percent={p1} distanceCm={s1} maxDepthCm={maxDepthCm[0]} />
-        <LevelGauge label={labels[1]} percent={p2} distanceCm={s2} maxDepthCm={maxDepthCm[1]} />
+        <LevelGauge label={labels[1]} percent={p2} distanceCm={s3} maxDepthCm={maxDepthCm[1]} />
       </div>
     </div>
   );
@@ -163,7 +162,7 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
   const WATER_DEVICE_ID = "esp-8A3850";
   const MED_DEVICE_ID   = "esp-11F549";
   const ENV_DEVICE_ID = "gw-16ebb";
-  const LEVEL_DEVICE_ID = "gw-6b3e32"; // never touched by the global mode toggle
+  const LEVEL_DEVICE_ID = "gw-120728"; // never touched by the global mode toggle
 
   // Only devices that should receive mode changes
   const TARGET_DEVICE_IDS = [FEEDER_DEVICE_ID, WATER_DEVICE_ID, MED_DEVICE_ID];
@@ -207,29 +206,27 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
   };
 
   // Feeder rotate via server push
- const handleFeedRotate = async (degrees: 0 | 90 | 180) => {
-  if (isAutoMode) return;
-  try {
-    await axios.post(
-      `${serverHost}/push/${FEEDER_DEVICE_ID}`,
-      { degrees, pulse_ms: 1000 },
-      { headers: { "Content-Type": "application/json" } }
-    );
-    console.log(`Feed rotation triggered at ${degrees} degrees`);
-  } catch (err: unknown) {
-    if (axios.isAxiosError(err)) {
-      console.warn(
-        "Feed rotate request failed",
-        err.response?.status,
-        err.response?.data
+  const handleFeedRotate = async (degrees: 0 | 110 | 180) => {
+    if (isAutoMode) return;
+    try {
+      await axios.post(
+        `${serverHost}/push/${FEEDER_DEVICE_ID}`,
+        { degrees, pulse_ms: 1000 },
+        { headers: { "Content-Type": "application/json" } }
       );
-    } else {
-      console.warn("Feed rotate request failed", err);
+      console.log(`Feed rotation triggered at ${degrees} degrees`);
+    } catch (err: unknown) {
+      if (axios.isAxiosError(err)) {
+        console.warn(
+          "Feed rotate request failed",
+          err.response?.status,
+          err.response?.data
+        );
+      } else {
+        console.warn("Feed rotate request failed", err);
+      }
     }
-  }
-};
-
-
+  };
 
   // Watering: toggle using /set-relays/{deviceId}
   const handleWaterToggle = async (relay: number) => {
@@ -275,8 +272,8 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
       <MonitoringPanel
         serverHost={serverHost}
         deviceId={LEVEL_DEVICE_ID}
-        maxDepthCm={[40, 40]}
-        labels={["Water", "Medicine"]}                          
+        maxDepthCm={[5, 5]}
+        labels={["Water", "Medicine"]}
       />
     ),
   };
@@ -330,7 +327,7 @@ const Feedingandwatering: React.FC<FeedingandwateringProps> = ({ batchID }) => {
                   }`}
                   disabled={isAutoMode}
                   aria-disabled={isAutoMode}
-                  onClick={() => handleFeedRotate(num === 1 ? 0 : num === 2 ? 90 : 180)}
+                  onClick={() => handleFeedRotate(num === 1 ? 0 : num === 2 ? 110 : 180)}
                 >
                   {["Cage 1", "Cage 2", "Cage 3"][num - 1]}
                 </button>

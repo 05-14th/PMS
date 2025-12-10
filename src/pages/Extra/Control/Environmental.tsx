@@ -17,7 +17,7 @@ type Telemetry = {
 };
 
 // Single source of truth for relay indices
-const RELAY_INDEX = { light: 0, heater: 1, fan: 2 } as const;
+const RELAY_INDEX = { light: 1, heater: 0, fan: 2 } as const;
 
 function toRelayState(sourceRelays?: number[], ls?: Record<string, number>) {
   const arr = Array.isArray(sourceRelays)
@@ -52,9 +52,8 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
   // sensors
   const [sensors, setSensors] = useState<{
     tempC?: number;
+    tempC2?: number;
     humidity?: number;
-    lux?: number;
-    mq135?: number;
   }>({});
 
   const [error, setError] = useState<string | null>(null);
@@ -71,7 +70,7 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
     let es: EventSource | null = null;
 
     const connect = () => {
-      es = new EventSource(`${serverHost}/telemetry/stream?dev=${ENV_DEVICE_ID}`);
+      es = new EventSource(`${serverHost}/telemetry/${ENV_DEVICE_ID}`);
 
       es.onmessage = (ev) => {
         if (closed) return;
@@ -81,9 +80,8 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
           const ls = data.last_sensors || {};
           setSensors({
             tempC: ls.temperature_c,
+            tempC2: ls.tempC2,
             humidity: ls.humidity_pct,
-            lux: ls.light_lux,
-            mq135: ls.mq135_ppm,
           });
 
           setRelays(toRelayState(data.relays, ls));
@@ -132,14 +130,14 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
         const { data } = await axios.get<Telemetry>(
           `${serverHost}/telemetry/${ENV_DEVICE_ID}`
         );
+        console.log("Polled telemetry", data);
         if (stop) return;
 
         const ls = data.last_sensors || {};
         setSensors({
           tempC: ls.temperature_c,
+          tempC2: ls.temperature2_c,
           humidity: ls.humidity_pct,
-          lux: ls.light_lux,
-          mq135: ls.mq135_ppm,
         });
 
         setRelays(toRelayState(data.relays, ls));
@@ -181,9 +179,9 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
   // helper to build payload for single relay toggle
   const buildRelayPayload = (key: "heater" | "light" | "fan", value: 0 | 1) => {
     const payload: Record<string, any> = { mode: "manual" };
-    if (key === "heater") payload.relay2 = value;
-    if (key === "light")  payload.relay1 = value;
-    if (key === "fan")    payload.relay3 = value;
+    if (key === "heater") payload.relay1 = value;
+    if (key === "light") payload.relay2 = value;
+    if (key === "fan") payload.relay3 = value;
     return payload;
   };
 
@@ -206,8 +204,8 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
   };
 
   const isHeaterOn = !!relays.heater;
-  const isLightOn  = !!relays.light;
-  const isFanOn    = !!relays.fan;
+  const isLightOn = !!relays.light;
+  const isFanOn = !!relays.fan;
 
   const lastSeenText = useMemo(() => {
     if (!lastHello) return "N/A";
@@ -231,18 +229,20 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
 
       {/* Three cards */}
       <div className="p-4 bg-white rounded-lg shadow">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Air Quality */}
+        <div className="grid grid-cols-1 md-grid-cols-3 gap-6">
+          {/* Surrounding Temperature (uses tempC2) */}
           <div className="flex flex-col h-full">
             <div className="flex items-center justify-center gap-2 mb-3 h-8">
               <Wind className="w-5 h-5 text-green-600 flex-shrink-0" />
               <span className="font-semibold text-green-700 text-lg whitespace-nowrap">
-                Air Quality
+                Surrounding Temperature
               </span>
             </div>
             <div className="flex-1 p-4 bg-white border-2 border-green-200 shadow-sm rounded-xl">
               <div className="h-32 bg-green-50 rounded flex items-center justify-center text-green-600">
-                {sensors.mq135 != null ? `${sensors.mq135.toFixed(0)} ppm` : "No data"}
+                {sensors.tempC2 != null
+                  ? `${sensors.tempC2.toFixed(1)} °C`
+                  : "No data"}
               </div>
             </div>
           </div>
@@ -257,7 +257,9 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
             </div>
             <div className="flex-1 p-4 bg-white border-2 border-green-200 shadow-sm rounded-xl">
               <div className="h-32 bg-green-50 rounded flex items-center justify-center text-green-600">
-                {sensors.tempC != null ? `${sensors.tempC.toFixed(1)} °C` : "No data"}
+                {sensors.tempC != null
+                  ? `${sensors.tempC.toFixed(1)} °C`
+                  : "No data"}
               </div>
             </div>
           </div>
@@ -272,7 +274,9 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
             </div>
             <div className="flex-1 p-4 bg-white border-2 border-green-200 shadow-sm rounded-xl">
               <div className="h-32 bg-green-50 rounded flex items-center justify-center text-green-600">
-                {sensors.humidity != null ? `${sensors.humidity.toFixed(0)} %` : "No data"}
+                {sensors.humidity != null
+                  ? `${sensors.humidity.toFixed(0)} %`
+                  : "No data"}
               </div>
             </div>
           </div>
@@ -280,7 +284,28 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
       </div>
 
       {/* Control buttons */}
-      <div className={`flex flex-wrap justify-center gap-6 my-6 ${isAutoMode ? "opacity-50" : ""}`}>
+      <div
+        className={`flex flex-wrap justify-center gap-6 my-6 ${
+          isAutoMode ? "opacity-50" : ""
+        }`}
+      >
+        {/* Light (moved before Heater) */}
+        <button
+          onClick={() => toggleRelay("light")}
+          disabled={isAutoMode}
+          className={`flex flex-col items-center p-4 rounded-lg transition-colors ${
+            isLightOn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
+          } ${isAutoMode ? "cursor-not-allowed" : "hover:bg-green-50"}`}
+        >
+          <FaLightbulb
+            className={`text-3xl mb-2 ${
+              isLightOn ? "text-yellow-400" : "text-gray-500"
+            }`}
+          />
+          <span className="font-medium">Light</span>
+          <span className="text-sm">{isLightOn ? "ON" : "OFF"}</span>
+        </button>
+
         {/* Heater */}
         <button
           onClick={() => toggleRelay("heater")}
@@ -289,22 +314,13 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
             isHeaterOn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
           } ${isAutoMode ? "cursor-not-allowed" : "hover:bg-green-50"}`}
         >
-          <FaFireAlt className={`text-3xl mb-2 ${isHeaterOn ? "text-orange-500" : "text-gray-500"}`} />
+          <FaFireAlt
+            className={`text-3xl mb-2 ${
+              isHeaterOn ? "text-orange-500" : "text-gray-500"
+            }`}
+          />
           <span className="font-medium">Heater</span>
           <span className="text-sm">{isHeaterOn ? "ON" : "OFF"}</span>
-        </button>
-
-        {/* Light */}
-        <button
-          onClick={() => toggleRelay("light")}
-          disabled={isAutoMode}
-          className={`flex flex-col items-center p-4 rounded-lg transition-colors ${
-            isLightOn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
-          } ${isAutoMode ? "cursor-not-allowed" : "hover:bg-green-50"}`}
-        >
-          <FaLightbulb className={`text-3xl mb-2 ${isLightOn ? "text-yellow-400" : "text-gray-500"}`} />
-          <span className="font-medium">Light</span>
-          <span className="text-sm">{isLightOn ? "ON" : "OFF"}</span>
         </button>
 
         {/* Fan */}
@@ -315,7 +331,11 @@ const Environmental: React.FC<EnvironmentalProps> = () => {
             isFanOn ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-700"
           } ${isAutoMode ? "cursor-not-allowed" : "hover:bg-green-50"}`}
         >
-          <FaFan className={`text-3xl mb-2 ${isFanOn ? "text-green-600 animate-spin" : "text-gray-500"}`} />
+          <FaFan
+            className={`text-3xl mb-2 ${
+              isFanOn ? "text-green-600 animate-spin" : "text-gray-500"
+            }`}
+          />
           <span className="font-medium">Fans</span>
           <span className="text-sm">{isFanOn ? "ON" : "OFF"}</span>
         </button>

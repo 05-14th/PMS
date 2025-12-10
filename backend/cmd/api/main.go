@@ -62,7 +62,7 @@ func buildRouter(
 	planningHandler *planning.Handler,
 	cageStatusHandler *cagestatus.Handler,
 	deviceHandler http.Handler,
-	) http.Handler {
+) http.Handler {
 
 	r := chi.NewRouter()
 
@@ -93,15 +93,20 @@ func buildRouter(
 }
 
 func main() {
+	// init main DB used by the rest of the app
 	database.InitDB()
+
+	// give the same DB handle to the device gateway package
+	// this satisfies the db usage inside internal/device
+	gateway.SetDB(database.DB)
 
 	loginRepo := login.NewRepository(database.DB)
 	loginService := login.NewService(loginRepo)
-	loginHandler := login.NewHandler(loginService)		
+	loginHandler := login.NewHandler(loginService)
 
 	registerRepo := register.NewRepository(database.DB)
 	registerService := register.NewService(registerRepo)
-	registerHandler := register.NewHandler(registerService)	
+	registerHandler := register.NewHandler(registerService)
 
 	userRepo := user.NewRepository(database.DB)
 	userService := user.NewService(userRepo)

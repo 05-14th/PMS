@@ -24,7 +24,7 @@ type DeviceView = {
 export const FEEDER_DEVICE_ID = "esp-A97A47";
 export const WATER_DEVICE_ID  = 'esp-8A3850';
 export const MED_DEVICE_ID    = 'esp-11F549';
-export const ENV_DEVICE_ID    = 'gw-16ebb';
+export const ENV_DEVICE_ID    = 'gw16ebb';
 export const LEVEL_DEVICE_ID = "gw-6b3e32";
 
 const KNOWN_DEVICE_ORDER = [
@@ -41,6 +41,34 @@ const KNOWN_LABELS: Record<string, string> = {
   [MED_DEVICE_ID]: 'Medication',
   [ENV_DEVICE_ID]: 'Env Gateway',
   [LEVEL_DEVICE_ID]: 'Level Guide'
+};
+
+// Function to turn off relays for specific device types
+const turnOffRelay = async (serverHost: string, deviceId: string) => {
+  try {
+    // Map device IDs to their relay endpoints
+    const relayEndpoints: Record<string, string> = {
+      [WATER_DEVICE_ID]: '/relay/0',  // Adjust based on your actual relay endpoints
+      [MED_DEVICE_ID]: '/relay/0',    // Adjust based on your actual relay endpoints
+    };
+
+    const endpoint = relayEndpoints[deviceId];
+    if (endpoint) {
+      await axios.post(
+        `${serverHost}/device/${encodeURIComponent(deviceId)}${endpoint}`,
+        { state: 'off' },
+        { headers: { 'Content-Type': 'application/json' } }
+      );
+      console.log(`Turned off relay for ${deviceId}`);
+    }
+  } catch (error) {
+    console.error(`Failed to turn off relay for ${deviceId}:`, error);
+  }
+};
+
+// Function to check if a device has relays that should be turned off
+const shouldTurnOffRelays = (deviceId: string): boolean => {
+  return deviceId === WATER_DEVICE_ID || deviceId === MED_DEVICE_ID;
 };
 
 const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
@@ -161,13 +189,22 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
 
     const setManual = async () => {
       await Promise.allSettled(
-        idsNeedingManual.map((id) =>
-          axios.post(
-            `${serverHost}/mode/${encodeURIComponent(id)}`,
-            { mode: 'manual' },
-            { headers: { 'Content-Type': 'application/json' } }
-          )
-        )
+        idsNeedingManual.map((id) => {
+          const requests = [
+            axios.post(
+              `${serverHost}/mode/${encodeURIComponent(id)}`,
+              { mode: 'manual' },
+              { headers: { 'Content-Type': 'application/json' } }
+            )
+          ];
+
+          // Turn off relays for water and medication devices
+          if (shouldTurnOffRelays(id)) {
+            requests.push(turnOffRelay(serverHost, id));
+          }
+
+          return Promise.all(requests);
+        })
       );
 
       if (idsNeedingManual.length > 0) {
@@ -191,12 +228,34 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
 
     setDeviceModes((prev) => ({ ...prev, [id]: toAuto }));
     pendingTogglesRef.current.add(id);
+    
     try {
+      // Always send mode change
       await axios.post(
         `${serverHost}/mode/${encodeURIComponent(id)}`,
         { mode: targetMode },
         { headers: { 'Content-Type': 'application/json' } }
       );
+      
+      // If switching to manual mode, also send a command to turn off all relays
+      if (!toAuto) {
+        try {
+          // Send additional command to turn off relays for water/medicine devices
+          await axios.post(
+            `${serverHost}/set-relays/${encodeURIComponent(id)}`,
+            { 
+              relay1: 0,
+              relay2: 0, 
+              relay3: 0,
+              mode: 'manual' // Ensure mode is manual
+            },
+            { headers: { 'Content-Type': 'application/json' } }
+          );
+        } catch (relayError) {
+          console.log(`Failed to turn off relays for ${id}, but mode was changed`, relayError);
+          // Continue anyway - at least mode was changed
+        }
+      }
     } catch {
       setDeviceModes((prev) => ({ ...prev, [id]: !toAuto }));
     } finally {
@@ -275,6 +334,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
                       />
                     </button>
 
+                    {/*
                     <button
                       onClick={() => isDiscovered && isAuto && setScheduleForId(id)}
                       disabled={!isDiscovered || !isAuto || disabled}
@@ -287,6 +347,7 @@ const ToggleManualAutoMode: React.FC<ToggleManualAutoModeProps> = ({
                       <span className="hidden sm:inline">Schedule</span>
                       <span className="sm:hidden">Sched</span>
                     </button>
+                    */}
                   </div>
                 </div>
               );

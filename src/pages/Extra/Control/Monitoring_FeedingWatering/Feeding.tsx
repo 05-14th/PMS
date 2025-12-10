@@ -19,15 +19,32 @@ function computePercent(distanceCm: number | undefined, maxDepthCm: number) {
   return clamp(Math.round(100 * (1 - distanceCm / maxDepthCm)));
 }
 
-const FeedMonitoring: React.FC<FeedMonitorProps> = ({ serverHost, deviceId }) => {
+const FeedMonitoring: React.FC<FeedMonitorProps> = () => {
   const [telemetry, setTelemetry] = useState<Telemetry | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [serverHost] = useState(import.meta.env.VITE_APP_SERVERHOST);
+  const deviceId = "gw-6b3e32";
 
+  // ---------------------------
+  // MEMOIZED FETCHER FUNCTION
+  // ---------------------------
+  const fetcher = useMemo(
+    () => async () => {
+      const { data } = await axios.get<Telemetry>(`${serverHost}telemetry/${deviceId}`);
+      return data;
+    },
+    [serverHost, deviceId]
+  );
+
+  // ---------------------------
+  // FETCH LOOP USING FETCHER
+  // ---------------------------
   useEffect(() => {
     let stop = false;
+
     const tick = async () => {
       try {
-        const { data } = await axios.get(`${serverHost}/telemetry/${deviceId}`);
+        const data = await fetcher();
         if (!stop) {
           setTelemetry(data);
           setError(null);
@@ -38,12 +55,15 @@ const FeedMonitoring: React.FC<FeedMonitorProps> = ({ serverHost, deviceId }) =>
         if (!stop) setTimeout(tick, 2000);
       }
     };
+
     tick();
-    return () => { stop = true; };
-  }, [serverHost, deviceId]);
+    return () => {
+      stop = true;
+    };
+  }, [fetcher]);
 
   const s = telemetry?.last_sensors;
-  const maxDepth = 200; // cm — adjust to actual tank height
+  const maxDepth = 12;
   const percents = [
     computePercent(s?.sensor1, maxDepth),
     computePercent(s?.sensor2, maxDepth),
@@ -72,7 +92,6 @@ const FeedMonitoring: React.FC<FeedMonitorProps> = ({ serverHost, deviceId }) =>
             </div>
 
             <div className="flex items-end gap-3">
-              {/* Tank visual */}
               <div className="relative w-16 h-36 border-2 border-green-400 rounded-md overflow-hidden bg-gray-50">
                 <div
                   className="absolute bottom-0 left-0 right-0 bg-green-300 transition-all duration-700 ease-out"
@@ -89,7 +108,6 @@ const FeedMonitoring: React.FC<FeedMonitorProps> = ({ serverHost, deviceId }) =>
                 </div>
               </div>
 
-              {/* Numeric info */}
               <div className="flex-1">
                 <div className="text-2xl font-bold text-green-700 leading-tight">
                   {p == null ? "N/A" : `${p}%`}

@@ -3,6 +3,7 @@ package iotserver
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +15,14 @@ import (
 	"sync"
 	"time"
 )
+
+// global DB handle, set from your real main package
+var db *sql.DB
+
+// SetDB should be called by your main program after opening the *sql.DB
+func SetDB(database *sql.DB) {
+	db = database
+}
 
 // Device now tracks last sensors and watering state
 type Device struct {
@@ -47,6 +56,18 @@ var (
 	qMu      sync.Mutex
 	queues   = map[string][]Command{}
 	inflight = map[string]map[string]bool{}
+)
+
+// per device, per channel usage tracking
+type channelUsage struct {
+	Last    float64 // last raw reading from that channel
+	Pending float64 // accumulated drop since last DB write
+	HasLast bool    // to know when Last is initialized
+}
+
+var (
+	usageMu    sync.Mutex
+	usageState = map[string]map[int]*channelUsage{} // deviceID -> ch -> state
 )
 
 // ---------- utility helpers ----------
@@ -177,6 +198,15 @@ func postHello(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true, "ip": ip})
 }
 
+// Item ids and batch id for inventory usage
+// Adjust these constants to match your real ItemID values and batch
+const (
+	DefaultBatchID = 1 // example batch
+	ItemStarterID  = 1 // starter feed item id
+	ItemGrowerID   = 2 // grower feed item id
+	ItemFinisherID = 3 // finisher feed item id
+)
+
 // Device uploads sensor readings
 func postUpload(w http.ResponseWriter, r *http.Request) {
 	var raw map[string]interface{}
@@ -255,6 +285,25 @@ func postUpload(w http.ResponseWriter, r *http.Request) {
 		Time:    time.Now(),
 	}
 	log.Printf("upload from %s sensors=%v", up.ID, up.Sensors)
+
+	// Append inventory usage based on mux channels
+	// ch0 -> starter, ch1 -> grower, ch2 -> finisher
+	if db != nil {
+		if err := AppendInventoryUsageFromMux(
+			db,
+			id,
+			sensorMap,
+			DefaultBatchID,
+			ItemStarterID,
+			ItemGrowerID,
+			ItemFinisherID,
+		); err != nil {
+			log.Printf("append inventory usage failed for device %s: %v", id, err)
+		}
+	} else {
+		log.Printf("db is nil, skipping inventory usage append for device %s", id)
+	}
+
 	writeJSON(w, map[string]any{"ok": true})
 }
 
@@ -326,7 +375,6 @@ func postAck(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]any{"ok": true})
 }
 
-// Feeder push passthrough to device /rotate-servo
 // Feeder push passthrough to device /rotate-servo
 func postPush(w http.ResponseWriter, r *http.Request) {
 	dev := strings.TrimPrefix(r.URL.Path, "/push/")
@@ -638,6 +686,97 @@ func FetchTelemetry(serverHost, feederID, waterID, medID string) (TelemetryData,
 	}
 
 	return feeding, watering, medicine, nil
+}
+
+// AppendInventoryUsageFromMux watches sensor0/1/2 for downward steps
+// and inserts rows of 50 units into cm_inventory_usage.
+func AppendInventoryUsageFromMux(
+	db *sql.DB,
+	deviceID string,
+	sensors map[string]float64,
+	batchID int,
+	starterID, growerID, finisherID int,
+) error {
+
+	// Map channel index to sensor key and ItemID
+	type chInfo struct {
+		Key    string
+		ItemID int
+	}
+	channels := []chInfo{
+		{Key: "sensor0", ItemID: starterID},  // ch0 -> starter
+		{Key: "sensor1", ItemID: growerID},   // ch1 -> grower
+		{Key: "sensor2", ItemID: finisherID}, // ch2 -> finisher
+	}
+
+	const stepSize = 50.0 // trigger write every 50 units used
+
+	usageMu.Lock()
+	defer usageMu.Unlock()
+
+	// Per device map
+	devState := usageState[deviceID]
+	if devState == nil {
+		devState = map[int]*channelUsage{}
+		usageState[deviceID] = devState
+	}
+
+	for chIdx, info := range channels {
+		cur, ok := sensors[info.Key]
+		if !ok {
+			continue
+		}
+
+		st := devState[chIdx]
+		if st == nil {
+			st = &channelUsage{}
+			devState[chIdx] = st
+		}
+
+		if !st.HasLast {
+			// First reading, just remember it
+			st.Last = cur
+			st.HasLast = true
+			continue
+		}
+
+		// Only care about drops (usage). Increases mean refill or noise.
+		if cur < st.Last {
+			drop := st.Last - cur
+			st.Pending += drop
+		}
+
+		// Always track latest value
+		st.Last = cur
+
+		// See how many 50 unit blocks we can write out
+		for st.Pending >= stepSize {
+			if err := insertInventoryUsageRow(
+				db,
+				batchID,
+				info.ItemID,
+				stepSize,
+			); err != nil {
+				return err
+			}
+			st.Pending -= stepSize
+		}
+	}
+
+	return nil
+}
+
+func insertInventoryUsageRow(db *sql.DB, batchID, itemID int, qty float64) error {
+	const stmt = `
+        INSERT INTO cm_inventory_usage (BatchID, ItemID, Date, QuantityUsed)
+        VALUES (?, ?, NOW(), ?)
+    `
+	_, err := db.Exec(stmt, batchID, itemID, qty)
+	if err != nil {
+		log.Printf("inventory insert failed: %v", err)
+		return err
+	}
+	return nil
 }
 
 // RegisterRoutes attaches all handlers to the given mux, under the root path.

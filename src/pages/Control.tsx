@@ -3,6 +3,7 @@ import ControlBody from "../components/ControlBody";
 import Feedingandwatering from "./Extra/Control/Feedingandwatering";
 import Environmental from "./Extra/Control/Environmental";
 import GuideModal from "./Extra/Control/GuideModal";
+import CageStatusReport from "./Extra/Control/Device_Forms/CageStatusReport";
 import axios from "axios";
 
 interface ActiveBatch {
@@ -14,69 +15,14 @@ const SubTabsPage: React.FC<{ onShowGuide: () => void }> = ({
   onShowGuide,
 }) => {
   const [activeTab, setActiveTab] = useState("feeding");
-  const [activeBatches, setActiveBatches] = useState<ActiveBatch[]>([]); // NEW STATE for fetched batches
-  const [selectedBatchID, setSelectedBatchID] = useState<number | undefined>(
-    undefined
-  ); // Use ID for selection
   const tabContainerRef = useRef<HTMLDivElement>(null);
-  const api = axios.create({ baseURL: import.meta.env.VITE_APP_SERVERHOST }); // Set up axios instance
-
-  // NEW: Fetch active batches on component mount
-  useEffect(() => {
-    const fetchActiveBatches = async () => {
-      try {
-        const response = await api.get("/api/batches/active");
-        const batches: ActiveBatch[] = response.data;
-        setActiveBatches(batches);
-
-        if (batches.length > 0) {
-          setSelectedBatchID(batches[0].batchID);
-        }
-      } catch (error) {
-        console.error("Failed to fetch active batches:", error);
-      }
-    };
-    fetchActiveBatches();
-  }, []);
-
-  const handleBatchChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = parseInt(e.target.value, 10);
-    setSelectedBatchID(id);
-    console.log("Selected Batch ID:", id);
-  };
 
   return (
     <div
       className="w-full max-w-3xl mx-auto p-6 bg-white shadow-lg rounded-2xl mt-16"
       ref={tabContainerRef}
     >
-      {/* Batch No Combo Box */}
-      <div className="mb-6">
-        <label
-          htmlFor="batch"
-          className="block text-sm font-medium text-gray-700 mb-2"
-        >
-          Batch No
-        </label>
-        <select
-          id="batch"
-          // Use the ID for value
-          value={selectedBatchID === undefined ? "" : selectedBatchID}
-          onChange={handleBatchChange}
-          className="w-full border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
-        >
-          {activeBatches.length === 0 && (
-            <option value="" disabled>
-              No active batches available
-            </option>
-          )}
-          {/*activeBatches.map((batch) => (
-            <option key={batch.batchID} value={batch.batchID}>
-              {batch.batchName}
-            </option>
-          ))*/}
-        </select>
-      </div>
+      
 
       {/* ✅ Sub Tabs */}
       <div className="flex mb-4 border-b">
@@ -100,16 +46,29 @@ const SubTabsPage: React.FC<{ onShowGuide: () => void }> = ({
         >
           Environmental
         </button>
+        <button
+          className={`flex-1 py-2 px-4 text-center font-medium ${
+            activeTab === "cage_status"
+              ? "border-b-4 border-green-500 text-green-600"
+              : "text-gray-600"
+          }`}
+          onClick={() => setActiveTab("cage_status")}
+        >
+          Cage Status
+        </button>
       </div>
 
       {/* Tab Content */}
       <div className="p-4">
         {/* Pass the selected Batch ID down to the child components */}
         {activeTab === "feeding" && (
-          <Feedingandwatering batchID={selectedBatchID} />
+          <Feedingandwatering batchID={0} />
         )}
         {activeTab === "environmental" && (
-          <Environmental batchID={selectedBatchID} />
+          <Environmental batchID={0} />
+        )}
+        {activeTab === "cage_status" && (
+          <CageStatusReport />
         )}
       </div>
     </div>
