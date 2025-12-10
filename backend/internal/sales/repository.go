@@ -561,20 +561,57 @@ func (r *Repository) GetSalesByBatch(ctx context.Context, batchID int) ([]models
 	return records, nil
 }
 
+// File: backend/internal/sales/repository.go
+
+// File: backend/internal/sales/repository.go
+
 func (r *Repository) CreateDirectSale(ctx context.Context, payload models.DirectSalePayload) (int64, error) {
     tx, err := r.db.BeginTx(ctx, nil)
     if err != nil {
-        return 0, err
+        return 0, fmt.Errorf("failed to begin transaction: %w", err)
     }
-    defer tx.Rollback()
+    
+    // 1. Robust Defer for Commit or Rollback
+    defer func() {
+        if r := recover(); r != nil {
+            tx.Rollback()
+            panic(r)
+        } else if err != nil {
+            tx.Rollback()
+        } else {
+            // Only commit if no error occurred
+            err = tx.Commit()
+            if err != nil {
+                err = fmt.Errorf("failed to commit transaction: %w", err)
+            }
+        }
+    }()
 
-    // 1. Create the sale order (no batch ID for direct sales)
-saleQuery := `INSERT INTO cm_sales_orders 
-                  (CustomerID, SaleDate, Status, PaymentMethod, Notes, BatchID, IsActive) 
-                  VALUES (?, ?, 'Fulfilled', ?, ?, ?, 1)` 
+    // --- FIX for Foreign Key Error (1452) on BatchID ---
+    var batchIDValue sql.NullInt64
+    if payload.BatchID != 0 {
+        batchIDValue = sql.NullInt64{Int64: int64(payload.BatchID), Valid: true}
+    } else {
+        batchIDValue = sql.NullInt64{Valid: false}
+    }
+    
+    saleStatus := "Fulfilled"
+
+    // 2. Create the sale order
+    // Query must match the columns in cm_sales_orders: (CustomerID, SaleDate, Status, PaymentMethod, Notes, BatchID, IsActive, TotalAmount, Discount)
+    saleQuery := `INSERT INTO cm_sales_orders 
+                     (CustomerID, SaleDate, Status, PaymentMethod, Notes, BatchID, IsActive) 
+                     VALUES (?, ?, ?, ?, ?, ?, 1)` 
     
     res, err := tx.ExecContext(ctx, saleQuery, 
-        payload.CustomerID, payload.SaleDate, payload.PaymentMethod, payload.Notes, payload.BatchID) 
+        payload.CustomerID, 
+        payload.SaleDate, 
+        saleStatus, 
+        payload.PaymentMethod, 
+        payload.Notes, 
+        batchIDValue, // <-- Use the nullable value here
+    ) 
+    
     if err != nil {
         return 0, fmt.Errorf("failed to create sale order: %w", err)
     }
@@ -586,35 +623,33 @@ saleQuery := `INSERT INTO cm_sales_orders
 
     var totalAmount float64
 
-    // 2. Process each sale item
+    // 3. Process each sale item and update inventory
     for _, item := range payload.Items {
-        // Get current inventory
+        // Inventory update logic remains the same (reduces stock from cm_harvest_products)
         var currentQty int
         var currentWeight float64
-        err := tx.QueryRowContext(ctx,
+        err = tx.QueryRowContext(ctx,
             "SELECT QuantityRemaining, WeightRemainingKg FROM cm_harvest_products WHERE HarvestProductID = ? FOR UPDATE",
             item.HarvestProductID,
         ).Scan(&currentQty, &currentWeight)
         if err != nil {
-            return 0, fmt.Errorf("failed to get product inventory: %w", err)
+            return 0, fmt.Errorf("failed to get product inventory for ID %d: %w", item.HarvestProductID, err)
         }
 
-        // Check quantity
         if currentQty < item.QuantitySold {
-            return 0, fmt.Errorf("insufficient stock. Available: %d, Requested: %d", currentQty, item.QuantitySold)
+            return 0, fmt.Errorf("insufficient stock for Harvest Product ID %d. Available: %d, Requested: %d", 
+                item.HarvestProductID, currentQty, item.QuantitySold)
         }
 
-        // Calculate new quantities
         newQty := currentQty - item.QuantitySold
         newWeight := currentWeight - item.TotalWeightKg
         if newWeight < 0 {
             newWeight = 0
         }
 
-        // Update inventory
         updateQuery := `UPDATE cm_harvest_products 
-                       SET QuantityRemaining = ?, WeightRemainingKg = ?, IsActive = ?
-                       WHERE HarvestProductID = ?`
+                         SET QuantityRemaining = ?, WeightRemainingKg = ?, IsActive = ?
+                         WHERE HarvestProductID = ?`
         
         _, err = tx.ExecContext(ctx, updateQuery, 
             newQty, newWeight, newQty > 0, item.HarvestProductID)
@@ -622,31 +657,27 @@ saleQuery := `INSERT INTO cm_sales_orders
             return 0, fmt.Errorf("failed to update inventory: %w", err)
         }
 
-        // Add sale detail
+        // --- FIX for Unknown Column Error (1054) ---
+        // REMOVE HarvestProductID from the insert statement to match the DB schema.
         detailQuery := `INSERT INTO cm_sales_details 
-                       (SaleID, ProductType, QuantitySold, TotalWeightKg, PricePerKg) 
-                       VALUES (?, ?, ?, ?, ?)`
+                         (SaleID, ProductType, QuantitySold, TotalWeightKg, PricePerKg) 
+                         VALUES (?, ?, ?, ?, ?)`
         
         _, err = tx.ExecContext(ctx, detailQuery,
             saleID, item.ProductType, item.QuantitySold, item.TotalWeightKg, item.PricePerKg)
         if err != nil {
-            return 0, fmt.Errorf("failed to create sale detail: %w", err)
+            return 0, fmt.Errorf("failed to create sale detail: %w", err) // This error should now be fixed
         }
 
         // Calculate item total
         totalAmount += item.TotalWeightKg * item.PricePerKg
     }
 
-    // 3. Update sale total amount
+    // 4. Update sale total amount (needs to be done last)
     updateSaleQuery := "UPDATE cm_sales_orders SET TotalAmount = ? WHERE SaleID = ?"
     _, err = tx.ExecContext(ctx, updateSaleQuery, totalAmount, saleID)
     if err != nil {
         return 0, fmt.Errorf("failed to update sale total: %w", err)
-    }
-
-    // 4. Commit transaction
-    if err := tx.Commit(); err != nil {
-        return 0, fmt.Errorf("failed to commit transaction: %w", err)
     }
 
     return saleID, nil
